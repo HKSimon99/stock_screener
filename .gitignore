@@ -38,3 +38,7 @@ docker-compose.override.yml
 # Logs
 *.log
 logs/
+.claude/pids/
+
+# Exclude specific project folder
+antigravity_phone_chat/

@@ -37,11 +37,11 @@ Each strategy looks at fundamentally different aspects. A stock passing all 5 ha
 ## 1. Technology Stack
 
 ### Backend
+- **uv** for Python/package/project management on Windows
 - **Python 3.12+** with **FastAPI** (async, Pydantic validation, auto-generated OpenAPI docs)
 - **SQLAlchemy 2.0** async ORM
 - **PostgreSQL 16 + TimescaleDB** (hypertables for price time-series, continuous aggregates for rolling computations)
 - **Celery + Redis** (scheduled ingestion pipelines, nightly scoring batch jobs)
-- **Redis** (market regime state, ranking cache, rate-limit counters)
 - **pandas-ta** or **ta-lib** (technical indicator computation)
 
 ### Frontend
@@ -51,6 +51,51 @@ Each strategy looks at fundamentally different aspects. A stock passing all 5 ha
 - **TanStack Query** for server-state caching
 - **Recharts** for strategy radar/spider charts per instrument
 
+### Infrastructure — Cloud-Managed (Primary Path)
+
+The primary development and production infrastructure uses **managed cloud services**, eliminating the need for Docker or native database installations on Windows. This is the recommended path.
+
+| Service | Role | Free Tier | Notes |
+|---------|------|-----------|-------|
+| **Neon** | PostgreSQL 16 + TimescaleDB | 0.5 GB storage, 100 CU-hrs/mo, scale-to-zero | Serverless, built-in PgBouncer, DB branching for dev/test |
+| **Upstash** | Redis (Celery broker + API cache) | 500K commands/mo | Serverless, TLS by default, works with Celery (tuned config required) |
+
+**Why Neon over Supabase?** Supabase deprecated TimescaleDB on PostgreSQL 17+. Neon fully supports TimescaleDB as an extension. Neon also offers database branching for instant dev/test copies.
+
+**Why Upstash over local Redis/Memurai?** No Windows compatibility issues. No local installation. Works over TLS. The Celery broker runs in the cloud, eliminating one of the biggest Windows pain points.
+
+**Storage planning:** Full dataset (~7000 instruments × 2 years daily OHLCV) ≈ 700MB. Options:
+- Dev with S&P 500 subset only → stays within 0.5 GB free tier
+- Neon Launch plan ($5/mo) → covers full dataset
+- Aiven free tier (5 GB storage) → alternative if more room needed
+
+#### Upstash Celery Configuration (Command Optimization)
+
+```python
+# celery_config.py — optimized for Upstash free tier (500K commands/mo)
+app.conf.update(
+    broker_url="rediss://:PASSWORD@HOST:PORT",
+    broker_transport_options={
+        'heartbeat': 120,           # Reduce PING frequency
+        'visibility_timeout': 3600,  # 1 hour for long-running scoring tasks
+    },
+    worker_prefetch_multiplier=1,    # Reduce overhead
+    result_backend=None,             # Disable if not needed (saves ~40% commands)
+)
+```
+
+### Infrastructure — Native Windows (Alternative Path)
+
+For developers who prefer full local control or need offline development:
+
+- **PostgreSQL 16** native installation with TimescaleDB extension
+- **Memurai** (Windows-native Redis-compatible server) for Celery broker/cache
+- **Celery worker pool:** `--pool=solo` (Windows does not support `prefork` — Celery officially dropped Windows support in v4.x; `--pool=solo` is the single-threaded workaround)
+- **Process launcher:** PowerShell scripts in `scripts/` directory
+- **Fallback processes:** separate terminals using `.venv` Python directly
+
+This is a runtime/tooling choice only. It does **not** change the product roadmap, strategy lineup, or data-provider roadmap. The application code is identical regardless of which infrastructure path is used.
+
 ### Data Sources — Verified Availability (All Free or Included with Brokerage)
 
 #### US Market — Fully Free Stack
@@ -58,7 +103,7 @@ Each strategy looks at fundamentally different aspects. A stock passing all 5 ha
 | Need | Source | Library | Cost | Notes |
 |------|--------|---------|------|-------|
 | OHLCV (daily) | Yahoo Finance | `yfinance` | Free | Reliable for EOD. 2000 req/hr unauth. Backup: FMP free tier |
-| OHLCV (intraday, optional) | Financial Modeling Prep | `fmpsdk` | Free (250 req/day) | 1-min to daily bars. Free tier sufficient for EOD |
+| OHLCV (intraday, optional) | Financial Modeling Prep | `fmpsdk` / HTTP | Free (250 req/day) | 1-min to daily bars. Free tier sufficient for EOD |
 | Quarterly financials | SEC EDGAR XBRL | `edgartools` | Free | Official 10-Q data, no API key needed, <1s latency |
 | Annual financials (IS+BS+CF) | SEC EDGAR XBRL | `edgartools` | Free | Full income stmt, balance sheet, cash flow for Piotroski |
 | Shares outstanding / float | Yahoo Finance | `yfinance` | Free | `.info['floatShares']`, `.info['sharesOutstanding']` |
@@ -68,6 +113,17 @@ Each strategy looks at fundamentally different aspects. A stock passing all 5 ha
 | ETF constituents | ETF provider websites | Web scrape / manual | Free | iShares/Vanguard publish holdings CSVs |
 
 **US cost: $0/month.** yfinance is the most widely-used free financial data library in Python. SEC EDGAR is the official government source — unlimited, no authentication. FMP free tier (250 req/day) serves as backup for pre-computed ratios.
+
+#### yfinance Reliability & Fallback Strategy
+
+yfinance is a web scraper, not an official API. Yahoo periodically changes their endpoints. The platform must handle this gracefully:
+
+```
+Primary: yfinance for all US OHLCV
+Fallback: FMP free tier (250 req/day) for critical instruments
+Detection: If yfinance returns errors for >10% of batch → auto-switch to FMP
+Alert: DATA_SOURCE_DEGRADED alert generated on fallback activation
+```
 
 #### KR Market — KIS Developers + Free Supplementary
 
@@ -80,7 +136,7 @@ Each strategy looks at fundamentally different aspects. A stock passing all 5 ha
 | Annual financials (IS+BS+CF) | OpenDART | `OpenDartReader` | Free | Full financials for Piotroski |
 | Foreign ownership / investor flows | KIS Developers API | `mojito` | Free | Foreign/institutional/individual breakdown |
 | Stock listings / metadata | FinanceDataReader | `FinanceDataReader` | Free | KOSPI/KOSDAQ/KONEX listings |
-| Supplementary price data | KRX scraping | `pykrx` | Free | Backup for historical data (1 req/sec) |
+| Supplementary price data | Research-only fallback | `pykrx` | Free | Optional backup for manual validation, not part of the primary runtime path |
 | Risk-free rate | Bank of Korea | Web scrape | Free | BOK base rate |
 | ETF constituents | KRX / ETF providers | Manual / scrape | Free | KRX publishes ETF PDF holdings |
 
@@ -212,9 +268,63 @@ consensus-platform/
       PatternOverlay.tsx     # Chart pattern visualization
       RegimeBanner.tsx
     package.json
-  docker-compose.yml
+  Procfile                   # For local multi-process orchestration
+  .python-version
+  uv.lock
   .env.example
+  scripts/                   # Windows-native dev convenience scripts
+    dev.ps1
+    stop-dev.ps1
+    start-api.ps1
+    start-worker.ps1
+    start-beat.ps1
+    status-dev.ps1
 ```
+
+---
+
+## Local Configuration Defaults
+
+### Cloud-Managed Path (Primary)
+
+```env
+# Neon PostgreSQL + TimescaleDB
+DATABASE_URL=postgresql+psycopg://user:password@your-project.neon.tech:5432/neondb?sslmode=require
+
+# Upstash Redis (Celery broker + cache)
+REDIS_URL=rediss://:password@your-instance.upstash.io:6379
+CELERY_BROKER_URL=rediss://:password@your-instance.upstash.io:6379/0
+CELERY_RESULT_BACKEND_URL=  # Leave empty to disable (saves Upstash commands)
+```
+
+### Native Windows Path (Alternative)
+
+```env
+DATABASE_URL=postgresql+psycopg://consensus:changeme@localhost:5432/consensus
+POSTGRES_SCHEMA=consensus_app
+REDIS_URL=redis://localhost:6379/0
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND_URL=redis://localhost:6379/0
+```
+
+### Provider Keys (Both Paths)
+
+```env
+HTTP_USER_AGENT=...
+OPENDART_API_KEY=...
+KIS_APP_KEY=...
+KIS_APP_SECRET=...
+FMP_API_KEY=...
+FRED_API_KEY=...
+```
+
+Notes:
+- `CELERY_BROKER_URL` defaults to `REDIS_URL` if not explicitly set
+- On cloud path, disable `CELERY_RESULT_BACKEND_URL` to conserve Upstash commands
+- On native Windows path, Celery worker must use `--pool=solo`
+- On native Windows path, `POSTGRES_SCHEMA` can isolate the app into a dedicated schema inside an existing local database, avoiding collisions with legacy tables
+- On native Windows path, if TimescaleDB is not yet installed, local development may proceed with `prices` as a plain PostgreSQL table; hypertable enablement remains an explicit follow-up task
+- The project does **not** use PostgreSQL as the Celery broker because Kombu's SQLAlchemy transport has feature limits
 
 ---
 
@@ -794,8 +904,6 @@ OBV trend (rising/falling) compared to price trend:
 
 ### 4.3. Technical Composite Score
 
-Aggregates pattern detection + indicators into a single technical health score.
-
 ```
 pattern_score = max(confidence) across all detected patterns, or 0 if none
 ad_score = Accumulation/Distribution rating (0-100)
@@ -1058,7 +1166,7 @@ Current state, history, distribution day count, drawdown, index MA positions.
 Frozen point-in-time rankings with config hash for reproducibility.
 
 ### `GET /api/v1/alerts`
-Types: `STOP_LOSS`, `REGIME_CHANGE`, `EARNINGS_DECEL`, `RS_BREAKDOWN`, `VOLUME_SURGE`, `PIOTROSKI_DROP`, `STAGE_CHANGE`, `SECTOR_CONCENTRATION`
+Types: `STOP_LOSS`, `REGIME_CHANGE`, `EARNINGS_DECEL`, `RS_BREAKDOWN`, `VOLUME_SURGE`, `PIOTROSKI_DROP`, `STAGE_CHANGE`, `SECTOR_CONCENTRATION`, `DATA_SOURCE_DEGRADED`
 
 ---
 
@@ -1092,16 +1200,61 @@ Each step has a clear deliverable, test checkpoint, and dependencies. Complete e
 
 ---
 
+### PHASE 0: Dev Environment Bootstrap
+
+Choose ONE infrastructure path. Cloud-managed is recommended.
+
+#### Step 0.1 — Install `uv`
+- [ ] Install `uv` on Windows
+- [ ] Verify `uv --version`
+- [ ] Add `.python-version` (Python 3.12+)
+- **Test:** `uv --version` succeeds. Python 3.12 is selected for the backend project.
+
+#### Step 0.2 — Provision Cloud Infrastructure (Cloud Path)
+- [ ] Create Neon account → Create project → Enable TimescaleDB extension
+- [ ] Create Upstash account → Create Redis database
+- [ ] Copy connection strings to `.env`
+- [ ] Verify connectivity: `psql` to Neon, `redis-cli` to Upstash
+- **Test:** `CREATE EXTENSION IF NOT EXISTS timescaledb;` succeeds on Neon. Celery can ping Upstash broker.
+
+#### Step 0.2-ALT — Install Native Infrastructure (Native Path)
+- [ ] Install native PostgreSQL 16 + TimescaleDB on Windows
+- [ ] Install Memurai as local Redis-compatible service
+- [ ] Create local user/database, verify connectivity
+- **Test:** `CREATE EXTENSION timescaledb;` succeeds locally. Celery can ping Memurai broker.
+
+#### Step 0.3 — Sync Dependencies With `uv`
+- [ ] Use `backend/pyproject.toml` as the project root for Python dependencies
+- [ ] Generate `uv.lock`
+- **Test:** `uv sync --project backend` completes successfully on Windows.
+
+#### Step 0.4 — Configure `.env` And Verify
+- [ ] Copy `.env.example` to `.env`
+- [ ] Fill provider keys and infrastructure connection strings
+- [ ] Verify database connectivity from Python
+- **Test:** `python -c "from sqlalchemy import create_engine; ..."` connects successfully.
+
+#### Step 0.5 — Start Local Processes
+- [ ] Add `Procfile` with `api`, `worker`, and `beat`
+- [ ] Add `scripts/dev.ps1` convenience wrapper and `scripts/stop-dev.ps1`
+- [ ] Add individual `scripts/start-api.ps1`, `scripts/start-worker.ps1`, `scripts/start-beat.ps1`
+- [ ] On native Windows path: standardize worker command on `--pool=solo`
+- **Test:** API starts. `GET /health` returns 200.
+
+**PHASE 0 CHECKPOINT:** Dev environment is fully runnable. Database and Redis are accessible. `uv sync` works.
+
+---
+
 ### PHASE 1: Foundation + Data Infrastructure
 
 #### Step 1.1 — Project Scaffolding
 - [ ] Init git repo
-- [ ] Create `docker-compose.yml` with PostgreSQL 16 + TimescaleDB, Redis
 - [ ] Create FastAPI app skeleton with `pyproject.toml`, dependencies
 - [ ] Set up Alembic for migrations
 - [ ] Create `.env.example` with all config keys
 - [ ] Create project directory structure (Section 2)
-- **Test:** `docker compose up` starts DB + Redis. `uvicorn` starts FastAPI. `GET /health` returns 200.
+- [ ] Add `Procfile` for local process management
+- **Test:** `uvicorn app.main:app --app-dir backend` starts the API. `GET /health` returns 200.
 
 #### Step 1.2 — Database Schema
 - [ ] Write Alembic migration for all tables (Section 8): instruments, prices, fundamentals_quarterly, fundamentals_annual, institutional, strategy_scores, consensus_scores, market_regime, etf_constituents, etf_scores, alerts, scoring_snapshots, data_freshness
@@ -1111,6 +1264,7 @@ Each step has a clear deliverable, test checkpoint, and dependencies. Complete e
 
 #### Step 1.3 — US Instrument + Price Ingestion
 - [ ] Build `us_price.py` ingestor using `yfinance`
+- [ ] Implement FMP fallback logic (auto-switch if yfinance error rate >10%)
 - [ ] Fetch S&P 500 + NASDAQ 100 instrument list → populate `instruments`
 - [ ] Fetch 2 years historical daily OHLCV → populate `prices` hypertable
 - [ ] Compute and store `avg_volume_50d` rolling average
@@ -1192,7 +1346,13 @@ Each step has a clear deliverable, test checkpoint, and dependencies. Complete e
 - [ ] Run on all instruments → store in `strategy_scores`
 - **Test:** Score a financially strong company (e.g., AAPL) → expect F-score 7-9. Score a struggling company → expect 0-3. Verify each of the 9 criteria individually with hand calculation.
 
-**PHASE 2 CHECKPOINT:** Two strategies producing scores for all instruments. Manually verify 5 US + 5 KR stocks against hand calculations. Check that CANSLIM and Piotroski identify *different* top stocks (they should, since they're orthogonal).
+#### Step 2.6 — Early Backtesting Validation
+- [ ] Run CANSLIM + Piotroski on 6 months of historical data
+- [ ] Track forward 3-month returns for top-scoring vs bottom-scoring stocks
+- [ ] Verify that high-scoring stocks have meaningfully better outcomes
+- **Test:** Basic signal validation — catch formula errors early before building remaining engines.
+
+**PHASE 2 CHECKPOINT:** Two strategies producing scores for all instruments. Manually verify 5 US + 5 KR stocks against hand calculations. Check that CANSLIM and Piotroski identify *different* top stocks (they should, since they're orthogonal). Early backtest shows positive signal.
 
 ---
 
@@ -1268,7 +1428,7 @@ Each step has a clear deliverable, test checkpoint, and dependencies. Complete e
 - [ ] Fetch daily foreign/institutional/individual net buy/sell per instrument
 - [ ] Compute 30-day rolling sums → populate `institutional` table
 - [ ] Integrate with chaebol filter
-- **Test:** Verify Samsung foreign ownership % matches published KRX data. Verify daily investor breakdown sums correctly.
+- **Test:** Verify Samsung foreign/institutional flow fields are internally consistent and spot-check them against available public KIS or exchange reference data. Verify daily investor breakdown sums correctly.
 
 #### Step 4.3 — Consensus Scoring Engine
 - [ ] Build `consensus.py` (Section 5)
@@ -1295,6 +1455,7 @@ Each step has a clear deliverable, test checkpoint, and dependencies. Complete e
 - [ ] `GET /api/v1/rankings` with market, asset_type, conviction, limit, offset params
 - [ ] Include regime state, freshness, all 5 strategy scores, conviction, technical, risk data
 - [ ] Pagination support
+- [ ] Redis cache for rankings responses (TTL: 1 hour, invalidate on new scoring run)
 - **Test:** `curl /rankings?market=US&conviction=DIAMOND` returns 0-5 stocks. `conviction=GOLD` returns more.
 
 #### Step 5.2 — Instruments Endpoint
@@ -1319,6 +1480,11 @@ Each step has a clear deliverable, test checkpoint, and dependencies. Complete e
 - [ ] Build concentration checker: sector/exchange warnings
 - [ ] Generate alerts and store in `alerts` table
 - **Test:** Simulate a stock dropping 8% from entry → CRITICAL alert generated. Verify position sizing calculation.
+
+#### Step 5.6 — API Authentication
+- [ ] Add API key authentication middleware
+- [ ] Rate limiting per API key
+- **Test:** Unauthenticated requests return 401. Valid API key returns data.
 
 **PHASE 5 CHECKPOINT:** Full API functional. Run complete flow: ingest → score → rank → serve via API. All endpoints return correct data. Alerts fire on simulated risk events.
 
@@ -1370,7 +1536,7 @@ Each step has a clear deliverable, test checkpoint, and dependencies. Complete e
 
 ### PHASE 7: Validation + Polish
 
-#### Step 7.1 — Backtesting Framework
+#### Step 7.1 — Full Backtesting Framework
 - [ ] Build replay engine: load historical data, run scoring as-of each past date
 - [ ] Track which stocks entered DIAMOND/GOLD tier and their forward returns (1/3/6/12 month)
 - [ ] Compare: DIAMOND vs GOLD vs CANSLIM-only vs S&P 500/KOSPI benchmark
@@ -1395,8 +1561,21 @@ Each step has a clear deliverable, test checkpoint, and dependencies. Complete e
 #### Step 7.4 — Korea-Specific Verification
 - [ ] Verify chaebol filter catches Samsung-to-Samsung cross-holdings
 - [ ] Verify sector normalization adjusts semiconductor thresholds
-- [ ] Verify KIS investor flow data matches published KRX statistics
+- [ ] Verify KIS investor flow data is stable, internally consistent, and reasonable versus public market reference totals
 - [ ] Verify price limit (±30%) handling in pattern detection
 - **Test:** Side-by-side comparison with published Korean financial data.
 
 **PHASE 7 CHECKPOINT:** Platform validated. Backtesting shows meaningful signal. All tests pass. Data integrity clean.
+
+---
+
+## 12. Future Considerations
+
+These items are not in the current implementation scope but should be addressed as the platform matures:
+
+1. **CI/CD Pipeline** — GitHub Actions for automated testing, linting, and deployment on push.
+2. **Structured Logging & Observability** — Integrate structured logging (e.g., `structlog`) and consider metrics collection for pipeline health monitoring.
+3. **WebSocket/SSE for Frontend** — Replace TanStack Query polling with WebSocket or Server-Sent Events for real-time regime change notifications and alert delivery.
+4. **Bulk Load Estimation** — Initial historical data load for ~7000 instruments is a multi-hour operation. Document rate-limit handling, batch sizing, and expected duration.
+5. **Multi-User Support** — If deployed beyond personal use, add user accounts, watchlists, and personalized alert preferences.
+6. **Neon Storage Monitoring** — Track database size growth. At ~500 trading days/year × 7000 instruments × ~200 bytes, annual growth is ~700MB. Plan storage tier upgrades accordingly.

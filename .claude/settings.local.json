@@ -3,7 +3,17 @@
     "allow": [
       "Bash(git config:*)",
       "Bash(git commit -m ':*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(uv --version)",
+      "Bash(psql --version)",
+      "Bash(pip install:*)",
+      "Bash(uv python:*)",
+      "Bash(python -c \"import site; print\\(site.getusersitepackages\\(\\)\\)\")",
+      "Read(//c/Users/kyusu/AppData/Roaming/Python/Python314/Scripts//**)",
+      "Bash(export PATH=\"/c/Users/kyusu/AppData/Roaming/Python/Python314/Scripts:$PATH\")",
+      "Bash(choco --version)",
+      "Bash(uv sync:*)",
+      "Bash(pip index:*)"
     ]
   }
 }

@@ -1,10 +1,16 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import model_validator
 from functools import lru_cache
+from pathlib import Path
+from urllib.parse import quote_plus
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+ENV_FILE = REPO_ROOT / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
 
     # App
     app_env: str = "development"
@@ -15,6 +21,7 @@ class Settings(BaseSettings):
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_db: str = "consensus"
+    postgres_schema: str = "public"
     postgres_user: str = "consensus"
     postgres_password: str = "changeme"
 
@@ -28,10 +35,20 @@ class Settings(BaseSettings):
     @property
     def sync_database_url(self) -> str:
         """Sync URL for Alembic migrations."""
-        return (
+        url = (
             f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+        if self.postgres_schema and self.postgres_schema != "public":
+            options = quote_plus(f"-csearch_path={self.postgres_schema}")
+            return f"{url}?options={options}"
+        return url
+
+    @property
+    def asyncpg_connect_args(self) -> dict[str, dict[str, str]]:
+        if self.postgres_schema and self.postgres_schema != "public":
+            return {"server_settings": {"search_path": self.postgres_schema}}
+        return {}
 
     # Redis — optional, only needed for production caching
     redis_url: str = ""

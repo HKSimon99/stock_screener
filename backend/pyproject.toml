@@ -28,7 +28,7 @@ dependencies = [
     # KR data — free
     "python-kis>=2.1.6",        # KIS Developers API wrapper (replaces mojito2)
     "OpenDartReader>=0.2.1",    # OpenDART financials
-    "FinanceDataReader>=0.9.50",# KR stock listings
+    "finance-datareader>=0.9.50",# KR stock listings
     "pykrx>=1.0.45",            # KRX scraping (backup)
 
     # Technical analysis

@@ -57,8 +57,25 @@ def upgrade() -> None:
         sa.Column("avg_volume_50d", sa.BigInteger()),
         sa.PrimaryKeyConstraint("instrument_id", "trade_date"),
     )
-    # Convert to TimescaleDB hypertable, partitioned by trade_date
-    op.execute("SELECT create_hypertable('prices', 'trade_date', if_not_exists => TRUE);")
+    # Convert to a TimescaleDB hypertable when the extension is available.
+    # Local dev can still proceed on plain PostgreSQL until TimescaleDB is installed.
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb') THEN
+                BEGIN
+                    CREATE EXTENSION IF NOT EXISTS timescaledb;
+                    PERFORM create_hypertable('prices', 'trade_date', if_not_exists => TRUE);
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        RAISE NOTICE 'Skipping TimescaleDB hypertable setup: %', SQLERRM;
+                END;
+            END IF;
+        END
+        $$;
+        """
+    )
     op.create_index("idx_prices_instrument_date", "prices", ["instrument_id", "trade_date"])
 
     # ── fundamentals_quarterly ───────────────────────────────────────────────

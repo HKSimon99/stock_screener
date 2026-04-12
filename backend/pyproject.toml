@@ -30,13 +30,13 @@ dependencies = [
     "fredapi>=0.5.1",           # FRED risk-free rate
 
     # KR data — free
-    "mojito2>=0.1.68",          # KIS Developers API wrapper
+    "python-kis>=2.1.6",        # KIS Developers API wrapper (replaces mojito2 which stalled at v0.1.6)
     "OpenDartReader>=0.2.1",    # OpenDART financials
     "FinanceDataReader>=0.9.50",# KR stock listings
     "pykrx>=1.0.45",            # KRX scraping (backup)
 
     # Technical analysis
-    "pandas-ta>=0.3.14b",
+    "TA-Lib>=0.6.8",            # C bindings, 2-4x faster than pandas-ta, 200+ indicators (replaces pandas-ta)
     "pandas>=2.2.0",
     "numpy>=1.26.0",
 

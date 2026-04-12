@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import model_validator
 from functools import lru_cache
 
 
@@ -32,12 +33,26 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
-    # Redis
-    redis_url: str = "redis://localhost:6379/0"
+    # Redis — optional, only needed for production caching
+    redis_url: str = ""
 
-    # Celery
-    celery_broker_url: str = "redis://localhost:6379/1"
-    celery_result_backend: str = "redis://localhost:6379/2"
+    # Celery — defaults to PostgreSQL broker so no Redis required for local dev.
+    # Override in .env with a Redis URL for production: redis://localhost:6379/1
+    celery_broker_url: str = ""
+    celery_result_backend: str = ""
+
+    @model_validator(mode="after")
+    def set_celery_defaults(self) -> "Settings":
+        """Auto-derive Celery URLs from Postgres config if not explicitly set."""
+        pg = (
+            f"db+postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
+        if not self.celery_broker_url:
+            self.celery_broker_url = pg
+        if not self.celery_result_backend:
+            self.celery_result_backend = pg
+        return self
 
     # US data
     fmp_api_key: str = ""

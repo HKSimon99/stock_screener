@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git config:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

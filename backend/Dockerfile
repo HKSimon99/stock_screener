@@ -28,7 +28,7 @@ RUN wget -q \
     && tar -xzf "ta-lib-${TALIB_VERSION}-src.tar.gz" \
     && cd ta-lib \
     && ./configure --prefix=/usr \
-    && make -j"$(nproc)" \
+    && make \
     && make install \
     && cd .. \
     && rm -rf ta-lib "ta-lib-${TALIB_VERSION}-src.tar.gz"

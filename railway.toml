@@ -4,7 +4,7 @@
 [[services]]
 name = "api"
 root = "backend"
-startCommand = "uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+startCommand = "sh -c 'uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT'"
 
 [[services]]
 name = "worker"

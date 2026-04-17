@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 from app.core.config import settings
 
 celery_app = Celery(
@@ -20,6 +21,9 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     beat_schedule={
-        # Populated in Phase 1-4 as each ingestor/scorer is built
+        "daily-data-integrity-monitor": {
+            "task": "app.tasks.alerts.run_data_integrity_monitoring",
+            "schedule": crontab(minute=15, hour=1),
+        },
     },
 )

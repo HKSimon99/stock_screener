@@ -1,0 +1,13 @@
+# Nixpacks build config for Railway.
+# Installs TA-Lib C library from Nixpkgs before uv sync so the Python
+# bindings (TA-Lib>=0.6.8) can find the headers during build.
+
+[phases.setup]
+# ta-lib = the TA-Lib C library in Nixpkgs (0.4.0, the canonical C release)
+nixPkgs = ["ta-lib"]
+
+[phases.install]
+cmds = ["uv sync --frozen --no-dev"]
+
+[start]
+cmd = "uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT"

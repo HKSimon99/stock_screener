@@ -1,0 +1,17 @@
+# Railway monorepo config — three backend services, all rooted at backend/
+# Nixpacks build phases for each service are defined in backend/nixpacks.toml
+
+[[services]]
+name = "api"
+root = "backend"
+startCommand = "uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+
+[[services]]
+name = "worker"
+root = "backend"
+startCommand = "uv run celery -A app.tasks.celery_app.celery_app worker --loglevel=info"
+
+[[services]]
+name = "beat"
+root = "backend"
+startCommand = "uv run celery -A app.tasks.celery_app.celery_app beat --loglevel=info"

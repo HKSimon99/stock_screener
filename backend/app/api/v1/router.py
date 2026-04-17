@@ -5,12 +5,13 @@ api_router = APIRouter()
 
 api_router.include_router(health.router, tags=["health"])
 
-# Registered later as each phase completes:
-# from app.api.v1.endpoints import rankings, instruments, filters, snapshots, market_regime, alerts, strategies
-# api_router.include_router(rankings.router,      prefix="/rankings",      tags=["rankings"])
-# api_router.include_router(instruments.router,   prefix="/instruments",   tags=["instruments"])
-# api_router.include_router(filters.router,       prefix="/filters",       tags=["filters"])
-# api_router.include_router(snapshots.router,     prefix="/snapshots",     tags=["snapshots"])
-# api_router.include_router(market_regime.router, prefix="/market-regime", tags=["market-regime"])
-# api_router.include_router(alerts.router,        prefix="/alerts",        tags=["alerts"])
-# api_router.include_router(strategies.router,    prefix="/strategies",    tags=["strategies"])
+from app.api.v1.endpoints import rankings, instruments, strategies, meta, risk, search, stream
+
+api_router.include_router(rankings.router,      prefix="/rankings",      tags=["rankings"])
+api_router.include_router(instruments.router,   prefix="/instruments",   tags=["instruments"])
+api_router.include_router(strategies.router,    prefix="/strategies",    tags=["strategies"])
+api_router.include_router(strategies.filter_router, prefix="/filters",   tags=["filters"])
+api_router.include_router(meta.router,          tags=["meta"]) # /market-regime, /snapshots, /alerts, /scoring
+api_router.include_router(risk.router,          prefix="/risk",          tags=["risk"])
+api_router.include_router(search.router,        tags=["search"])
+api_router.include_router(stream.router,        tags=["stream"])

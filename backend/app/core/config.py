@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import model_validator
+from pydantic import AliasChoices, Field, model_validator, field_validator
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -16,6 +16,43 @@ class Settings(BaseSettings):
     app_env: str = "development"
     secret_key: str = "changeme"
     api_v1_prefix: str = "/api/v1"
+    api_keys: str = ""  # Comma-separated list of valid API keys
+    clerk_secret_key: str = ""
+    clerk_publishable_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "CLERK_PUBLISHABLE_KEY",
+            "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+        ),
+    )
+    clerk_jwks_url: str = "https://api.clerk.com/v1/jwks"
+    clerk_jwt_issuer: str = ""
+    clerk_jwt_audiences: str = ""
+
+    # CORS — comma-separated list of allowed origins.
+    # Dev default allows local Next.js dev server.
+    # Production: set CORS_ORIGINS=https://yourapp.vercel.app,https://yourapp.com
+    cors_origins: str = "http://localhost:3000"
+
+    @field_validator("secret_key")
+    @classmethod
+    def secret_key_must_be_set_in_production(cls, v: str, info) -> str:
+        # info.data may not have app_env yet in field validators; check env directly
+        import os
+        if os.getenv("APP_ENV", "development") == "production" and v == "changeme":
+            raise ValueError(
+                "SECRET_KEY must be set to a strong random value in production. "
+                "Generate one with: openssl rand -hex 32"
+            )
+        return v
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def clerk_jwt_audiences_list(self) -> list[str]:
+        return [aud.strip() for aud in self.clerk_jwt_audiences.split(",") if aud.strip()]
 
     # Database
     postgres_host: str = "localhost"

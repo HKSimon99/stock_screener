@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def fetch_kr_tickers() -> list[dict]:
-    """Fetch KOSPI & KOSDAQ constituents using FinanceDataReader"""
+    """Fetch official KRX listings using FinanceDataReader."""
     instruments = []
     try:
         krx_df = await asyncio.to_thread(fdr.StockListing, 'KRX')
@@ -37,19 +37,24 @@ async def fetch_kr_tickers() -> list[dict]:
             market_raw = str(row['Market']) if 'Market' in row else ''
             dept = str(row['Dept']) if 'Dept' in row else ''
             
-            # We want strictly KOSPI & KOSDAQ to match our roadmap
-            if market_raw not in ['KOSPI', 'KOSDAQ']:
+            if market_raw not in ['KOSPI', 'KOSDAQ', 'KONEX', 'ETF']:
                 continue
-                
+
+            asset_type = 'etf' if market_raw == 'ETF' else 'stock'
             instruments.append({
                 "ticker": code,
                 "name": name,
+                "name_kr": name,
                 "market": "KR",
-                "exchange": market_raw, # e.g. 'KOSPI' or 'KOSDAQ'
-                "asset_type": "stock",
+                "exchange": market_raw,
+                "asset_type": asset_type,
+                "listing_status": "LISTED",
                 "sector": dept if dept else None,
                 "industry_group": None,
                 "is_active": True,
+                "is_test_issue": False,
+                "source_provenance": "KRX:FDR",
+                "source_symbol": code,
                 "is_chaebol_cross": False,
                 "is_leveraged": False,
                 "is_inverse": False
@@ -72,9 +77,14 @@ async def sync_kr_instruments(session: AsyncSession):
         index_elements=['ticker', 'market'],
         set_={
             'name': stmt.excluded.name,
+            'name_kr': stmt.excluded.name_kr,
             'exchange': stmt.excluded.exchange,
+            'asset_type': stmt.excluded.asset_type,
+            'listing_status': stmt.excluded.listing_status,
             'sector': stmt.excluded.sector,
             'is_active': stmt.excluded.is_active,
+            'source_provenance': stmt.excluded.source_provenance,
+            'source_symbol': stmt.excluded.source_symbol,
             'updated_at': text("CURRENT_TIMESTAMP"),
         }
     )

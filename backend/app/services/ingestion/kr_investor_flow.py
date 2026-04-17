@@ -29,7 +29,6 @@ from sqlalchemy import select, desc
 from app.core.database import AsyncSessionLocal
 from app.models.instrument import Instrument
 from app.models.institutional import InstitutionalOwnership
-from app.services.korea.chaebol_filter import is_chaebol_cross
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +37,86 @@ KIS_PAPER_URL = "https://openapivts.koreainvestment.com:29443"
 
 # KIS investor flow API endpoint
 INVESTOR_FLOW_PATH = "/uapi/domestic-stock/v1/quotations/inquire-investor"
+
+
+def _parse_numeric_field(item: dict, *keys: str) -> int:
+    """Parse the first populated numeric field from a KIS response row."""
+    for key in keys:
+        value = item.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            return int(str(value).replace(",", ""))
+        except (TypeError, ValueError):
+            continue
+    return 0
+
+
+def assess_investor_flow_consistency(
+    rows: list[dict],
+    *,
+    imbalance_tolerance: int = 0,
+) -> dict:
+    """
+    Validate parsed KIS investor-flow rows before they are rolled up.
+
+    The KIS investor-category feed should arrive in date order, and each
+    cohort's published net volume should equal buy volume minus sell volume.
+    The three tracked cohorts do not necessarily sum to zero because the feed
+    excludes other participant buckets.
+    """
+    if not rows:
+        return {
+            "status": "skipped",
+            "row_count": 0,
+            "max_abs_imbalance": 0,
+            "max_abs_market_residual": 0,
+            "anomalous_dates": [],
+            "duplicate_dates": [],
+            "sorted_dates": True,
+        }
+
+    dates = [row["date"] for row in rows]
+    sorted_dates = dates == sorted(dates)
+    seen_dates: set[date] = set()
+    duplicate_dates: list[str] = []
+    anomalous_dates: list[str] = []
+    max_abs_imbalance = 0
+    max_abs_market_residual = 0
+
+    for row in rows:
+        row_date = row["date"]
+        if row_date in seen_dates:
+            duplicate_dates.append(row_date.isoformat())
+        seen_dates.add(row_date)
+
+        cohort_deltas = (
+            int(row.get("individual_buy", 0)) - int(row.get("individual_sell", 0)) - int(row.get("individual_net", 0)),
+            int(row.get("foreign_buy", 0)) - int(row.get("foreign_sell", 0)) - int(row.get("foreign_net", 0)),
+            int(row.get("institutional_buy", 0)) - int(row.get("institutional_sell", 0)) - int(row.get("institutional_net", 0)),
+        )
+        row_imbalance = max(abs(delta) for delta in cohort_deltas)
+        max_abs_imbalance = max(max_abs_imbalance, row_imbalance)
+
+        market_residual = (
+            int(row.get("foreign_net", 0))
+            + int(row.get("institutional_net", 0))
+            + int(row.get("individual_net", 0))
+        )
+        max_abs_market_residual = max(max_abs_market_residual, abs(market_residual))
+
+        if row_imbalance > imbalance_tolerance:
+            anomalous_dates.append(row_date.isoformat())
+
+    return {
+        "status": "ok" if sorted_dates and not duplicate_dates and not anomalous_dates else "failed",
+        "row_count": len(rows),
+        "max_abs_imbalance": max_abs_imbalance,
+        "max_abs_market_residual": max_abs_market_residual,
+        "anomalous_dates": anomalous_dates,
+        "duplicate_dates": duplicate_dates,
+        "sorted_dates": sorted_dates,
+    }
 
 
 async def _get_kis_token(app_key: str, app_secret: str, is_paper: bool) -> Optional[str]:
@@ -74,9 +153,6 @@ async def _fetch_investor_flow(
     base = KIS_PAPER_URL if is_paper else KIS_BASE_URL
     url = f"{base}{INVESTOR_FLOW_PATH}"
 
-    end_date = date.today()
-    start_date = end_date - timedelta(days=days + 10)  # buffer for weekends/holidays
-
     headers = {
         "authorization": f"Bearer {access_token}",
         "appkey": app_key,
@@ -87,8 +163,6 @@ async def _fetch_investor_flow(
     params = {
         "FID_COND_MRKT_DIV_CODE": "J",  # KOSPI/KOSDAQ
         "FID_INPUT_ISCD": ticker,
-        "FID_INPUT_DATE_1": start_date.strftime("%Y%m%d"),
-        "FID_INPUT_DATE_2": end_date.strftime("%Y%m%d"),
     }
 
     rows: list[dict] = []
@@ -112,21 +186,26 @@ async def _fetch_investor_flow(
                     int(row_date_str[4:6]),
                     int(row_date_str[6:8]),
                 )
-                # Net buy = buy - sell; field names may vary
-                foreign_net = int(
-                    item.get("frgn_ntby_qty") or item.get("FRGN_NTBY_QTY") or 0
+                individual_net = _parse_numeric_field(
+                    item,
+                    "prsn_ntby_qty",
+                    "PRSN_NTBY_QTY",
+                    "indvd_ntby_qty",
+                    "INDVD_NTBY_QTY",
                 )
-                inst_net = int(
-                    item.get("orgn_ntby_qty") or item.get("ORGN_NTBY_QTY") or 0
-                )
-                indiv_net = int(
-                    item.get("indvd_ntby_qty") or item.get("INDVD_NTBY_QTY") or 0
-                )
+                foreign_net = _parse_numeric_field(item, "frgn_ntby_qty", "FRGN_NTBY_QTY")
+                inst_net = _parse_numeric_field(item, "orgn_ntby_qty", "ORGN_NTBY_QTY")
                 rows.append({
                     "date": row_date,
                     "foreign_net": foreign_net,
                     "institutional_net": inst_net,
-                    "individual_net": indiv_net,
+                    "individual_net": individual_net,
+                    "individual_buy": _parse_numeric_field(item, "prsn_shnu_vol", "PRSN_SHNU_VOL"),
+                    "individual_sell": _parse_numeric_field(item, "prsn_seln_vol", "PRSN_SELN_VOL"),
+                    "foreign_buy": _parse_numeric_field(item, "frgn_shnu_vol", "FRGN_SHNU_VOL"),
+                    "foreign_sell": _parse_numeric_field(item, "frgn_seln_vol", "FRGN_SELN_VOL"),
+                    "institutional_buy": _parse_numeric_field(item, "orgn_shnu_vol", "ORGN_SHNU_VOL"),
+                    "institutional_sell": _parse_numeric_field(item, "orgn_seln_vol", "ORGN_SELN_VOL"),
                 })
             except (ValueError, TypeError):
                 continue
@@ -208,6 +287,7 @@ async def ingest_kr_investor_flows(
 
         processed = 0
         skipped = 0
+        consistency_failures = 0
 
         for inst in instruments:
             try:
@@ -222,6 +302,15 @@ async def ingest_kr_investor_flows(
                 if not rows:
                     skipped += 1
                     continue
+
+                consistency = assess_investor_flow_consistency(rows)
+                if consistency["status"] != "ok":
+                    consistency_failures += 1
+                    logger.warning(
+                        "Investor flow consistency warning for %s: %s",
+                        inst.ticker,
+                        consistency,
+                    )
 
                 # 30-day rolling sums
                 foreign_net_30d = _rolling_sum(rows, "foreign_net", days=30)
@@ -274,12 +363,17 @@ async def ingest_kr_investor_flows(
 
         await db.commit()
         logger.info(
-            "KR investor flow ingestion complete: %d processed, %d skipped",
+            "KR investor flow ingestion complete: %d processed, %d skipped, %d consistency warnings",
             processed,
             skipped,
+            consistency_failures,
         )
 
-    return {"processed": processed, "skipped": skipped}
+    return {
+        "processed": processed,
+        "skipped": skipped,
+        "consistency_failures": consistency_failures,
+    }
 
 
 if __name__ == "__main__":

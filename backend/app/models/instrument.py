@@ -14,11 +14,16 @@ class Instrument(Base):
     market = Column(String(4), nullable=False)       # 'US' | 'KR'
     exchange = Column(String(10), nullable=False)    # 'NYSE'|'NASDAQ'|'KOSPI'|'KOSDAQ'
     asset_type = Column(String(10), nullable=False)  # 'stock' | 'etf'
+    listing_status = Column(String(20), nullable=False, default="LISTED")
     sector = Column(String(100))
     industry_group = Column(String(100))
     shares_outstanding = Column(Numeric(20, 0))
     float_shares = Column(Numeric(20, 0))
     is_active = Column(Boolean, default=True, nullable=False)
+    is_test_issue = Column(Boolean, default=False, nullable=False)
+    source_provenance = Column(String(80))
+    source_symbol = Column(String(40))
+    delisted_at = Column(DateTime(timezone=True))
 
     # KR-specific
     corp_code = Column(String(8))                    # OpenDART 8-digit code

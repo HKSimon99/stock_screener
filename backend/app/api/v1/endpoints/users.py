@@ -3,7 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from pydantic import BaseModel
 
-from app.api.deps import get_db, require_auth, get_auth
+from app.api.deps import get_db, get_clerk_user
+from app.api.auth import ClerkAuthUser
 from app.models.user import UserPushToken
 
 router = APIRouter()
@@ -15,9 +16,9 @@ class PushTokenRequest(BaseModel):
 async def register_push_token(
     payload: PushTokenRequest,
     db: AsyncSession = Depends(get_db),
-    auth_data: dict = Depends(get_auth),
+    auth_user: ClerkAuthUser = Depends(get_clerk_user),
 ):
-    user_id = auth_data["sub"]
+    user_id = auth_user.user_id
     
     # Check if the token already exists
     result = await db.execute(

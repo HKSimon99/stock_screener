@@ -114,6 +114,24 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     sentry_traces_sample_rate: float = 0.1  # 10% performance traces in prod
 
+    # Cloudflare R2 — leave blank to disable snapshot CDN upload.
+    # Credentials are created in the Cloudflare dashboard → R2 → Manage API tokens.
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket_name: str = "consensus-snapshots"
+    # Public R2 URL (enable "Public Access" on the bucket in CF dashboard):
+    #   e.g. https://pub-xxxx.r2.dev or a custom domain
+    r2_public_url: str = ""  # Used to generate ETag-friendly public CDN URLs
+
+    @property
+    def r2_endpoint_url(self) -> str:
+        return f"https://{self.r2_account_id}.r2.cloudflarestorage.com"
+
+    @property
+    def r2_enabled(self) -> bool:
+        return bool(self.r2_account_id and self.r2_access_key_id and self.r2_secret_access_key)
+
     # OpenTelemetry — leave blank to disable tracing export
     # Set OTLP_ENDPOINT to your Grafana Cloud OTLP URL, e.g.:
     #   https://otlp-gateway-prod-us-east-0.grafana.net/otlp

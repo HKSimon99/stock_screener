@@ -103,26 +103,27 @@ async def run_full_scoring_pipeline(
     )
     # Snapshot freezes consensus into an immutable rankings record
     markets_to_snap = [market] if market else ["US", "KR"]
-    snapshots = await run_snapshot_generation(
-        snapshot_date=parsed_date, markets=markets_to_snap
-    )
+    snapshots = await run_snapshot_generation(snapshot_date=parsed_date, markets=markets_to_snap)
 
-    all_ids = sorted({
-        *(r["instrument_id"] for r in canslim_results),
-        *(r["instrument_id"] for r in piotroski_results),
-        *(r["instrument_id"] for r in minervini_results),
-        *(r["instrument_id"] for r in weinstein_results),
-        *(r["instrument_id"] for r in dual_mom_results),
-        *(r["instrument_id"] for r in tech_results),
-        *(r["instrument_id"] for r in pattern_results),
-        *(r["instrument_id"] for r in composite_results),
-        *(r["instrument_id"] for r in consensus_results),
-    })
+    all_ids = sorted(
+        {
+            *(r["instrument_id"] for r in canslim_results),
+            *(r["instrument_id"] for r in piotroski_results),
+            *(r["instrument_id"] for r in minervini_results),
+            *(r["instrument_id"] for r in weinstein_results),
+            *(r["instrument_id"] for r in dual_mom_results),
+            *(r["instrument_id"] for r in tech_results),
+            *(r["instrument_id"] for r in pattern_results),
+            *(r["instrument_id"] for r in composite_results),
+            *(r["instrument_id"] for r in consensus_results),
+        }
+    )
 
     patterns_with_hits = sum(1 for r in pattern_results if r["pattern_count"] > 0)
     avg_composite = (
         sum(r["technical_composite"] for r in composite_results) / len(composite_results)
-        if composite_results else 0.0
+        if composite_results
+        else 0.0
     )
     conviction_dist = {}
     for r in consensus_results:
@@ -130,27 +131,28 @@ async def run_full_scoring_pipeline(
         conviction_dist[lv] = conviction_dist.get(lv, 0) + 1
 
     return {
-        "score_date":               (parsed_date or date.today()).isoformat(),
-        "market":                   market,
-        "canslim_scored":           len(canslim_results),
-        "piotroski_scored":         len(piotroski_results),
-        "minervini_scored":         len(minervini_results),
-        "weinstein_scored":         len(weinstein_results),
-        "dual_momentum_scored":     len(dual_mom_results),
-        "technical_scored":         len(tech_results),
-        "patterns_scanned":         len(pattern_results),
+        "score_date": (parsed_date or date.today()).isoformat(),
+        "market": market,
+        "canslim_scored": len(canslim_results),
+        "piotroski_scored": len(piotroski_results),
+        "minervini_scored": len(minervini_results),
+        "weinstein_scored": len(weinstein_results),
+        "dual_momentum_scored": len(dual_mom_results),
+        "technical_scored": len(tech_results),
+        "patterns_scanned": len(pattern_results),
         "patterns_with_detections": patterns_with_hits,
-        "composite_scored":         len(composite_results),
-        "avg_technical_composite":  round(avg_composite, 1),
-        "consensus_scored":         len(consensus_results),
-        "conviction_distribution":  conviction_dist,
-        "snapshots_generated":      len(snapshots),
+        "composite_scored": len(composite_results),
+        "avg_technical_composite": round(avg_composite, 1),
+        "consensus_scored": len(consensus_results),
+        "conviction_distribution": conviction_dist,
+        "snapshots_generated": len(snapshots),
         "unique_instruments_scored": len(all_ids),
-        "scored_instrument_ids":    all_ids,
+        "scored_instrument_ids": all_ids,
     }
 
 
 # ── Individual Celery tasks ───────────────────────────────────────────────────
+
 
 @celery_app.task(name="app.tasks.scoring.run_canslim")
 def run_canslim_task(
@@ -203,6 +205,7 @@ def run_minervini_task(
     instrument_ids: Optional[list[int]] = None,
 ) -> dict:
     from app.services.strategies.minervini.engine import run_minervini_scoring
+
     parsed_date = _parse_score_date(score_date)
     results = asyncio.run(
         run_minervini_scoring(
@@ -226,6 +229,7 @@ def run_weinstein_task(
     instrument_ids: Optional[list[int]] = None,
 ) -> dict:
     from app.services.strategies.weinstein.engine import run_weinstein_scoring
+
     parsed_date = _parse_score_date(score_date)
     results = asyncio.run(
         run_weinstein_scoring(
@@ -249,6 +253,7 @@ def run_dual_momentum_task(
     instrument_ids: Optional[list[int]] = None,
 ) -> dict:
     from app.services.strategies.dual_momentum.engine import run_dual_momentum_scoring
+
     parsed_date = _parse_score_date(score_date)
     results = asyncio.run(
         run_dual_momentum_scoring(
@@ -272,6 +277,7 @@ def run_technical_indicators_task(
     instrument_ids: Optional[list[int]] = None,
 ) -> dict:
     from app.services.technical.advanced_indicators import run_technical_indicator_scoring
+
     parsed_date = _parse_score_date(score_date)
     results = asyncio.run(
         run_technical_indicator_scoring(
@@ -295,6 +301,7 @@ def run_pattern_detection_task(
     instrument_ids: Optional[list[int]] = None,
 ) -> dict:
     from app.services.technical.pattern_detector import run_pattern_detection
+
     parsed_date = _parse_score_date(score_date)
     results = asyncio.run(
         run_pattern_detection(
@@ -321,6 +328,7 @@ def run_technical_composite_task(
 ) -> dict:
     """Standalone task: run technical composite AFTER indicators + patterns."""
     from app.services.technical.multi_timeframe import run_technical_composite_scoring
+
     parsed_date = _parse_score_date(score_date)
     results = asyncio.run(
         run_technical_composite_scoring(
@@ -330,8 +338,7 @@ def run_technical_composite_task(
         )
     )
     avg_composite = (
-        sum(r["technical_composite"] for r in results) / len(results)
-        if results else 0.0
+        sum(r["technical_composite"] for r in results) / len(results) if results else 0.0
     )
     return {
         "score_date": (parsed_date or date.today()).isoformat(),
@@ -350,6 +357,7 @@ def run_consensus_task(
 ) -> dict:
     """Standalone task: compute consensus scores AFTER composite is ready."""
     from app.services.strategies.consensus import run_consensus_scoring
+
     parsed_date = _parse_score_date(score_date)
     results = asyncio.run(
         run_consensus_scoring(
@@ -376,8 +384,13 @@ def run_snapshot_task(
     snapshot_date: Optional[str] = None,
     markets: Optional[list[str]] = None,
 ) -> dict:
-    """Standalone task: freeze consensus rankings into scoring_snapshots."""
+    """
+    Freeze consensus rankings into scoring_snapshots, then upload to R2.
+
+    R2 upload is env-gated — a no-op when R2_ACCOUNT_ID is absent.
+    """
     from app.services.strategies.snapshot_generator import run_snapshot_generation
+
     parsed_date = _parse_score_date(snapshot_date)
     snapshots = asyncio.run(
         run_snapshot_generation(
@@ -385,15 +398,76 @@ def run_snapshot_task(
             markets=markets,
         )
     )
-    return {
+
+    result = {
         "snapshot_date": (parsed_date or date.today()).isoformat(),
         "snapshots_generated": len(snapshots),
         "markets": [s["market"] for s in snapshots],
         "totals": {s["market"]: s["instruments"] for s in snapshots},
+        "r2_urls": [],
     }
+
+    # ── R2 CDN upload (no-op when not configured) ─────────────────────────────
+    if snapshots:
+        r2_urls = asyncio.run(_upload_all_snapshots_to_r2(snapshots))
+        result["r2_urls"] = r2_urls
+
+    return result
+
+
+async def _upload_all_snapshots_to_r2(snapshots: list[dict]) -> list[str]:
+    """
+    For each generated snapshot, fetch the full rankings_json from the DB and
+    upload to R2.  Returns a list of public CDN URLs (empty strings for failed
+    or unconfigured uploads).
+    """
+    from app.core.config import settings  # noqa: PLC0415
+    from app.core.database import AsyncSessionLocal  # noqa: PLC0415
+    from app.models.snapshot import ScoringSnapshot  # noqa: PLC0415
+    from app.services.storage.r2 import upload_snapshot  # noqa: PLC0415
+    from sqlalchemy import select  # noqa: PLC0415
+
+    if not settings.r2_enabled:
+        return []
+
+    urls: list[str] = []
+    async with AsyncSessionLocal() as db:
+        for snap in snapshots:
+            market = snap["market"]
+            asset_type = snap.get("asset_type", "stock")
+            snap_date = date.fromisoformat(snap["snapshot_date"])
+
+            result = await db.execute(
+                select(ScoringSnapshot).where(
+                    ScoringSnapshot.snapshot_date == snap_date,
+                    ScoringSnapshot.market == market,
+                    ScoringSnapshot.asset_type == asset_type,
+                )
+            )
+            row = result.scalars().first()
+            if row is None:
+                urls.append("")
+                continue
+
+            payload = {
+                "snapshot_date": snap_date.isoformat(),
+                "market": market,
+                "asset_type": asset_type,
+                "rankings": row.rankings_json or [],
+                "metadata": row.metadata_ or {},
+            }
+            url = upload_snapshot(
+                market=market,
+                asset_type=asset_type,
+                snapshot_date=snap_date,
+                payload=payload,
+            )
+            urls.append(url or "")
+    return urls
 
 
 # ── Pipeline tasks ────────────────────────────────────────────────────────────
+
 
 @celery_app.task(name="app.tasks.scoring.run_phase2_pipeline")
 def run_phase2_pipeline_task(

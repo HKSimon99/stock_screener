@@ -84,9 +84,9 @@ async def build_coverage_map(
     price_rows = (
         await db.execute(
             select(
-                Price.instrument_id,
-                func.count(Price.trade_date),
-                func.max(Price.trade_date),
+                Price.instrument_id.label("instrument_id"),
+                func.count(Price.trade_date).label("price_count"),
+                func.max(Price.trade_date).label("latest_trade_date"),
             )
             .where(Price.instrument_id.in_(instrument_ids))
             .group_by(Price.instrument_id)
@@ -95,8 +95,8 @@ async def build_coverage_map(
     annual_rows = (
         await db.execute(
             select(
-                FundamentalAnnual.instrument_id,
-                func.max(FundamentalAnnual.report_date),
+                FundamentalAnnual.instrument_id.label("instrument_id"),
+                func.max(FundamentalAnnual.report_date).label("latest_report_date"),
             )
             .where(FundamentalAnnual.instrument_id.in_(instrument_ids))
             .group_by(FundamentalAnnual.instrument_id)
@@ -105,8 +105,8 @@ async def build_coverage_map(
     quarterly_rows = (
         await db.execute(
             select(
-                FundamentalQuarterly.instrument_id,
-                func.max(FundamentalQuarterly.report_date),
+                FundamentalQuarterly.instrument_id.label("instrument_id"),
+                func.max(FundamentalQuarterly.report_date).label("latest_report_date"),
             )
             .where(FundamentalQuarterly.instrument_id.in_(instrument_ids))
             .group_by(FundamentalQuarterly.instrument_id)
@@ -115,8 +115,8 @@ async def build_coverage_map(
 
     consensus_stmt = (
         select(
-            ConsensusScore.instrument_id,
-            func.max(ConsensusScore.score_date),
+            ConsensusScore.instrument_id.label("instrument_id"),
+            func.max(ConsensusScore.score_date).label("latest_score_date"),
         )
         .where(ConsensusScore.instrument_id.in_(instrument_ids))
         .group_by(ConsensusScore.instrument_id)

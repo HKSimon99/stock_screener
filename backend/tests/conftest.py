@@ -9,11 +9,19 @@ from app.api.auth import get_clerk_user
 from app.core.config import settings
 from app.core.database import Base, get_db
 
-TEST_SCHEMA = "consensus_test"
+# Tests run against the real app schema (consensus_app).
+# Tables are created by Alembic migrations; this fixture only ensures
+# they exist (create_all is a no-op when tables already exist) and
+# truncates them between tests for isolation.
+TEST_SCHEMA = settings.postgres_schema  # "consensus_app"
 
 
 def _truncate_all_tables_sql() -> str | None:
-    table_names = [f'"{table.name}"' for table in reversed(Base.metadata.sorted_tables)]
+    # Use fullname (schema.table) since models now have explicit schema set.
+    table_names = [
+        f'"{table.schema}"."{table.name}"' if table.schema else f'"{table.name}"'
+        for table in reversed(Base.metadata.sorted_tables)
+    ]
     if not table_names:
         return None
     return f"TRUNCATE TABLE {', '.join(table_names)} RESTART IDENTITY CASCADE"
@@ -21,25 +29,23 @@ def _truncate_all_tables_sql() -> str | None:
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
+    """Ensure the schema + tables exist. Tables are already created by Alembic;
+    create_all is safe to call (it's a no-op for existing tables)."""
     engine = create_engine(settings.sync_database_url)
     with engine.begin() as conn:
-        conn.execute(text(f'DROP SCHEMA IF EXISTS "{TEST_SCHEMA}" CASCADE'))
         conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{TEST_SCHEMA}"'))
-        conn.execute(text(f'SET search_path TO "{TEST_SCHEMA}", public'))
-        translated = conn.execution_options(schema_translate_map={None: TEST_SCHEMA})
-        Base.metadata.create_all(translated)
-    yield
-    with engine.begin() as conn:
-        conn.execute(text(f'DROP SCHEMA IF EXISTS "{TEST_SCHEMA}" CASCADE'))
+        Base.metadata.create_all(engine, checkfirst=True)
     engine.dispose()
+    yield
 
 
 @pytest.fixture
 async def db_session():
+    # Use settings.asyncpg_connect_args so SSL + explicit schema are applied.
     test_engine = create_async_engine(
         settings.database_url,
         echo=False,
-        connect_args={"server_settings": {"search_path": TEST_SCHEMA}},
+        connect_args=settings.asyncpg_connect_args,
     )
     TestSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with TestSessionLocal() as session:

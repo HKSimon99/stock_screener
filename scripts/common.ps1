@@ -152,20 +152,20 @@ function Wait-ForApi {
 function Wait-ForProcess {
     param(
         [Parameter(Mandatory = $true)]
-        [int]$Pid,
+        [int]$TargetPid,
         [int]$TimeoutSeconds = 5
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
-        if (Get-Process -Id $Pid -ErrorAction SilentlyContinue) {
+        if (Get-Process -Id $TargetPid -ErrorAction SilentlyContinue) {
             return
         }
 
         Start-Sleep -Milliseconds 500
     }
 
-    throw "Process $Pid exited before it became ready."
+    throw "Process $TargetPid exited before it became ready."
 }
 
 function Start-ServiceProcess {
@@ -202,7 +202,7 @@ function Start-ServiceProcess {
             Wait-ForApi -Url "http://127.0.0.1:8000/api/v1/health" | Out-Null
         }
         else {
-            Wait-ForProcess -Pid $process.Id | Out-Null
+            Wait-ForProcess -TargetPid $process.Id | Out-Null
         }
     }
     catch {

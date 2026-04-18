@@ -61,12 +61,21 @@ class Settings(BaseSettings):
     postgres_schema: str = "public"
     postgres_user: str = "consensus"
     postgres_password: str = "changeme"
+    # Neon pooler hostname (e.g. ep-xxx-pooler.region.aws.neon.tech).
+    # When set, the async runtime engine connects through Neon's built-in
+    # PgBouncer so SQLAlchemy uses NullPool (no double-pooling).
+    # Leave empty to use the direct host (local dev, non-Neon Postgres).
+    postgres_host_pooler: str = ""
+    # Set to true for hosted Postgres that requires TLS (e.g. Neon, Railway, Supabase)
+    postgres_ssl: bool = False
 
     @property
     def database_url(self) -> str:
+        """Async runtime URL — uses Neon pooler host if configured."""
+        host = self.postgres_host_pooler or self.postgres_host
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            f"@{host}:{self.postgres_port}/{self.postgres_db}"
         )
 
     @property
@@ -76,16 +85,35 @@ class Settings(BaseSettings):
             f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+        params: list[str] = []
         if self.postgres_schema and self.postgres_schema != "public":
             options = quote_plus(f"-csearch_path={self.postgres_schema}")
-            return f"{url}?options={options}"
-        return url
+            params.append(f"options={options}")
+        if self.postgres_ssl:
+            params.append("sslmode=require")
+        return f"{url}?{'&'.join(params)}" if params else url
 
     @property
-    def asyncpg_connect_args(self) -> dict[str, dict[str, str]]:
+    def asyncpg_connect_args(self) -> dict:
+        args: dict = {}
         if self.postgres_schema and self.postgres_schema != "public":
-            return {"server_settings": {"search_path": self.postgres_schema}}
-        return {}
+            args["server_settings"] = {"search_path": self.postgres_schema}
+        if self.postgres_ssl:
+            args["ssl"] = True
+        # Workaround: PostgreSQL 16 on Neon + asyncpg 0.29+ raises
+        # "ORDER/GROUP BY expression not found in targetlist" when using NAMED
+        # prepared statements for GROUP BY queries over schema-qualified tables.
+        # The fix is to use ANONYMOUS prepared statements (name=None), which work
+        # correctly. Confirmed by direct asyncpg test: prepare(sql, name=None) → OK,
+        # prepare(sql, name='anything') → InternalServerError.
+        # - statement_cache_size=0: disables asyncpg's own LRU cache
+        # - prepared_statement_cache_size=0: disables SQLAlchemy's SA-level cache
+        # - prepared_statement_name_func=lambda: None: forces anonymous statements
+        #   (SQLAlchemy passes name=None to asyncpg.prepare())
+        args["statement_cache_size"] = 0
+        args["prepared_statement_cache_size"] = 0
+        args["prepared_statement_name_func"] = lambda: None
+        return args
 
     # Redis — optional, only needed for production caching
     redis_url: str = ""

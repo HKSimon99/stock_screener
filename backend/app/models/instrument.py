@@ -41,4 +41,5 @@ class Instrument(Base):
 
     __table_args__ = (
         UniqueConstraint("ticker", "market", name="uq_instrument_ticker_market"),
+        {"schema": "consensus_app"},
     )

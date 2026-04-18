@@ -14,7 +14,7 @@ class ConsensusScore(Base):
     __tablename__ = "consensus_scores"
 
     id = Column(Integer, primary_key=True)
-    instrument_id = Column(Integer, ForeignKey("instruments.id"), nullable=False)
+    instrument_id = Column(Integer, ForeignKey("consensus_app.instruments.id"), nullable=False)
     score_date = Column(Date, nullable=False)
 
     # Strategy composite scores (0–100 each)
@@ -47,4 +47,5 @@ class ConsensusScore(Base):
             "instrument_id", "score_date",
             name="uq_consensus_score_instrument_date"
         ),
+        {"schema": "consensus_app"},
     )

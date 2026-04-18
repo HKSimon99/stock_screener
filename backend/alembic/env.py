@@ -48,11 +48,24 @@ def run_migrations_online() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+
+    schema = settings.postgres_schema
+
+    # Step 1: ensure the schema exists in its own committed transaction.
+    # MUST be a separate connection so the CREATE SCHEMA commit is visible
+    # before Alembic's migration transaction starts on a fresh connection.
+    # (Executing DDL on the same connection before context.begin_transaction()
+    # triggers SQLAlchemy 2 autobegin, which Alembic then wraps in a savepoint;
+    # the outer implicit transaction never commits → silent rollback.)
+    if schema and schema != "public":
+        with connectable.connect() as setup_conn:
+            with setup_conn.begin():
+                setup_conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+
+    # Step 2: run migrations on a fresh connection (no pre-existing transaction).
+    # search_path is set via the URL's ?options= startup parameter.
     with connectable.connect() as connection:
-        schema = settings.postgres_schema
         if schema and schema != "public":
-            connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
-            connection.execute(text(f'SET search_path TO "{schema}", public'))
             connection.dialect.default_schema_name = schema
             connection = connection.execution_options(schema_translate_map={None: schema})
 

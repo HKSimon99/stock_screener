@@ -15,7 +15,7 @@ class StrategyScore(Base):
     __tablename__ = "strategy_scores"
 
     id = Column(Integer, primary_key=True)
-    instrument_id = Column(Integer, ForeignKey("instruments.id"), nullable=False)
+    instrument_id = Column(Integer, ForeignKey("consensus_app.instruments.id"), nullable=False)
     score_date = Column(Date, nullable=False)
 
     # ── CANSLIM (Section 3.1) ────────────────────────────────────────────────
@@ -69,4 +69,5 @@ class StrategyScore(Base):
             "instrument_id", "score_date",
             name="uq_strategy_score_instrument_date"
         ),
+        {"schema": "consensus_app"},
     )

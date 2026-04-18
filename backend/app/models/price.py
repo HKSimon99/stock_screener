@@ -6,7 +6,7 @@ class Price(Base):
     """Daily OHLCV — converted to a TimescaleDB hypertable in the migration."""
     __tablename__ = "prices"
 
-    instrument_id = Column(Integer, ForeignKey("instruments.id"), nullable=False)
+    instrument_id = Column(Integer, ForeignKey("consensus_app.instruments.id"), nullable=False)
     trade_date = Column(Date, nullable=False)
     open = Column(Numeric(14, 4))
     high = Column(Numeric(14, 4))
@@ -17,4 +17,5 @@ class Price(Base):
 
     __table_args__ = (
         PrimaryKeyConstraint("instrument_id", "trade_date"),
+        {"schema": "consensus_app"},
     )

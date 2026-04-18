@@ -9,7 +9,7 @@ class FundamentalQuarterly(Base):
     __tablename__ = "fundamentals_quarterly"
 
     id = Column(Integer, primary_key=True)
-    instrument_id = Column(Integer, ForeignKey("instruments.id"), nullable=False)
+    instrument_id = Column(Integer, ForeignKey("consensus_app.instruments.id"), nullable=False)
     fiscal_year = Column(Integer, nullable=False)
     fiscal_quarter = Column(Integer, nullable=False)    # 1–4
     report_date = Column(Date)                          # Date filed/reported
@@ -30,6 +30,7 @@ class FundamentalQuarterly(Base):
             "instrument_id", "fiscal_year", "fiscal_quarter",
             name="uq_fundamental_q_instrument_period"
         ),
+        {"schema": "consensus_app"},
     )
 
 
@@ -41,7 +42,7 @@ class FundamentalAnnual(Base):
     __tablename__ = "fundamentals_annual"
 
     id = Column(Integer, primary_key=True)
-    instrument_id = Column(Integer, ForeignKey("instruments.id"), nullable=False)
+    instrument_id = Column(Integer, ForeignKey("consensus_app.instruments.id"), nullable=False)
     fiscal_year = Column(Integer, nullable=False)
     report_date = Column(Date)
 
@@ -78,4 +79,5 @@ class FundamentalAnnual(Base):
             "instrument_id", "fiscal_year",
             name="uq_fundamental_a_instrument_year"
         ),
+        {"schema": "consensus_app"},
     )

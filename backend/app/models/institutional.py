@@ -13,7 +13,7 @@ class InstitutionalOwnership(Base):
     __tablename__ = "institutional_ownership"
 
     id = Column(Integer, primary_key=True)
-    instrument_id = Column(Integer, ForeignKey("instruments.id"), nullable=False)
+    instrument_id = Column(Integer, ForeignKey("consensus_app.instruments.id"), nullable=False)
     report_date = Column(Date, nullable=False)
 
     # US fields (from 13F)
@@ -38,4 +38,5 @@ class InstitutionalOwnership(Base):
             "instrument_id", "report_date",
             name="uq_institutional_instrument_date"
         ),
+        {"schema": "consensus_app"},
     )

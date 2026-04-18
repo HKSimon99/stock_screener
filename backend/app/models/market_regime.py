@@ -34,4 +34,5 @@ class MarketRegime(Base):
 
     __table_args__ = (
         UniqueConstraint("market", "effective_date", name="uq_market_regime_market_date"),
+        {"schema": "consensus_app"},
     )

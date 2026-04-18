@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
@@ -22,11 +22,16 @@ from app.services.strategies.minervini import engine as minervini_engine
 from app.services.strategies.piotroski import engine as piotroski_engine
 from app.services.strategies.weinstein import engine as weinstein_engine
 
-TEST_SCHEMA = "consensus_strategy_runner_test"
+# Use the real app schema — models now have explicit schema="consensus_app" so
+# search_path / schema_translate_map are no longer needed.
+TEST_SCHEMA = settings.postgres_schema  # "consensus_app"
 
 
 def _truncate_all_tables_sql() -> str | None:
-    table_names = [f'"{table.name}"' for table in reversed(Base.metadata.sorted_tables)]
+    table_names = [
+        f'"{table.schema}"."{table.name}"' if table.schema else f'"{table.name}"'
+        for table in reversed(Base.metadata.sorted_tables)
+    ]
     if not table_names:
         return None
     return f"TRUNCATE TABLE {', '.join(table_names)} RESTART IDENTITY CASCADE"
@@ -34,18 +39,10 @@ def _truncate_all_tables_sql() -> str | None:
 
 @pytest.fixture
 async def strategy_db_session():
-    sync_engine = create_engine(settings.sync_database_url)
-    with sync_engine.begin() as conn:
-        conn.execute(text(f'DROP SCHEMA IF EXISTS "{TEST_SCHEMA}" CASCADE'))
-        conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{TEST_SCHEMA}"'))
-        conn.execute(text(f'SET search_path TO "{TEST_SCHEMA}", public'))
-        translated = conn.execution_options(schema_translate_map={None: TEST_SCHEMA})
-        Base.metadata.create_all(translated)
-
     async_engine = create_async_engine(
         settings.database_url,
         echo=False,
-        connect_args={"server_settings": {"search_path": TEST_SCHEMA}},
+        connect_args=settings.asyncpg_connect_args,
     )
     test_session_local = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -60,14 +57,13 @@ async def strategy_db_session():
             await session.commit()
 
     await async_engine.dispose()
-    sync_engine.dispose()
 
 
 def _patch_async_session(monkeypatch, module):
     test_engine = create_async_engine(
         settings.database_url,
         echo=False,
-        connect_args={"server_settings": {"search_path": TEST_SCHEMA}},
+        connect_args=settings.asyncpg_connect_args,
     )
     test_session_local = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     monkeypatch.setattr(module, "AsyncSessionLocal", test_session_local)

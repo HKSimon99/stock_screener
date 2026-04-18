@@ -27,6 +27,7 @@ class ScoringSnapshot(Base):
             "snapshot_date", "market", "asset_type",
             name="uq_snapshot_date_market_type"
         ),
+        {"schema": "consensus_app"},
     )
 
 
@@ -46,4 +47,5 @@ class DataFreshness(Base):
 
     __table_args__ = (
         UniqueConstraint("source_name", "market", name="uq_data_freshness_source_market"),
+        {"schema": "consensus_app"},
     )

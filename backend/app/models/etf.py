@@ -9,8 +9,8 @@ class EtfConstituent(Base):
     __tablename__ = "etf_constituents"
 
     id = Column(Integer, primary_key=True)
-    etf_id = Column(Integer, ForeignKey("instruments.id"), nullable=False)
-    constituent_id = Column(Integer, ForeignKey("instruments.id"), nullable=False)
+    etf_id = Column(Integer, ForeignKey("consensus_app.instruments.id"), nullable=False)
+    constituent_id = Column(Integer, ForeignKey("consensus_app.instruments.id"), nullable=False)
     weight = Column(Numeric(10, 8))                 # 0.0 – 1.0
     as_of_date = Column(Date, nullable=False)
 
@@ -19,6 +19,7 @@ class EtfConstituent(Base):
             "etf_id", "constituent_id", "as_of_date",
             name="uq_etf_constituent"
         ),
+        {"schema": "consensus_app"},
     )
 
 
@@ -26,7 +27,7 @@ class EtfScore(Base):
     __tablename__ = "etf_scores"
 
     id = Column(Integer, primary_key=True)
-    instrument_id = Column(Integer, ForeignKey("instruments.id"), nullable=False)
+    instrument_id = Column(Integer, ForeignKey("consensus_app.instruments.id"), nullable=False)
     score_date = Column(Date, nullable=False)
 
     # Constituent-derived
@@ -47,4 +48,5 @@ class EtfScore(Base):
             "instrument_id", "score_date",
             name="uq_etf_score_instrument_date"
         ),
+        {"schema": "consensus_app"},
     )

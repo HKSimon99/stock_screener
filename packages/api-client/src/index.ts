@@ -1,5 +1,28 @@
-export const BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+/**
+ * Configurable base URL.
+ *
+ * - Next.js (web): set via `NEXT_PUBLIC_API_BASE_URL` at build time.
+ * - Expo (mobile): call `configureApiClient({ baseUrl: ... })` in app/_layout.tsx
+ *   using the value from expo-constants or react-native-dotenv.
+ */
+let _baseUrl = "http://localhost:8000/api/v1";
+
+if (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_BASE_URL) {
+  _baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+}
+
+/** Override the API base URL at runtime (required for Expo). */
+export function configureApiClient(options: { baseUrl: string }): void {
+  _baseUrl = options.baseUrl;
+}
+
+/** @internal */
+export function getBaseUrl(): string {
+  return _baseUrl;
+}
+
+/** @deprecated — use `getBaseUrl()` for runtime access. */
+export const BASE_URL = _baseUrl;
 
 export type ConvictionLevel =
   | "DIAMOND"
@@ -933,7 +956,7 @@ export async function apiFetch<T>(
   path: string,
   options?: APIRequestOptions
 ): Promise<T> {
-  const url = `${BASE_URL}${path}`;
+  const url = `${getBaseUrl()}${path}`;
   const headers = new Headers(options?.headers);
   if (options?.bearerToken) {
     headers.set("Authorization", `Bearer ${options.bearerToken}`);

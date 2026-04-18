@@ -9,4 +9,5 @@ from app.models.consensus_score import ConsensusScore # noqa: F401
 from app.models.market_regime import MarketRegime     # noqa: F401
 from app.models.etf import EtfConstituent, EtfScore   # noqa: F401
 from app.models.alert import Alert                    # noqa: F401
+from app.models.user import UserPushToken             # noqa: F401
 from app.models.snapshot import ScoringSnapshot, DataFreshness  # noqa: F401

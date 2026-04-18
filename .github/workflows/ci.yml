@@ -217,20 +217,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
-        working-directory: frontend
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: ESLint
-        working-directory: frontend
-        run: npm run lint
+        working-directory: apps/web
+        run: pnpm run lint
 
   # ───────────────────────────────────────────────────────────────────────────
   # 5. Frontend — production build
@@ -243,19 +247,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
-        working-directory: frontend
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: next build
-        working-directory: frontend
+        working-directory: apps/web
         env:
           # Provide stub Clerk keys so the build doesn't fail on missing env vars.
           # These are build-time placeholders only — not used at runtime.
@@ -265,4 +273,4 @@ jobs:
           NEXT_PUBLIC_CLERK_SIGN_UP_URL: /sign-up
           NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: /app/rankings
           NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: /app/rankings
-        run: npm run build
+        run: pnpm run build

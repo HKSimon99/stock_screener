@@ -5,8 +5,9 @@ api_router = APIRouter()
 
 api_router.include_router(health.router, tags=["health"])
 
-from app.api.v1.endpoints import rankings, instruments, strategies, meta, risk, search, stream
+from app.api.v1.endpoints import rankings, instruments, strategies, meta, risk, search, stream, users
 
+api_router.include_router(users.router,         prefix="/users",         tags=["users"])
 api_router.include_router(rankings.router,      prefix="/rankings",      tags=["rankings"])
 api_router.include_router(instruments.router,   prefix="/instruments",   tags=["instruments"])
 api_router.include_router(strategies.router,    prefix="/strategies",    tags=["strategies"])

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -14,16 +15,47 @@ from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBea
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_token = HTTPBearer(auto_error=False)
 
-# Simple in-memory rate limiting: {api_key: [timestamps]}
-# In production, use Redis.
-RATE_LIMIT_STORE: dict[str, list[float]] = defaultdict(list)
 RATE_LIMIT_REQUESTS = 60
-RATE_LIMIT_WINDOW_SEC = 60.0
+RATE_LIMIT_WINDOW_SEC = 60
 JWKS_CACHE_TTL_SEC = 300.0
 _JWKS_CACHE: tuple[float, dict[str, dict[str, Any]]] | None = None
+
+# ---------------------------------------------------------------------------
+# Redis client — lazy singleton, None when REDIS_URL is not configured.
+# Used for distributed rate limiting (INCR + EXPIRE fixed-window approach).
+# Falls back to the in-memory store for local development.
+# ---------------------------------------------------------------------------
+_redis_client: Any | None = None  # redis.asyncio.Redis
+
+
+def _get_redis() -> Any | None:
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    if not settings.redis_url:
+        return None
+    try:
+        import redis.asyncio as aioredis  # type: ignore[import-untyped]
+
+        _redis_client = aioredis.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+        )
+    except Exception:  # pragma: no cover
+        logger.warning("Redis rate limiter unavailable — falling back to in-memory store")
+        _redis_client = None
+    return _redis_client
+
+
+# In-memory fallback: {rate_key: [timestamps]}
+_RATE_LIMIT_STORE: dict[str, list[float]] = defaultdict(list)
 
 
 @dataclass(slots=True)
@@ -37,16 +69,72 @@ class ClerkAuthUser:
 
 def _rate_limit_key(connection: HTTPConnection, api_key: str | None) -> str:
     if api_key:
-        return api_key
+        return f"apikey:{api_key}"
     host = connection.client.host if connection.client else "unknown"
     return f"public:{host}"
 
 
-def get_api_key(
+def _rate_limit_in_memory(rate_key: str) -> None:
+    """Sliding-window rate limit using the in-memory fallback store."""
+    now = time.time()
+    history = _RATE_LIMIT_STORE[rate_key]
+    history = [t for t in history if now - t < RATE_LIMIT_WINDOW_SEC]
+    if len(history) >= RATE_LIMIT_REQUESTS:
+        _RATE_LIMIT_STORE[rate_key] = history
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded",
+        )
+    history.append(now)
+    _RATE_LIMIT_STORE[rate_key] = history
+
+
+async def _rate_limit_redis(rate_key: str) -> None:
+    """
+    Fixed-window rate limit via Redis INCR + EXPIRE.
+
+    Pattern:
+    1. INCR rate:{key}  → returns new count for this window
+    2. If count == 1 (first hit), set EXPIRE so the key expires after the window
+    3. If count > limit, raise 429
+
+    Using a pipeline ensures the INCR and conditional EXPIRE are sent in one
+    round-trip, but they are not atomic.  This is intentional — the worst case
+    is a very small over-count on the first hit under extreme concurrency, which
+    is acceptable for our 60-req/min limit.
+    """
+    client = _get_redis()
+    if client is None:
+        _rate_limit_in_memory(rate_key)
+        return
+
+    redis_key = f"rate:{rate_key}"
+    try:
+        pipe = client.pipeline()
+        pipe.incr(redis_key)
+        pipe.expire(redis_key, RATE_LIMIT_WINDOW_SEC, nx=True)
+        results = await pipe.execute()
+        count: int = results[0]
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Redis rate limiter error (%s) — falling back to in-memory", exc)
+        _rate_limit_in_memory(rate_key)
+        return
+
+    if count > RATE_LIMIT_REQUESTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded",
+        )
+
+
+async def get_api_key(
     connection: HTTPConnection, api_key_header: str | None = Security(api_key_header)
 ) -> str:
     """
     Dependency to validate API key and apply rate limits.
+
+    Uses Redis for distributed rate limiting when REDIS_URL is configured;
+    falls back to an in-memory sliding-window store for local development.
     """
     if settings.app_env == "development" and not settings.api_keys:
         return "dev_unauthenticated"
@@ -64,23 +152,8 @@ def get_api_key(
             detail="Invalid API Key",
         )
 
-    # Rate Limiting
-    now = time.time()
     rate_key = _rate_limit_key(connection, api_key_header)
-    call_history = RATE_LIMIT_STORE[rate_key]
-
-    # Clean up old timestamps outside the window
-    call_history = [t for t in call_history if now - t < RATE_LIMIT_WINDOW_SEC]
-
-    if len(call_history) >= RATE_LIMIT_REQUESTS:
-        RATE_LIMIT_STORE[rate_key] = call_history
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Rate limit exceeded",
-        )
-
-    call_history.append(now)
-    RATE_LIMIT_STORE[rate_key] = call_history
+    await _rate_limit_redis(rate_key)
 
     return api_key_header
 

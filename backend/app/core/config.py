@@ -110,6 +110,10 @@ class Settings(BaseSettings):
     # Redis — optional, only needed for production caching
     redis_url: str = ""
 
+    # Sentry — leave blank to disable error tracking
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.1  # 10% performance traces in prod
+
     # Celery — defaults to PostgreSQL broker so no Redis required for local dev.
     # Override in .env with a Redis URL for production: redis://localhost:6379/1
     celery_broker_url: str = ""

@@ -1,0 +1,288 @@
+name: Migration Gate
+
+on:
+  pull_request:
+    branches: [master, main]
+    paths:
+      - 'backend/alembic/versions/**.py'
+
+permissions:
+  pull-requests: write
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_CACHE_DIR: ~/.cache/uv
+
+jobs:
+  migration-gate:
+    name: Alembic migration gate
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: consensus
+          POSTGRES_PASSWORD: changeme
+          POSTGRES_DB: consensus
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: consensus
+      POSTGRES_USER: consensus
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_SCHEMA: consensus_app
+      POSTGRES_SSL: "false"
+      APP_ENV: development
+      SECRET_KEY: ci-migration-gate
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.UV_CACHE_DIR }}
+          key: uv-${{ runner.os }}-${{ hashFiles('backend/pyproject.toml') }}
+          restore-keys: uv-${{ runner.os }}-
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install TA-Lib C library
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q build-essential wget
+          wget -q https://sourceforge.net/projects/ta-lib/files/ta-lib/0.4.0/ta-lib-0.4.0-src.tar.gz
+          tar -xzf ta-lib-0.4.0-src.tar.gz
+          cd ta-lib
+          ./configure --prefix=/usr
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig
+
+      - name: Install Python dependencies
+        run: uv sync
+
+      # ────────────────────────────────────────────────────────────────────────
+      # Discover which migration files are new in this PR
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Find new migration files
+        id: diff
+        run: |
+          BASE=$(git merge-base origin/${{ github.base_ref }} HEAD)
+          echo "Merge base: $BASE"
+
+          # Migration files added (A) in this PR relative to merge-base
+          NEW=$(git diff --name-only --diff-filter=A "$BASE" HEAD \
+                -- alembic/versions/ | xargs -I{} basename {} 2>/dev/null || true)
+
+          echo "New migration files:"
+          echo "${NEW:-  (none)}"
+
+          {
+            echo "new_files<<EOF"
+            echo "$NEW"
+            echo "EOF"
+            echo "has_new=$([ -n "$NEW" ] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+
+      # ────────────────────────────────────────────────────────────────────────
+      # Generate SQL for the new migrations
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Apply base migrations & generate diff SQL
+        id: sql
+        if: steps.diff.outputs.has_new == 'true'
+        run: |
+          # 1. Stash new migration files so we can apply only the base set
+          mkdir -p /tmp/new_migrations
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            cp "alembic/versions/$f" /tmp/new_migrations/
+            rm  "alembic/versions/$f"
+          done <<< "${{ steps.diff.outputs.new_files }}"
+
+          # 2. Apply base migrations (what's already on main)
+          uv run alembic upgrade head 2>&1 || true
+          BASE_REV=$(uv run alembic current 2>&1 | grep -oP '[a-f0-9]+' | head -1 || echo "")
+          echo "Base revision: ${BASE_REV:-empty}"
+
+          # 3. Restore new migration files
+          cp /tmp/new_migrations/* alembic/versions/ 2>/dev/null || true
+
+          # 4. Generate SQL from base → new head
+          if [ -n "$BASE_REV" ]; then
+            uv run alembic upgrade "${BASE_REV}:head" --sql 2>/dev/null \
+              > /tmp/migration-diff.sql || true
+          else
+            # Empty DB — generate full schema SQL
+            uv run alembic upgrade head --sql 2>/dev/null \
+              > /tmp/migration-diff.sql || true
+          fi
+
+          LINES=$(wc -l < /tmp/migration-diff.sql || echo 0)
+          echo "Generated ${LINES} lines of SQL"
+
+          # Cap at 300 lines for the PR comment
+          {
+            echo "sql<<EOF"
+            head -300 /tmp/migration-diff.sql
+            echo "EOF"
+            echo "lines=$LINES"
+          } >> "$GITHUB_OUTPUT"
+
+          # Upload full SQL as artifact
+          cp /tmp/migration-diff.sql migration-diff.sql
+
+      - name: Upload full migration SQL
+        if: steps.diff.outputs.has_new == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-diff-sql
+          path: backend/migration-diff.sql
+          retention-days: 14
+
+      # ────────────────────────────────────────────────────────────────────────
+      # Scan for destructive operations
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Scan for destructive operations
+        id: destructive
+        if: steps.diff.outputs.has_new == 'true'
+        run: |
+          python3 - "$GITHUB_OUTPUT" <<'PYEOF'
+          import os, re, sys
+
+          output_file = sys.argv[1]
+          new_files = os.environ.get("NEW_FILES", "").strip().splitlines()
+          findings = []
+
+          DESTRUCTIVE_PATTERNS = [
+              (r'op\.drop_table\(',        "DROP TABLE"),
+              (r'op\.drop_column\(',       "DROP COLUMN"),
+              (r'op\.drop_index\(',        "DROP INDEX"),
+              (r'op\.drop_constraint\(',   "DROP CONSTRAINT"),
+              (r'op\.execute\(.*?DROP\b',  "Raw DROP in op.execute"),
+              (r'op\.alter_column\((?:(?!server_default).)*nullable=False',
+                                          "NOT NULL without server_default (may fail on existing rows)"),
+          ]
+
+          for fname in new_files:
+              fname = fname.strip()
+              if not fname:
+                  continue
+              path = f"alembic/versions/{fname}"
+              if not os.path.exists(path):
+                  continue
+              src = open(path).read()
+              for pattern, label in DESTRUCTIVE_PATTERNS:
+                  if re.search(pattern, src, re.DOTALL | re.IGNORECASE):
+                      findings.append(f"⚠️  **{fname}**: {label}")
+
+          with open(output_file, "a") as fh:
+              fh.write(f"DESTRUCTIVE={'true' if findings else 'false'}\n")
+              fh.write("FINDINGS<<EOF\n")
+              fh.write("\n".join(findings) + "\n")
+              fh.write("EOF\n")
+          PYEOF
+        env:
+          NEW_FILES: ${{ steps.diff.outputs.new_files }}
+        shell: bash
+
+      # ────────────────────────────────────────────────────────────────────────
+      # Post / update PR comment
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Post PR comment
+        if: steps.diff.outputs.has_new == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const newFiles    = `${{ steps.diff.outputs.new_files }}`.trim();
+            const sqlPreview  = `${{ steps.sql.outputs.sql }}`.trim();
+            const sqlLines    = parseInt(`${{ steps.sql.outputs.lines }}` || '0', 10);
+            const destructive = `${{ steps.destructive.outputs.DESTRUCTIVE }}` === 'true';
+            const findings    = `${{ steps.destructive.outputs.FINDINGS }}`.trim();
+
+            const statusIcon  = destructive ? '🚨' : '✅';
+            const statusText  = destructive
+              ? 'Destructive operations detected — **review required before merging**'
+              : 'No destructive operations found';
+
+            const truncNote = sqlLines > 300
+              ? `\n> _Preview truncated at 300 lines. Full SQL available as a CI artifact._\n`
+              : '';
+
+            const body = [
+              '<!-- migration-gate-comment -->',
+              '## 🗄️ Alembic Migration Gate',
+              '',
+              `**${statusIcon} ${statusText}**`,
+              '',
+              '### New migration files',
+              '```',
+              newFiles || '(none)',
+              '```',
+              findings ? `### ⚠️ Findings\n${findings}` : '',
+              '',
+              '### SQL preview',
+              truncNote,
+              '```sql',
+              sqlPreview || '-- (no SQL generated)',
+              '```',
+              '',
+              '_Auto-generated by the migration gate CI job. Full artifact attached to this run._',
+            ].filter(s => s !== null && s !== undefined).join('\n');
+
+            // Replace any previous migration gate comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            for (const c of comments) {
+              if (c.body.includes('migration-gate-comment')) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: c.id,
+                });
+              }
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      # ────────────────────────────────────────────────────────────────────────
+      # Block merge if destructive ops found
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Block on destructive operations
+        if: |
+          steps.diff.outputs.has_new == 'true' &&
+          steps.destructive.outputs.DESTRUCTIVE == 'true'
+        run: |
+          echo "❌ Destructive migration operations found."
+          echo "   Fix or explicitly acknowledge before merging."
+          exit 1

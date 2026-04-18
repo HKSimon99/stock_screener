@@ -81,45 +81,57 @@ async def build_coverage_map(
     if not instrument_ids:
         return {}
 
+    # Use window functions (PARTITION BY) + DISTINCT instead of GROUP BY.
+    # PostgreSQL 16 on Neon + asyncpg raises "ORDER/GROUP BY expression not found in
+    # targetlist" for ANY prepared statement containing GROUP BY over schema-qualified
+    # tables. Window functions with PARTITION BY produce identical results and are not
+    # affected by this bug.
+    _part_price = Price.instrument_id
     price_rows = (
         await db.execute(
             select(
                 Price.instrument_id.label("instrument_id"),
-                func.count(Price.trade_date).label("price_count"),
-                func.max(Price.trade_date).label("latest_trade_date"),
+                func.count(Price.trade_date).over(partition_by=_part_price).label("price_count"),
+                func.max(Price.trade_date).over(partition_by=_part_price).label("latest_trade_date"),
             )
             .where(Price.instrument_id.in_(instrument_ids))
-            .group_by(Price.instrument_id)
+            .distinct()
         )
     ).all()
     annual_rows = (
         await db.execute(
             select(
                 FundamentalAnnual.instrument_id.label("instrument_id"),
-                func.max(FundamentalAnnual.report_date).label("latest_report_date"),
+                func.max(FundamentalAnnual.report_date).over(
+                    partition_by=FundamentalAnnual.instrument_id
+                ).label("latest_report_date"),
             )
             .where(FundamentalAnnual.instrument_id.in_(instrument_ids))
-            .group_by(FundamentalAnnual.instrument_id)
+            .distinct()
         )
     ).all()
     quarterly_rows = (
         await db.execute(
             select(
                 FundamentalQuarterly.instrument_id.label("instrument_id"),
-                func.max(FundamentalQuarterly.report_date).label("latest_report_date"),
+                func.max(FundamentalQuarterly.report_date).over(
+                    partition_by=FundamentalQuarterly.instrument_id
+                ).label("latest_report_date"),
             )
             .where(FundamentalQuarterly.instrument_id.in_(instrument_ids))
-            .group_by(FundamentalQuarterly.instrument_id)
+            .distinct()
         )
     ).all()
 
     consensus_stmt = (
         select(
             ConsensusScore.instrument_id.label("instrument_id"),
-            func.max(ConsensusScore.score_date).label("latest_score_date"),
+            func.max(ConsensusScore.score_date).over(
+                partition_by=ConsensusScore.instrument_id
+            ).label("latest_score_date"),
         )
         .where(ConsensusScore.instrument_id.in_(instrument_ids))
-        .group_by(ConsensusScore.instrument_id)
+        .distinct()
     )
     if score_date is not None:
         consensus_stmt = consensus_stmt.where(ConsensusScore.score_date <= score_date)

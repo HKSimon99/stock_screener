@@ -100,19 +100,11 @@ class Settings(BaseSettings):
             args["server_settings"] = {"search_path": self.postgres_schema}
         if self.postgres_ssl:
             args["ssl"] = True
-        # Workaround: PostgreSQL 16 on Neon + asyncpg 0.29+ raises
-        # "ORDER/GROUP BY expression not found in targetlist" when using NAMED
-        # prepared statements for GROUP BY queries over schema-qualified tables.
-        # The fix is to use ANONYMOUS prepared statements (name=None), which work
-        # correctly. Confirmed by direct asyncpg test: prepare(sql, name=None) → OK,
-        # prepare(sql, name='anything') → InternalServerError.
-        # - statement_cache_size=0: disables asyncpg's own LRU cache
-        # - prepared_statement_cache_size=0: disables SQLAlchemy's SA-level cache
-        # - prepared_statement_name_func=lambda: None: forces anonymous statements
-        #   (SQLAlchemy passes name=None to asyncpg.prepare())
+        # Disable asyncpg's prepared statement cache.
+        # PostgreSQL 16 on Neon + asyncpg raises "ORDER/GROUP BY expression not found
+        # in targetlist" for GROUP BY queries over schema-qualified tables.
+        # Setting statement_cache_size=0 prevents stale plan reuse across transactions.
         args["statement_cache_size"] = 0
-        args["prepared_statement_cache_size"] = 0
-        args["prepared_statement_name_func"] = lambda: None
         return args
 
     # Redis — optional, only needed for production caching

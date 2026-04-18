@@ -41,6 +41,14 @@ def setup_test_db():
 
 @pytest.fixture
 async def db_session():
+    """Provide a database session for a test and truncate all tables in teardown.
+
+    Teardown truncates *after* the session is closed, so there is no live
+    connection holding locks when TRUNCATE tries to acquire AccessExclusiveLock.
+    This avoids the deadlock that occurred when a separate autouse fixture fired
+    TRUNCATE at the start of the next test while the previous test's session was
+    still being released.
+    """
     # Use settings.asyncpg_connect_args so SSL + explicit schema are applied.
     test_engine = create_async_engine(
         settings.database_url,
@@ -49,14 +57,12 @@ async def db_session():
     )
     TestSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with TestSessionLocal() as session:
-        truncate_sql = _truncate_all_tables_sql()
-        if truncate_sql:
-            await session.execute(text(truncate_sql))
-            await session.commit()
         yield session
-        if truncate_sql:
-            await session.execute(text(truncate_sql))
-            await session.commit()
+    # Session is fully closed here; now truncate safely.
+    truncate_sql = _truncate_all_tables_sql()
+    if truncate_sql:
+        async with test_engine.begin() as conn:
+            await conn.execute(text(truncate_sql))
     await test_engine.dispose()
 
 

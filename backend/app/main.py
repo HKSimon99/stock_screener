@@ -36,3 +36,13 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+# ---------------------------------------------------------------------------
+# OpenTelemetry — env-gated, no-op when OTLP_ENDPOINT is absent.
+# Must be called AFTER app and router are fully configured so the FastAPI
+# instrumentor can see all registered routes.
+# ---------------------------------------------------------------------------
+from app.core.telemetry import setup_telemetry  # noqa: E402
+from app.core.database import engine as _db_engine  # noqa: E402
+
+setup_telemetry(app, engine=_db_engine)

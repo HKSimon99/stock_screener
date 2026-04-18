@@ -114,6 +114,26 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     sentry_traces_sample_rate: float = 0.1  # 10% performance traces in prod
 
+    # OpenTelemetry — leave blank to disable tracing export
+    # Set OTLP_ENDPOINT to your Grafana Cloud OTLP URL, e.g.:
+    #   https://otlp-gateway-prod-us-east-0.grafana.net/otlp
+    # Set OTLP_HEADERS to "Authorization=Basic <base64(user:token)>"
+    otlp_endpoint: str = ""
+    otlp_headers: str = ""  # Comma-separated "key=value" pairs
+    otlp_service_name: str = "consensus-api"
+    otlp_traces_sample_rate: float = 0.1  # 10% of requests traced in prod
+
+    @property
+    def otlp_headers_dict(self) -> dict[str, str]:
+        """Parse "key=value,key2=value2" into a dict for OTLP exporter."""
+        result: dict[str, str] = {}
+        for pair in self.otlp_headers.split(","):
+            pair = pair.strip()
+            if "=" in pair:
+                k, _, v = pair.partition("=")
+                result[k.strip()] = v.strip()
+        return result
+
     # Celery — defaults to PostgreSQL broker so no Redis required for local dev.
     # Override in .env with a Redis URL for production: redis://localhost:6379/1
     celery_broker_url: str = ""

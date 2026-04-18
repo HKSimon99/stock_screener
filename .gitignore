@@ -42,3 +42,21 @@ logs/
 
 # Exclude specific project folder
 antigravity_phone_chat/
+
+.vercel
+
+# Celery beat persistence files
+backend/celerybeat-schedule.*
+
+# Ad-hoc scratch / one-off scripts (not part of the production codebase)
+backend/scratch_*.py
+backend/test_api_endpoints.py
+backend/test_indicators.py
+backend/test_regime.py
+backend/expand_basket.py
+backend/migration.sql
+
+# Stale plan docs migrated to .claude/plans/
+PLAN-FINAL.md
+task.md
+linked-riding-boot.md

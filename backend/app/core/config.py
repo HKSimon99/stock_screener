@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     # PgBouncer so SQLAlchemy uses NullPool (no double-pooling).
     # Leave empty to use the direct host (local dev, non-Neon Postgres).
     postgres_host_pooler: str = ""
+    # Neon read-replica hostname (e.g. ep-xxx-replica.region.aws.neon.tech).
+    # Create via: Neon dashboard → your project → Compute → Add Read Replica.
+    # When set, read-only query paths (rankings, instruments) route here to
+    # offload the primary write connection.  Falls back to primary when absent.
+    postgres_host_replica: str = ""
     # Set to true for hosted Postgres that requires TLS (e.g. Neon, Railway, Supabase)
     postgres_ssl: bool = False
 
@@ -76,6 +81,16 @@ class Settings(BaseSettings):
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
+    @property
+    def database_url_replica(self) -> str | None:
+        """Async URL for the Neon read replica, or None when not configured."""
+        if not self.postgres_host_replica:
+            return None
+        return (
+            f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host_replica}:{self.postgres_port}/{self.postgres_db}"
         )
 
     @property

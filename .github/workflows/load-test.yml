@@ -1,0 +1,64 @@
+name: Load Test
+
+# Manual trigger only — don't run on every push.
+# Dispatch from: Actions tab → "Load Test" → "Run workflow"
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'API base URL to load test'
+        required: true
+        default: 'https://your-api.railway.app'
+      api_key:
+        description: 'API key (leave blank if not required)'
+        required: false
+        default: ''
+      k6_vus:
+        description: 'Override max VUs (default: uses script stages)'
+        required: false
+        default: ''
+
+jobs:
+  k6-load-test:
+    name: k6 rankings load test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/k6-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -q
+          sudo apt-get install -y k6
+
+      - name: Run load test
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url }}
+          API_KEY:  ${{ github.event.inputs.api_key }}
+        run: |
+          k6 run \
+            --env BASE_URL="$BASE_URL" \
+            --env API_KEY="$API_KEY" \
+            --out json=load-test-results.json \
+            backend/tests/load/rankings.js
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results
+          path: load-test-results.json
+          retention-days: 30
+
+      - name: Print SLO summary
+        if: always()
+        run: |
+          echo "=== SLO Thresholds ==="
+          echo "p95 < 500ms (load scenario)"
+          echo "p99 < 1000ms (load scenario)"
+          echo "error rate < 1% (load scenario)"
+          echo ""
+          echo "Full results uploaded as artifact: k6-results"

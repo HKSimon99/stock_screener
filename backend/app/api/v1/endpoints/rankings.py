@@ -28,7 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_read_db
 from app.models.consensus_score import ConsensusScore
 from app.models.instrument import Instrument
 from app.models.market_regime import MarketRegime
@@ -166,7 +166,7 @@ async def get_rankings(
     score_date: Optional[date] = Query(None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
 ) -> RankingsResponse:
     """
     Returns the consensus-ranked list.

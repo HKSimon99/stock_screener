@@ -207,6 +207,20 @@ jobs:
           # Fail if current revision is not at head
           uv run alembic check
 
+      - name: Generate migration SQL preview
+        run: |
+          uv run alembic upgrade head --sql 2>/dev/null > migration-preview.sql || true
+          LINES=$(wc -l < migration-preview.sql)
+          echo "Migration SQL preview: ${LINES} lines"
+          head -60 migration-preview.sql
+
+      - name: Upload migration SQL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alembic-migration-sql
+          path: backend/migration-preview.sql
+          retention-days: 14
+
   # ───────────────────────────────────────────────────────────────────────────
   # 4. Frontend — lint + type-check
   # ───────────────────────────────────────────────────────────────────────────
@@ -274,3 +288,52 @@ jobs:
           NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: /app/rankings
           NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: /app/rankings
         run: pnpm run build
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # 6. Playwright e2e — smoke tests against a local Next.js dev server
+  # ───────────────────────────────────────────────────────────────────────────
+  e2e:
+    name: Playwright e2e
+    runs-on: ubuntu-latest
+    needs: frontend-build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run Playwright smoke tests
+        working-directory: apps/web
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_placeholder_for_ci_e2e
+          CLERK_SECRET_KEY: sk_test_placeholder_for_ci_e2e
+          NEXT_PUBLIC_CLERK_SIGN_IN_URL: /sign-in
+          NEXT_PUBLIC_CLERK_SIGN_UP_URL: /sign-up
+          NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: /app/rankings
+          NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: /app/rankings
+        run: pnpm exec playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7

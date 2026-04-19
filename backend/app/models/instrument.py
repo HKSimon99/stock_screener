@@ -12,7 +12,7 @@ class Instrument(Base):
     name = Column(String(200), nullable=False)
     name_kr = Column(String(200))                   # Korean name for KR stocks
     market = Column(String(4), nullable=False)       # 'US' | 'KR'
-    exchange = Column(String(10), nullable=False)    # 'NYSE'|'NASDAQ'|'KOSPI'|'KOSDAQ'
+    exchange = Column(String(50), nullable=False)    # 'NYSE'|'NASDAQ'|'NYSE American'|'KOSPI'|'KOSDAQ'
     asset_type = Column(String(10), nullable=False)  # 'stock' | 'etf'
     listing_status = Column(String(20), nullable=False, default="LISTED")
     sector = Column(String(100))

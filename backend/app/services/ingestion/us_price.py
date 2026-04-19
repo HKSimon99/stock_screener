@@ -157,22 +157,31 @@ async def sync_instruments(session: AsyncSession):
         return
 
     logger.info("Upserting %d US instruments from official symbol directories...", len(instruments_data))
-    stmt = insert(Instrument).values(instruments_data)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["ticker", "market"],
-        set_={
-            "name": stmt.excluded.name,
-            "exchange": stmt.excluded.exchange,
-            "asset_type": stmt.excluded.asset_type,
-            "listing_status": stmt.excluded.listing_status,
-            "is_active": stmt.excluded.is_active,
-            "is_test_issue": stmt.excluded.is_test_issue,
-            "source_provenance": stmt.excluded.source_provenance,
-            "source_symbol": stmt.excluded.source_symbol,
-            "updated_at": text("CURRENT_TIMESTAMP"),
-        },
-    )
-    await session.execute(stmt)
+
+    # asyncpg hard limit: 32767 bind parameters per query.
+    # Each instrument row has 15 columns → max safe chunk = 2000 rows (30 000 params).
+    CHUNK_SIZE = 2000
+    total = len(instruments_data)
+    for i in range(0, total, CHUNK_SIZE):
+        chunk = instruments_data[i : i + CHUNK_SIZE]
+        stmt = insert(Instrument).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["ticker", "market"],
+            set_={
+                "name": stmt.excluded.name,
+                "exchange": stmt.excluded.exchange,
+                "asset_type": stmt.excluded.asset_type,
+                "listing_status": stmt.excluded.listing_status,
+                "is_active": stmt.excluded.is_active,
+                "is_test_issue": stmt.excluded.is_test_issue,
+                "source_provenance": stmt.excluded.source_provenance,
+                "source_symbol": stmt.excluded.source_symbol,
+                "updated_at": text("CURRENT_TIMESTAMP"),
+            },
+        )
+        await session.execute(stmt)
+        logger.info("  upserted %d/%d instruments", min(i + CHUNK_SIZE, total), total)
+
     await session.commit()
     logger.info("US instrument sync finished.")
 

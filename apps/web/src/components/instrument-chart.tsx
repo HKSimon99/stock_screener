@@ -25,27 +25,28 @@ import { useChart } from "@/hooks/use-chart";
 import { cn } from "@/lib/utils";
 
 // ── Visual constants ──────────────────────────────────────────────────────────
+// Converted from OKLCH to hex for lightweight-charts compatibility
 
-const CANDLE_UP   = "oklch(0.72 0.14 150)"; // green
-const CANDLE_DOWN = "oklch(0.60 0.18 15)";  // red
+const CANDLE_UP   = "#51c96a"; // green (oklch(0.72 0.14 150))
+const CANDLE_DOWN = "#e8503e"; // red (oklch(0.60 0.18 15))
 
 const MA_COLORS = {
-  sma50:  "oklch(0.68 0.16 240)",  // blue
-  sma150: "oklch(0.75 0.13 60)",   // orange
-  sma200: "oklch(0.62 0.18 15)",   // red (slightly different shade from candle down)
+  sma50:  "#3b82f6",  // blue (oklch(0.68 0.16 240))
+  sma150: "#f59e0b", // orange (oklch(0.75 0.13 60))
+  sma200: "#ef4444", // red (oklch(0.62 0.18 15))
 } as const;
 
-const RS_COLOR = "oklch(0.80 0.06 290)"; // soft lavender — won't clash with candles
+const RS_COLOR = "#d8b4fe"; // soft lavender (oklch(0.80 0.06 290))
 
 /** Map pattern_type to a marker colour */
 const PATTERN_COLOR: Record<string, string> = {
-  cup_with_handle:   "oklch(0.88 0.12 85)",  // amber/gold
-  flat_base:         "oklch(0.68 0.16 240)", // blue
-  double_bottom:     "oklch(0.72 0.14 150)", // green
-  ascending_base:    "oklch(0.72 0.14 150)",
-  high_tight_flag:   "oklch(0.88 0.10 195)", // cyan
+  cup_with_handle:   "#fbbf24", // amber/gold (oklch(0.88 0.12 85))
+  flat_base:         "#3b82f6", // blue (oklch(0.68 0.16 240))
+  double_bottom:     "#51c96a", // green (oklch(0.72 0.14 150))
+  ascending_base:    "#51c96a", // green
+  high_tight_flag:   "#06b6d4", // cyan (oklch(0.88 0.10 195))
 };
-const PATTERN_COLOR_DEFAULT = "oklch(0.78 0.09 55)"; // bronze
+const PATTERN_COLOR_DEFAULT = "#ea580c"; // bronze (oklch(0.78 0.09 55))
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

@@ -46,13 +46,13 @@ export function useChart(options?: UseChartOptions): UseChartResult {
       // ResizeObserver and resize itself — no manual window listener needed.
       autoSize: true,
 
-      // Dark theme defaults matching the app's OKLCH colour palette.
+      // Dark theme defaults matching the app's color palette (converted to hex for lightweight-charts compatibility)
       layout: {
         background: {
           type: ColorType.Solid,
-          color: "oklch(0.11 0.01 240)",
+          color: "#10121c", // surface0 (oklch(0.11 0.01 240))
         },
-        textColor: "oklch(0.65 0 0)",
+        textColor: "#f4f3ee", // foreground (oklch(0.65 0.012 92))
         fontSize: 12,
         fontFamily:
           "'Inter', 'system-ui', '-apple-system', 'Segoe UI', sans-serif",
@@ -64,11 +64,11 @@ export function useChart(options?: UseChartOptions): UseChartResult {
       crosshair: {
         vertLine: {
           color: "rgba(255, 255, 255, 0.3)",
-          labelBackgroundColor: "oklch(0.20 0.02 240)",
+          labelBackgroundColor: "#1c1f2e", // surface2 (oklch(0.20 0.02 240))
         },
         horzLine: {
           color: "rgba(255, 255, 255, 0.3)",
-          labelBackgroundColor: "oklch(0.20 0.02 240)",
+          labelBackgroundColor: "#1c1f2e", // surface2
         },
       },
       timeScale: {

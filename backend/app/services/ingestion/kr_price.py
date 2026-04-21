@@ -88,30 +88,64 @@ async def _fetch_prices_via_pykrx(
     except Exception as exc:
         raise InsufficientDataError(f"pykrx fetch failed for {ticker}: {exc}") from exc
 
-async def fetch_kr_tickers() -> list[dict]:
-    """Fetch official KRX listings using FinanceDataReader."""
-    instruments = []
+
+async def _fetch_prices_via_fdr(
+    ticker: str,
+    dt_start: datetime,
+    dt_end: datetime,
+) -> pd.DataFrame:
+    """Fetch OHLCV bars via FinanceDataReader as a broader KR fallback."""
     try:
-        krx_df = await asyncio.to_thread(fdr.StockListing, 'KRX')
-        
-        # Determine Market mapping (KOSPI vs KOSDAQ vs KONEX)
+        df = await asyncio.to_thread(
+            fdr.DataReader,
+            ticker,
+            dt_start.strftime("%Y-%m-%d"),
+            dt_end.strftime("%Y-%m-%d"),
+        )
+        if df is None or df.empty:
+            raise InsufficientDataError(f"FinanceDataReader returned empty DataFrame for {ticker}")
+
+        col_map = {
+            "Open": "open",
+            "High": "high",
+            "Low": "low",
+            "Close": "close",
+            "Volume": "volume",
+        }
+        df = df.rename(columns=col_map)
+        df.index.name = "trade_date"
+        df = df.reset_index()
+        df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
+        return df
+    except InsufficientDataError:
+        raise
+    except Exception as exc:
+        raise InsufficientDataError(f"FinanceDataReader fetch failed for {ticker}: {exc}") from exc
+
+async def fetch_kr_tickers() -> list[dict]:
+    """Fetch official KRX stock listings plus KR ETF listings using FinanceDataReader."""
+    instruments = []
+    seen: set[str] = set()
+    try:
+        krx_df = await asyncio.to_thread(fdr.StockListing, "KRX")
+
         for _, row in krx_df.iterrows():
-            code = str(row['Code'])
-            name = str(row['Name'])
-            market_raw = str(row['Market']) if 'Market' in row else ''
-            dept = str(row['Dept']) if 'Dept' in row else ''
-            
-            if market_raw not in ['KOSPI', 'KOSDAQ', 'KONEX', 'ETF']:
+            code = str(row["Code"])
+            name = str(row["Name"])
+            market_raw = str(row["Market"]) if "Market" in row else ""
+            dept = str(row["Dept"]) if "Dept" in row else ""
+
+            if market_raw not in ["KOSPI", "KOSDAQ", "KONEX"]:
                 continue
 
-            asset_type = 'etf' if market_raw == 'ETF' else 'stock'
+            seen.add(code)
             instruments.append({
                 "ticker": code,
                 "name": name,
                 "name_kr": name,
                 "market": "KR",
                 "exchange": market_raw,
-                "asset_type": asset_type,
+                "asset_type": "stock",
                 "listing_status": "LISTED",
                 "sector": dept if dept else None,
                 "industry_group": None,
@@ -122,6 +156,34 @@ async def fetch_kr_tickers() -> list[dict]:
                 "is_chaebol_cross": False,
                 "is_leveraged": False,
                 "is_inverse": False
+            })
+
+        etf_df = await asyncio.to_thread(fdr.StockListing, "ETF/KR")
+        for _, row in etf_df.iterrows():
+            symbol = str(row["Symbol"]) if "Symbol" in row else ""
+            name = str(row["Name"]) if "Name" in row else symbol
+            if not symbol or symbol in seen:
+                continue
+
+            lowered_name = name.lower()
+            seen.add(symbol)
+            instruments.append({
+                "ticker": symbol,
+                "name": name,
+                "name_kr": name,
+                "market": "KR",
+                "exchange": "ETF",
+                "asset_type": "etf",
+                "listing_status": "LISTED",
+                "sector": str(row["Category"]) if "Category" in row else None,
+                "industry_group": None,
+                "is_active": True,
+                "is_test_issue": False,
+                "source_provenance": "KRX:ETF:FDR",
+                "source_symbol": symbol,
+                "is_chaebol_cross": False,
+                "is_leveraged": "lever" in lowered_name or "2x" in lowered_name,
+                "is_inverse": "inverse" in lowered_name or "인버스" in name,
             })
     except Exception as e:
         logger.error(f"Error fetching KRX tickers: {e}")
@@ -134,25 +196,27 @@ async def sync_kr_instruments(session: AsyncSession):
         return
 
     logger.info(f"Upserting {len(kr_tickers)} KR instruments...")
-    stmt = insert(Instrument).values(kr_tickers)
-    
-    # Conflict behavior
-    stmt = stmt.on_conflict_do_update(
-        index_elements=['ticker', 'market'],
-        set_={
-            'name': stmt.excluded.name,
-            'name_kr': stmt.excluded.name_kr,
-            'exchange': stmt.excluded.exchange,
-            'asset_type': stmt.excluded.asset_type,
-            'listing_status': stmt.excluded.listing_status,
-            'sector': stmt.excluded.sector,
-            'is_active': stmt.excluded.is_active,
-            'source_provenance': stmt.excluded.source_provenance,
-            'source_symbol': stmt.excluded.source_symbol,
-            'updated_at': text("CURRENT_TIMESTAMP"),
-        }
-    )
-    await session.execute(stmt)
+    # asyncpg limit: 32767 bind params. Each row has ~15 cols → chunk at 500 rows.
+    CHUNK_SIZE = 500
+    for i in range(0, len(kr_tickers), CHUNK_SIZE):
+        chunk = kr_tickers[i : i + CHUNK_SIZE]
+        stmt = insert(Instrument).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['ticker', 'market'],
+            set_={
+                'name': stmt.excluded.name,
+                'name_kr': stmt.excluded.name_kr,
+                'exchange': stmt.excluded.exchange,
+                'asset_type': stmt.excluded.asset_type,
+                'listing_status': stmt.excluded.listing_status,
+                'sector': stmt.excluded.sector,
+                'is_active': stmt.excluded.is_active,
+                'source_provenance': stmt.excluded.source_provenance,
+                'source_symbol': stmt.excluded.source_symbol,
+                'updated_at': text("CURRENT_TIMESTAMP"),
+            }
+        )
+        await session.execute(stmt)
     await session.commit()
     logger.info("KR Instruments Sync finished.")
 
@@ -202,9 +266,18 @@ async def fetch_and_store_kr_prices(
         df = await _fetch_prices_via_kis(kis_client, ticker, dt_start, dt_end)
         source = "KIS"
     except KISAPIError as exc:
-        logger.warning("KIS failed for %s (%s); falling back to pykrx", ticker, exc)
-        df = await _fetch_prices_via_pykrx(ticker, dt_start, dt_end)
-        source = "pykrx"
+        logger.warning("KIS failed for %s (%s); falling back to FinanceDataReader", ticker, exc)
+        try:
+            df = await _fetch_prices_via_fdr(ticker, dt_start, dt_end)
+            source = "FinanceDataReader"
+        except InsufficientDataError as fdr_exc:
+            logger.warning(
+                "FinanceDataReader failed for %s (%s); falling back to pykrx",
+                ticker,
+                fdr_exc,
+            )
+            df = await _fetch_prices_via_pykrx(ticker, dt_start, dt_end)
+            source = "pykrx"
 
     # ------------------------------------------------------------------
     # 2. Normalise columns and validate minimum row count

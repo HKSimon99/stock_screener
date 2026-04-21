@@ -81,18 +81,20 @@ async def _get_instrument_refs(
     market: str,
     tickers: Optional[list[str]] = None,
     limit: Optional[int] = None,
+    asset_types: Optional[list[str]] = None,
 ) -> list[tuple[int, str]]:
     stmt = (
         select(Instrument.id, Instrument.ticker)
         .where(
             Instrument.market == market,
-            Instrument.asset_type == "stock",
             Instrument.is_active.is_(True),
         )
         .order_by(Instrument.ticker.asc())
     )
 
     normalized = _normalize_tickers(tickers)
+    if asset_types:
+        stmt = stmt.where(Instrument.asset_type.in_(asset_types))
     if normalized:
         stmt = stmt.where(Instrument.ticker.in_(normalized))
     elif limit:
@@ -238,6 +240,7 @@ async def run_us_price_ingestion(
                 market="US",
                 tickers=normalized or None,
                 limit=limit,
+                asset_types=["stock"] if not normalized else None,
             )
 
             for instrument_id, ticker in instrument_refs:
@@ -316,9 +319,18 @@ async def run_kr_price_ingestion(
     processed_tickers: list[str] = []
     failed_tickers: list[str] = []
 
+    # Try to build the KIS client; fall back to None so fetch_and_store_kr_prices
+    # automatically uses the pykrx fallback path instead.
     try:
         kis_client = _build_kis_client()
+    except RuntimeError as _kis_err:
+        logger.warning(
+            "KIS client unavailable (%s); KR price ingestion will use pykrx fallback.",
+            _kis_err,
+        )
+        kis_client = None
 
+    try:
         async with AsyncSessionLocal() as session:
             if sync_universe:
                 await sync_kr_instruments(session)
@@ -328,6 +340,7 @@ async def run_kr_price_ingestion(
                 market="KR",
                 tickers=normalized or None,
                 limit=limit,
+                asset_types=["stock"] if not normalized else None,
             )
 
             for index, (instrument_id, ticker) in enumerate(instrument_refs):

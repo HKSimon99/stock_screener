@@ -6,10 +6,29 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 import sentry_sdk
+from sqlalchemy import and_, case, func, select
+from sqlalchemy.orm import aliased
+from app.core.database import AsyncSessionLocal
+from app.models.consensus_score import ConsensusScore
+from app.models.instrument import Instrument
+from app.models.user import UserPushToken
+from app.services.alerts.push import send_push_notifications
 from app.services.ingestion.freshness import run_data_integrity_monitoring
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+
+def _conviction_rank(column):
+    return case(
+        (column == "UNRANKED", 0),
+        (column == "BRONZE", 1),
+        (column == "SILVER", 2),
+        (column == "GOLD", 3),
+        (column == "PLATINUM", 4),
+        (column == "DIAMOND", 5),
+        else_=0,
+    )
 
 
 def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
@@ -24,6 +43,124 @@ def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
 
 def _parse_date(value: Optional[str]) -> Optional[date]:
     return date.fromisoformat(value) if value else None
+
+
+async def _run_conviction_upgrade_push_alerts(limit: int = 5) -> dict:
+    async with AsyncSessionLocal() as db:
+        latest_date = (
+            await db.execute(select(func.max(ConsensusScore.score_date)))
+        ).scalar_one_or_none()
+
+        if latest_date is None:
+            return {"status": "skipped", "reason": "no_consensus_scores"}
+
+        previous_date = (
+            await db.execute(
+                select(func.max(ConsensusScore.score_date)).where(
+                    ConsensusScore.score_date < latest_date
+                )
+            )
+        ).scalar_one_or_none()
+
+        if previous_date is None:
+            return {"status": "skipped", "reason": "no_previous_score_date"}
+
+        current = aliased(ConsensusScore)
+        previous = aliased(ConsensusScore)
+        current_rank = _conviction_rank(current.conviction_level)
+        previous_rank = _conviction_rank(previous.conviction_level)
+
+        upgrades = (
+            await db.execute(
+                select(
+                    Instrument.ticker,
+                    Instrument.market,
+                    Instrument.name,
+                    current.conviction_level.label("current_conviction"),
+                    previous.conviction_level.label("previous_conviction"),
+                    current.final_score.label("current_score"),
+                    previous.final_score.label("previous_score"),
+                )
+                .join(Instrument, Instrument.id == current.instrument_id)
+                .outerjoin(
+                    previous,
+                    and_(
+                        previous.instrument_id == current.instrument_id,
+                        previous.score_date == previous_date,
+                    ),
+                )
+                .where(
+                    current.score_date == latest_date,
+                    Instrument.is_active == True,
+                    current_rank >= 3,
+                    current_rank > func.coalesce(previous_rank, 0),
+                )
+                .order_by(current_rank.desc(), current.final_score.desc())
+                .limit(limit)
+            )
+        ).all()
+
+        if not upgrades:
+            return {
+                "status": "skipped",
+                "reason": "no_conviction_upgrades",
+                "latest_date": latest_date.isoformat(),
+            }
+
+        tokens = list(
+            dict.fromkeys(
+                (
+                    await db.execute(select(UserPushToken.expo_push_token))
+                ).scalars().all()
+            )
+        )
+
+        if not tokens:
+            return {
+                "status": "skipped",
+                "reason": "no_registered_push_tokens",
+                "latest_date": latest_date.isoformat(),
+                "upgrades_found": len(upgrades),
+            }
+
+        top = upgrades[0]
+        additional_count = max(len(upgrades) - 1, 0)
+        title = f"{top.ticker} upgraded to {top.current_conviction}"
+        body = (
+            f"{top.name} moved up from {top.previous_conviction or 'UNRANKED'} "
+            f"on {latest_date.isoformat()}"
+        )
+        if additional_count:
+            body += f" + {additional_count} more conviction upgrades."
+
+        result = await send_push_notifications(
+            tokens=tokens,
+            title=title,
+            body=body,
+            data={
+                "type": "conviction_upgrade",
+                "score_date": latest_date.isoformat(),
+                "items": [
+                    {
+                        "ticker": row.ticker,
+                        "market": row.market,
+                        "name": row.name,
+                        "current_conviction": row.current_conviction,
+                        "previous_conviction": row.previous_conviction or "UNRANKED",
+                    }
+                    for row in upgrades
+                ],
+            },
+        )
+
+        return {
+            "status": "sent",
+            "latest_date": latest_date.isoformat(),
+            "previous_date": previous_date.isoformat(),
+            "upgrades_found": len(upgrades),
+            "tokens_targeted": len(tokens),
+            "tickets": result.get("tickets", []),
+        }
 
 
 @celery_app.task(name="app.tasks.alerts.run_data_integrity_monitoring")
@@ -53,6 +190,11 @@ def run_data_integrity_monitoring_task(
         _fire_sentry_alerts(result)
 
     return result
+
+
+@celery_app.task(name="app.tasks.alerts.send_conviction_upgrade_push_alerts")
+def send_conviction_upgrade_push_alerts_task(limit: int = 5) -> dict:
+    return asyncio.run(_run_conviction_upgrade_push_alerts(limit=limit))
 
 
 def _fire_sentry_alerts(result: dict) -> None:

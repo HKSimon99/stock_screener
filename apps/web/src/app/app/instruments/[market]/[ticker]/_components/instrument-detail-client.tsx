@@ -75,7 +75,8 @@ export function InstrumentDetailClient({
     queryKey: ["instrument", ticker, market],
     queryFn: () => fetchInstrument(ticker, market),
     initialData: initialData ?? undefined,
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const { data: chart, isFetching: chartFetching } = useQuery({
@@ -84,12 +85,14 @@ export function InstrumentDetailClient({
       fetchInstrumentChart(ticker, market, {
         interval: chartInterval,
         range_days: chartRangeDays,
+        include_indicators: true,
       }),
     initialData:
       chartInterval === "1d" && chartRangeDays === 365
         ? (initialChartData ?? undefined)
         : undefined,
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   if (!data) {

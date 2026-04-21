@@ -26,13 +26,20 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
   const searchParams = useSearchParams();
   const market = (searchParams.get("market") as "US" | "KR") ?? initialFilters.market;
   const assetType = (searchParams.get("asset_type") as "stock" | "etf") ?? initialFilters.assetType;
+  const conviction = searchParams.get("conviction") ?? initialFilters.conviction;
 
   const { data, isFetching } = useQuery({
-    queryKey: ["rankings", market, assetType, initialFilters.limit],
+    queryKey: ["rankings", market, assetType, conviction, initialFilters.limit],
     queryFn: () =>
-      fetchRankings({ market, asset_type: assetType, limit: initialFilters.limit }),
+      fetchRankings({
+        market,
+        asset_type: assetType,
+        conviction: conviction || undefined,
+        limit: initialFilters.limit,
+      }),
     initialData: initialData ?? undefined,
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   function setFilter(key: string, value: string) {

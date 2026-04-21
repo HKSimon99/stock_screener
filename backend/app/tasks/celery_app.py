@@ -46,5 +46,9 @@ celery_app.conf.update(
             "task": "app.tasks.alerts.run_data_integrity_monitoring",
             "schedule": crontab(minute=15, hour=1),
         },
+        "daily-conviction-upgrade-push": {
+            "task": "app.tasks.alerts.send_conviction_upgrade_push_alerts",
+            "schedule": crontab(minute=30, hour=1),
+        },
     },
 )

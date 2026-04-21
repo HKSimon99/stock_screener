@@ -20,7 +20,11 @@ export default async function CanonicalInstrumentPage({ params }: PageProps) {
 
   const [instrumentResult, chartResult] = await Promise.allSettled([
     fetchInstrument(ticker, market),
-    fetchInstrumentChart(ticker, market),
+    fetchInstrumentChart(ticker, market, {
+      interval: "1d",
+      range_days: 365,
+      include_indicators: true,
+    }),
   ]);
 
   if (instrumentResult.status === "fulfilled") {

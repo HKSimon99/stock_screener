@@ -16,6 +16,17 @@ from app.models.instrument import Instrument
 
 logger = logging.getLogger(__name__)
 
+# Minimum annual records to consider a fundamentals ingestion successful
+MIN_ANNUAL_RECORDS = 1
+
+
+class CorpCodeNotFoundError(Exception):
+    """Raised when a KR ticker has no matching corp_code in OpenDART."""
+
+
+class InsufficientDataError(Exception):
+    """Raised when fundamentals ingestion produces fewer records than MIN_ANNUAL_RECORDS."""
+
 ANNUAL_MODEL_FIELDS = {
     "instrument_id",
     "fiscal_year",
@@ -207,25 +218,20 @@ class KRFundamentalIngester:
         logger.info("Downloading OpenDART corp_codes archive...")
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, params=params, timeout=30.0)
-            if resp.status_code != 200:
-                logger.error(f"Failed to fetch corp codes: Status {resp.status_code}")
-                return
-                
-            try:
-                with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
-                    with z.open('CORPCODE.xml') as f:
-                        tree = ET.parse(f)
-                        root = tree.getroot()
-                        
-                        for list_node in root.findall('list'):
-                            stock_code = list_node.find('stock_code').text
-                            if stock_code and stock_code.strip():
-                                corp_code = list_node.find('corp_code').text
-                                self.corp_codes_cache[stock_code.strip()] = corp_code
-                                
-                logger.info(f"Successfully loaded {len(self.corp_codes_cache)} Korean corporation codes.")
-            except Exception as e:
-                logger.error(f"Failed to parse corpCode.xml: {e}")
+            resp.raise_for_status()  # Raises httpx.HTTPStatusError on 4xx/5xx
+
+            with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+                with z.open("CORPCODE.xml") as f:
+                    tree = ET.parse(f)
+                    root = tree.getroot()
+
+                    for list_node in root.findall("list"):
+                        stock_code = list_node.find("stock_code").text
+                        if stock_code and stock_code.strip():
+                            corp_code = list_node.find("corp_code").text
+                            self.corp_codes_cache[stock_code.strip()] = corp_code
+
+            logger.info("Loaded %d Korean corporation codes from OpenDART.", len(self.corp_codes_cache))
 
     async def _fetch_finstate(self, corp_code: str, year: int, report_code: str) -> List[Dict]:
         """Fetch the full statement payload, preferring consolidated statements."""
@@ -380,25 +386,33 @@ class KRFundamentalIngester:
         return {key: value for key, value in prepared.items() if key in QUARTERLY_MODEL_FIELDS}
 
     async def ingest_fundamentals(self, ticker: str, years: int = 5):
-        """Fetches Annual and Quarterly financials for the KR ticker."""
+        """Fetches Annual and Quarterly financials for the KR ticker.
+
+        Raises:
+            CorpCodeNotFoundError: ticker absent from OpenDART corp_code registry.
+            InsufficientDataError: fewer than MIN_ANNUAL_RECORDS annual rows produced.
+        """
         if not self.corp_codes_cache:
             await self._populate_corp_codes()
-            
+
         corp_code = self.corp_codes_cache.get(ticker)
         if not corp_code:
-            logger.error(f"Ticker {ticker} not found in OpenDART corporation codes.")
-            return
-            
-        logger.info(f"Starting KR Fundamental ingestion for {ticker} (CorpCode: {corp_code}) over {years} years")
+            raise CorpCodeNotFoundError(
+                f"Ticker {ticker} not found in OpenDART corporation codes."
+            )
+
+        logger.info(
+            "Starting KR fundamental ingestion for %s (corp_code=%s, years=%d)",
+            ticker, corp_code, years,
+        )
 
         async with AsyncSessionLocal() as db:
             stmt = select(Instrument).where(Instrument.ticker == ticker, Instrument.market == "KR")
             result = await db.execute(stmt)
             instrument = result.scalars().first()
-            
+
             if not instrument:
-                logger.error(f"Cannot ingest fundamentals: Instrument {ticker} not found in DB.")
-                return
+                raise ValueError(f"Instrument {ticker} (KR) not found in DB — run sync first.")
 
             current_year = datetime.now().year
             target_years = [current_year - i for i in range(years)]
@@ -463,6 +477,14 @@ class KRFundamentalIngester:
                 if curr.get('eps') is not None and prev.get('eps') and prev['eps'] != 0:
                     curr['eps_yoy_growth'] = (curr['eps'] - prev['eps']) / abs(prev['eps'])
 
+            # Validate minimum record count before touching the DB
+            if len(annual_records) < MIN_ANNUAL_RECORDS:
+                raise InsufficientDataError(
+                    f"Only {len(annual_records)} annual record(s) produced for {ticker} "
+                    f"(minimum {MIN_ANNUAL_RECORDS}). DART may be unavailable or the "
+                    "ticker has no financial filings."
+                )
+
             # Upsert Annual
             for rec in annual_records:
                 filtered_rec = self._prepare_annual_record(rec, instrument)
@@ -495,7 +517,10 @@ class KRFundamentalIngester:
                     db.add(FundamentalQuarterly(**filtered_rec))
                     
             await db.commit()
-            logger.info(f"Successfully processed {len(annual_records)} annual and {len(quarterly_records)} quarterly records for KR {ticker}")
+            logger.info(
+                "KR fundamentals ingested for %s: %d annual, %d quarterly records.",
+                ticker, len(annual_records), len(quarterly_records),
+            )
 
 async def run_kr_fundamentals_ingestion(symbol: str, years: int = 5):
     ingester = KRFundamentalIngester()

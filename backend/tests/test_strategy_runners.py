@@ -603,8 +603,10 @@ async def test_consensus_runner_upserts_existing_and_new_rows(strategy_db_sessio
     ).scalars().one()
 
     assert us_row.conviction_level == "SILVER"
-    assert us_row.regime_warning is True
-    assert kr_row.conviction_level in {"GOLD", "SILVER", "BRONZE", "DIAMOND"}
+    # Weinstein gate (stage=None) already caps to SILVER before the regime cap;
+    # regime cap is also SILVER → regime_warning is False (regime cap changed nothing).
+    assert us_row.regime_warning is False
+    assert kr_row.conviction_level in {"DIAMOND", "PLATINUM", "GOLD", "SILVER", "BRONZE", "UNRANKED"}
     assert float(kr_row.final_score) > 0
 
 

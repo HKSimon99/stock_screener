@@ -1,36 +1,42 @@
 """
-Consensus Scoring Engine — Phase 4.3
-======================================
-Aggregates all 5 strategy scores + technical composite into a single
-``final_score`` and assigns a conviction level (DIAMOND / GOLD / SILVER /
-BRONZE / UNRANKED) with optional regime gating.
+Consensus Scoring Engine
+========================
+Aggregates strategy scores into a single ``final_score`` and assigns a
+conviction level (DIAMOND / PLATINUM / GOLD / SILVER / BRONZE / UNRANKED)
+with regime gating and a Weinstein Stage 2 gate.
 
-Weighting scheme
-----------------
-Strategy consensus (80% of final_score):
-  CANSLIM        20%
-  Piotroski      15%
-  Minervini      20%
-  Weinstein      15%
-  Dual Momentum  10%
-  ← only strategies with data contribute; weights are renormalized
-    when data is missing for some strategies.
+Weighting scheme (market-specific)
+----------------------------------
+US strategy consensus (80% of final_score):
+  CANSLIM       50%
+  Piotroski     25%
+  Minervini     25%
 
-Technical composite (20% of final_score):
-  technical_composite score from Phase 3.6
+KR strategy consensus (80% of final_score):
+  Piotroski     50%
+  Minervini     50%
+
+Technical composite contributes the remaining 20% when available.
+Weights are renormalized over strategies that actually have data.
+
+Weinstein is **gate-only**: if the instrument is not in Stage 2
+(2_early / 2_mid / 2_late) the final conviction is capped at SILVER.
+Dual Momentum has been removed.
 
 Conviction thresholds (applied to ``final_score``)
 ---------------------------------------------------
-  DIAMOND  ≥ 80   AND strategy_pass_count ≥ 4   (0-5 per market, ultra-selective)
-  GOLD     ≥ 65   AND strategy_pass_count ≥ 3
-  SILVER   ≥ 50   AND strategy_pass_count ≥ 2
+  DIAMOND  ≥ 88   AND strategy_pass_count ≥ 3
+  PLATINUM ≥ 78   AND strategy_pass_count ≥ 2
+  GOLD     ≥ 65   AND strategy_pass_count ≥ 2
+  SILVER   ≥ 50   AND strategy_pass_count ≥ 1
   BRONZE   ≥ 35
   UNRANKED < 35
 
-Regime gate
------------
-During MARKET_IN_CORRECTION the max conviction is capped at SILVER.
-During UPTREND_UNDER_PRESSURE the max conviction is capped at GOLD.
+Regime cap
+----------
+  CONFIRMED_UPTREND       → DIAMOND (no cap)
+  UPTREND_UNDER_PRESSURE  → PLATINUM
+  MARKET_IN_CORRECTION    → SILVER
 
 Usage:
     python -m app.services.strategies.consensus [--market US|KR]
@@ -39,8 +45,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
 import logging
 from datetime import date
 from typing import Optional
@@ -55,41 +59,48 @@ from app.models.strategy_score import StrategyScore
 
 logger = logging.getLogger(__name__)
 
-# Strategy weights (must sum to 1.0)
-STRATEGY_WEIGHTS: dict[str, float] = {
-    "canslim":      0.20,
-    "piotroski":    0.15,
-    "minervini":    0.20,
-    "weinstein":    0.15,
-    "dual_mom":     0.10,
+# Market-specific strategy weights (each market's dict sums to 1.0)
+STRATEGY_WEIGHTS: dict[str, dict[str, float]] = {
+    "US": {"canslim": 0.50, "piotroski": 0.25, "minervini": 0.25},
+    "KR": {"piotroski": 0.50, "minervini": 0.50},
 }
-TECHNICAL_WEIGHT = 0.20  # Of the remaining 20%
 
-# Score threshold to count a strategy as "passing"
+# Strategy consensus gets 80%, technical composite 20% (if both present).
+TECHNICAL_WEIGHT = 0.20
+
+# Score at which a strategy is considered "passing" for pass-count counting.
 STRATEGY_PASS_THRESHOLD = 70.0
 
-# Conviction thresholds: (min_final_score, min_pass_count, label)
-CONVICTION_THRESHOLDS = [
-    (80.0, 4, "DIAMOND"),
-    (65.0, 3, "GOLD"),
-    (50.0, 2, "SILVER"),
+# Conviction tiers: (min_final_score, min_pass_count, label). Ordered high→low.
+CONVICTION_THRESHOLDS: list[tuple[float, int, str]] = [
+    (88.0, 3, "DIAMOND"),
+    (78.0, 2, "PLATINUM"),
+    (65.0, 2, "GOLD"),
+    (50.0, 1, "SILVER"),
     (35.0, 0, "BRONZE"),
 ]
 
-# Regime → max conviction cap
+# Regime → max allowed conviction.
 REGIME_CAPS: dict[str, str] = {
-    "CONFIRMED_UPTREND":         "DIAMOND",   # No cap
-    "UPTREND_UNDER_PRESSURE":    "GOLD",
-    "MARKET_IN_CORRECTION":      "SILVER",
+    "CONFIRMED_UPTREND":      "DIAMOND",
+    "UPTREND_UNDER_PRESSURE": "PLATINUM",
+    "MARKET_IN_CORRECTION":   "SILVER",
 }
 
-_CONVICTION_ORDER = ["UNRANKED", "BRONZE", "SILVER", "GOLD", "DIAMOND"]
+# Ordered low→high; used by _cap_conviction to compute the minimum of two levels.
+_CONVICTION_ORDER = ["UNRANKED", "BRONZE", "SILVER", "GOLD", "PLATINUM", "DIAMOND"]
+
+# Weinstein stages that satisfy the Stage 2 gate.
+WEINSTEIN_STAGE_2 = {"2_early", "2_mid", "2_late"}
+
+# Non-Stage-2 instruments cannot exceed this conviction level.
+WEINSTEIN_GATE_CAP = "SILVER"
 
 
 def _cap_conviction(level: str, cap: str) -> str:
-    """Return the lower of two conviction levels."""
+    """Return the lower of two conviction levels (by _CONVICTION_ORDER)."""
     idx_level = _CONVICTION_ORDER.index(level) if level in _CONVICTION_ORDER else 0
-    idx_cap   = _CONVICTION_ORDER.index(cap)   if cap   in _CONVICTION_ORDER else 4
+    idx_cap   = _CONVICTION_ORDER.index(cap)   if cap   in _CONVICTION_ORDER else len(_CONVICTION_ORDER) - 1
     return _CONVICTION_ORDER[min(idx_level, idx_cap)]
 
 
@@ -105,33 +116,37 @@ def _assign_conviction(final_score: float, pass_count: int) -> str:
 # =============================================================================
 
 def compute_consensus(
-    canslim_score:      Optional[float],
-    piotroski_score:    Optional[float],
-    minervini_score:    Optional[float],
-    weinstein_score:    Optional[float],
-    dual_mom_score:     Optional[float],
-    technical_composite: Optional[float],
-    regime_state:       Optional[str] = "CONFIRMED_UPTREND",
+    *,
+    market: str,
+    canslim_score:       Optional[float] = None,
+    piotroski_score:     Optional[float] = None,
+    minervini_score:     Optional[float] = None,
+    technical_composite: Optional[float] = None,
+    weinstein_stage:     Optional[str]   = None,
+    weinstein_score:     Optional[float] = None,   # stored for history, not weighted
+    regime_state:        Optional[str]   = "CONFIRMED_UPTREND",
 ) -> dict:
     """
     Compute consensus composite, conviction level, and full score breakdown.
 
-    All score inputs are 0-100.  Missing (None) strategy scores are excluded
-    and the remaining weights are renormalized so they still sum to 1.
-
-    Returns a dict matching ConsensusScore columns plus a ``score_breakdown``
-    sub-dict for audit purposes.
+    Weights are market-specific (``STRATEGY_WEIGHTS[market]``). Missing strategy
+    scores are excluded and remaining weights are renormalized. Weinstein does
+    not contribute to the weighted score — it is used as a Stage 2 gate.
     """
+    if market not in STRATEGY_WEIGHTS:
+        raise ValueError(f"Unknown market {market!r}; expected one of {list(STRATEGY_WEIGHTS)}")
+
+    weights_for_market = STRATEGY_WEIGHTS[market]
     raw_scores: dict[str, Optional[float]] = {
         "canslim":   canslim_score,
         "piotroski": piotroski_score,
         "minervini": minervini_score,
-        "weinstein": weinstein_score,
-        "dual_mom":  dual_mom_score,
     }
-
-    # Filter to strategies with data
-    available = {k: v for k, v in raw_scores.items() if v is not None}
+    # Restrict to strategies valid for this market AND present.
+    available = {
+        k: v for k, v in raw_scores.items()
+        if k in weights_for_market and v is not None
+    }
 
     if not available:
         return {
@@ -141,24 +156,22 @@ def compute_consensus(
             "conviction_level":     "UNRANKED",
             "regime_state":         regime_state,
             "regime_warning":       False,
-            "score_breakdown":      {"error": "no strategy scores available"},
+            "weinstein_stage":      weinstein_stage,
+            "weinstein_gate_pass":  False,
+            "score_breakdown":      {"error": "no strategy scores available", "market": market},
         }
 
-    # Renormalize weights for available strategies
-    total_raw_weight = sum(STRATEGY_WEIGHTS[k] for k in available)
-    # Split total weight budget: 80% strat + 20% tech; but tech is optional too
+    # Renormalize strategy weights over available strategies.
+    total_raw_weight = sum(weights_for_market[k] for k in available)
     strat_budget = 1.0 - TECHNICAL_WEIGHT if technical_composite is not None else 1.0
 
-    normalized_weights: dict[str, float] = {}
-    for k in available:
-        normalized_weights[k] = (STRATEGY_WEIGHTS[k] / total_raw_weight) * strat_budget
+    normalized_weights: dict[str, float] = {
+        k: (weights_for_market[k] / total_raw_weight) * strat_budget
+        for k in available
+    }
 
-    # Weighted consensus composite (strategy component only)
-    consensus_composite = sum(
-        available[k] * normalized_weights[k] for k in available
-    )
+    consensus_composite = sum(available[k] * normalized_weights[k] for k in available)
 
-    # Add technical composite (if available)
     if technical_composite is not None:
         final_score = consensus_composite + technical_composite * TECHNICAL_WEIGHT
     else:
@@ -167,44 +180,57 @@ def compute_consensus(
     final_score = min(100.0, max(0.0, final_score))
     consensus_composite = min(100.0, max(0.0, consensus_composite))
 
-    # Count strategies scoring ≥ pass threshold
-    pass_count = sum(
-        1 for v in available.values() if v >= STRATEGY_PASS_THRESHOLD
+    pass_count = sum(1 for v in available.values() if v >= STRATEGY_PASS_THRESHOLD)
+
+    raw_conviction = _assign_conviction(final_score, pass_count)
+
+    # Weinstein Stage 2 gate: cap non-Stage-2 at SILVER.
+    weinstein_gate_pass = weinstein_stage in WEINSTEIN_STAGE_2
+    gated_conviction = (
+        raw_conviction if weinstein_gate_pass
+        else _cap_conviction(raw_conviction, WEINSTEIN_GATE_CAP)
     )
 
-    # Assign raw conviction
-    conviction = _assign_conviction(final_score, pass_count)
-
-    # Apply regime cap
+    # Regime cap.
     regime = regime_state or "CONFIRMED_UPTREND"
-    cap = REGIME_CAPS.get(regime, "DIAMOND")
-    capped_conviction = _cap_conviction(conviction, cap)
-    regime_warning = capped_conviction != conviction
+    regime_cap = REGIME_CAPS.get(regime, "DIAMOND")
+    capped_conviction = _cap_conviction(gated_conviction, regime_cap)
+
+    regime_warning = capped_conviction != gated_conviction
+    weinstein_warning = gated_conviction != raw_conviction
 
     breakdown: dict = {
-        "strategy_scores":    {k: round(v, 2) for k, v in available.items()},
-        "strategy_weights":   {k: round(w, 4) for k, w in normalized_weights.items()},
+        "market":              market,
+        "strategy_scores":     {k: round(v, 2) for k, v in available.items()},
+        "strategy_weights":    {k: round(w, 4) for k, w in normalized_weights.items()},
         "consensus_composite": round(consensus_composite, 2),
-        "technical_composite": round(technical_composite, 2) if technical_composite else None,
-        "technical_weight":   TECHNICAL_WEIGHT if technical_composite is not None else 0,
-        "final_score":        round(final_score, 2),
-        "pass_count":         pass_count,
-        "pass_threshold":     STRATEGY_PASS_THRESHOLD,
-        "raw_conviction":     conviction,
-        "regime_state":       regime,
-        "regime_cap":         cap,
-        "final_conviction":   capped_conviction,
-        "regime_warning":     regime_warning,
+        "technical_composite": round(technical_composite, 2) if technical_composite is not None else None,
+        "technical_weight":    TECHNICAL_WEIGHT if technical_composite is not None else 0,
+        "final_score":         round(final_score, 2),
+        "pass_count":          pass_count,
+        "pass_threshold":      STRATEGY_PASS_THRESHOLD,
+        "raw_conviction":      raw_conviction,
+        "weinstein_stage":     weinstein_stage,
+        "weinstein_score":     round(weinstein_score, 2) if weinstein_score is not None else None,
+        "weinstein_gate_pass": weinstein_gate_pass,
+        "weinstein_warning":   weinstein_warning,
+        "gated_conviction":    gated_conviction,
+        "regime_state":        regime,
+        "regime_cap":          regime_cap,
+        "regime_warning":      regime_warning,
+        "final_conviction":    capped_conviction,
     }
 
     return {
-        "consensus_composite":  round(consensus_composite, 2),
-        "final_score":          round(final_score, 2),
-        "strategy_pass_count":  pass_count,
-        "conviction_level":     capped_conviction,
-        "regime_state":         regime,
-        "regime_warning":       regime_warning,
-        "score_breakdown":      breakdown,
+        "consensus_composite": round(consensus_composite, 2),
+        "final_score":         round(final_score, 2),
+        "strategy_pass_count": pass_count,
+        "conviction_level":    capped_conviction,
+        "regime_state":        regime,
+        "regime_warning":      regime_warning,
+        "weinstein_stage":     weinstein_stage,
+        "weinstein_gate_pass": weinstein_gate_pass,
+        "score_breakdown":     breakdown,
     }
 
 
@@ -223,8 +249,7 @@ async def get_latest_regime(market: str, score_date: date, db) -> Optional[str]:
         .order_by(desc(MarketRegime.effective_date))
         .limit(1)
     )
-    row = q.scalar_one_or_none()
-    return row  # May be None if no regime row exists yet
+    return q.scalar_one_or_none()
 
 
 # =============================================================================
@@ -240,7 +265,7 @@ async def score_instrument_consensus(
 ) -> Optional[dict]:
     """
     Read strategy_scores for ``instrument_id`` on ``score_date`` and compute
-    consensus.  Returns a dict of ConsensusScore fields, or None if no data.
+    consensus. Returns a dict of ConsensusScore fields, or None if no data.
     """
     q = await db.execute(
         select(StrategyScore).where(
@@ -256,24 +281,23 @@ async def score_instrument_consensus(
         return float(val) if val is not None else None
 
     result = compute_consensus(
-        canslim_score      = _f(ss.canslim_score),
-        piotroski_score    = _f(ss.piotroski_score),
-        minervini_score    = _f(ss.minervini_score),
-        weinstein_score    = _f(ss.weinstein_score),
-        dual_mom_score     = _f(ss.dual_mom_score),
-        technical_composite= _f(ss.technical_composite),
-        regime_state       = regime_state,
+        market              = market,
+        canslim_score       = _f(ss.canslim_score),
+        piotroski_score     = _f(ss.piotroski_score),
+        minervini_score     = _f(ss.minervini_score),
+        technical_composite = _f(ss.technical_composite),
+        weinstein_stage     = ss.weinstein_stage,
+        weinstein_score     = _f(ss.weinstein_score),
+        regime_state        = regime_state,
     )
 
     return {
-        "instrument_id":     instrument_id,
-        "score_date":        score_date,
-        # Pull through individual strategy scores for the consensus row
-        "canslim_score":     _f(ss.canslim_score),
-        "piotroski_score":   _f(ss.piotroski_score),
-        "minervini_score":   _f(ss.minervini_score),
-        "weinstein_score":   _f(ss.weinstein_score),
-        "dual_mom_score":    _f(ss.dual_mom_score),
+        "instrument_id":       instrument_id,
+        "score_date":          score_date,
+        "canslim_score":       _f(ss.canslim_score),
+        "piotroski_score":     _f(ss.piotroski_score),
+        "minervini_score":     _f(ss.minervini_score),
+        "weinstein_score":     _f(ss.weinstein_score),
         "technical_composite": _f(ss.technical_composite),
         **result,
     }
@@ -290,16 +314,11 @@ async def run_consensus_scoring(
 ) -> list[dict]:
     """
     Compute and upsert ConsensusScore rows for a batch of instruments.
-
-    Reads from strategy_scores (which must already be populated for score_date).
-    Fetches the current market regime once per market and applies it to all
-    instruments in that market.
     """
     if score_date is None:
         score_date = date.today()
 
     async with AsyncSessionLocal() as db:
-        # Fetch instruments
         stmt = (
             select(Instrument.id, Instrument.market)
             .where(Instrument.is_active == True)
@@ -311,11 +330,10 @@ async def run_consensus_scoring(
         result = await db.execute(stmt)
         instrument_rows = result.all()
 
-        # Group by market for regime lookup
         markets_needed: set[str] = {r[1] for r in instrument_rows}
-        regime_by_market: dict[str, Optional[str]] = {}
-        for mkt in markets_needed:
-            regime_by_market[mkt] = await get_latest_regime(mkt, score_date, db)
+        regime_by_market: dict[str, Optional[str]] = {
+            mkt: await get_latest_regime(mkt, score_date, db) for mkt in markets_needed
+        }
 
         logger.info(
             "Consensus scoring %d instruments for %s. Regimes: %s",
@@ -324,7 +342,7 @@ async def run_consensus_scoring(
 
         results: list[dict] = []
         conviction_counts: dict[str, int] = {
-            "DIAMOND": 0, "GOLD": 0, "SILVER": 0, "BRONZE": 0, "UNRANKED": 0
+            "DIAMOND": 0, "PLATINUM": 0, "GOLD": 0, "SILVER": 0, "BRONZE": 0, "UNRANKED": 0,
         }
 
         for inst_id, inst_market in instrument_rows:
@@ -336,7 +354,6 @@ async def run_consensus_scoring(
                 if scored is None:
                     continue
 
-                # Upsert into consensus_scores
                 existing_q = await db.execute(
                     select(ConsensusScore).where(
                         ConsensusScore.instrument_id == inst_id,
@@ -346,36 +363,34 @@ async def run_consensus_scoring(
                 existing = existing_q.scalars().first()
 
                 if existing:
-                    existing.canslim_score        = scored["canslim_score"]
-                    existing.piotroski_score       = scored["piotroski_score"]
-                    existing.minervini_score       = scored["minervini_score"]
-                    existing.weinstein_score       = scored["weinstein_score"]
-                    existing.dual_mom_score        = scored["dual_mom_score"]
-                    existing.technical_composite   = scored["technical_composite"]
-                    existing.strategy_pass_count   = scored["strategy_pass_count"]
-                    existing.consensus_composite   = scored["consensus_composite"]
-                    existing.final_score           = scored["final_score"]
-                    existing.conviction_level      = scored["conviction_level"]
-                    existing.regime_state          = scored["regime_state"]
-                    existing.regime_warning        = scored["regime_warning"]
-                    existing.score_breakdown       = scored["score_breakdown"]
+                    existing.canslim_score       = scored["canslim_score"]
+                    existing.piotroski_score     = scored["piotroski_score"]
+                    existing.minervini_score     = scored["minervini_score"]
+                    existing.weinstein_score     = scored["weinstein_score"]
+                    existing.technical_composite = scored["technical_composite"]
+                    existing.strategy_pass_count = scored["strategy_pass_count"]
+                    existing.consensus_composite = scored["consensus_composite"]
+                    existing.final_score         = scored["final_score"]
+                    existing.conviction_level    = scored["conviction_level"]
+                    existing.regime_state        = scored["regime_state"]
+                    existing.regime_warning      = scored["regime_warning"]
+                    existing.score_breakdown     = scored["score_breakdown"]
                 else:
                     db.add(ConsensusScore(
-                        instrument_id    = inst_id,
-                        score_date       = score_date,
-                        canslim_score    = scored["canslim_score"],
-                        piotroski_score  = scored["piotroski_score"],
-                        minervini_score  = scored["minervini_score"],
-                        weinstein_score  = scored["weinstein_score"],
-                        dual_mom_score   = scored["dual_mom_score"],
+                        instrument_id       = inst_id,
+                        score_date          = score_date,
+                        canslim_score       = scored["canslim_score"],
+                        piotroski_score     = scored["piotroski_score"],
+                        minervini_score     = scored["minervini_score"],
+                        weinstein_score     = scored["weinstein_score"],
                         technical_composite = scored["technical_composite"],
                         strategy_pass_count = scored["strategy_pass_count"],
                         consensus_composite = scored["consensus_composite"],
-                        final_score      = scored["final_score"],
-                        conviction_level = scored["conviction_level"],
-                        regime_state     = scored["regime_state"],
-                        regime_warning   = scored["regime_warning"],
-                        score_breakdown  = scored["score_breakdown"],
+                        final_score         = scored["final_score"],
+                        conviction_level    = scored["conviction_level"],
+                        regime_state        = scored["regime_state"],
+                        regime_warning      = scored["regime_warning"],
+                        score_breakdown     = scored["score_breakdown"],
                     ))
 
                 results.append(scored)
@@ -417,9 +432,8 @@ if __name__ == "__main__":
             print("No results scored.")
             return
 
-        # Conviction breakdown
         counts: dict[str, int] = {
-            "DIAMOND": 0, "GOLD": 0, "SILVER": 0, "BRONZE": 0, "UNRANKED": 0
+            "DIAMOND": 0, "PLATINUM": 0, "GOLD": 0, "SILVER": 0, "BRONZE": 0, "UNRANKED": 0,
         }
         for r in results:
             counts[r["conviction_level"]] += 1
@@ -430,7 +444,7 @@ if __name__ == "__main__":
         print(f"  Max final_score: {max(scores):.1f}")
         print(f"  Avg final_score: {sum(scores)/len(scores):.1f}")
         print("\nConviction distribution:")
-        for level in ["DIAMOND", "GOLD", "SILVER", "BRONZE", "UNRANKED"]:
+        for level in ["DIAMOND", "PLATINUM", "GOLD", "SILVER", "BRONZE", "UNRANKED"]:
             n = counts[level]
             bar = "#" * n
             print(f"  {level:<8}  {n:>3}  {bar}")
@@ -444,8 +458,8 @@ if __name__ == "__main__":
                 f"  [{r['conviction_level']:<8}] instr={r['instrument_id']:>5}  "
                 f"final={r['final_score']:.1f}  "
                 f"C={cs.get('canslim',0):.0f} P={cs.get('piotroski',0):.0f} "
-                f"M={cs.get('minervini',0):.0f} W={cs.get('weinstein',0):.0f} "
-                f"D={cs.get('dual_mom',0):.0f}  "
+                f"M={cs.get('minervini',0):.0f}  "
+                f"W-stage={bd.get('weinstein_stage')}  "
                 f"tech={r['technical_composite'] or 0:.0f}"
             )
 

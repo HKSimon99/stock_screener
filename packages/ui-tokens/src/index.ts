@@ -3,20 +3,22 @@
  * Used by both web (Tailwind class names) and mobile (React Native StyleSheet).
  */
 
-export type ConvictionLevel = "DIAMOND" | "GOLD" | "SILVER" | "BRONZE" | "UNRANKED";
+export type ConvictionLevel = "DIAMOND" | "PLATINUM" | "GOLD" | "SILVER" | "BRONZE" | "UNRANKED";
 
 /** Hex colours for each conviction level. */
 export const CONVICTION_COLORS: Record<ConvictionLevel, string> = {
-  DIAMOND: "#a5f3fc", // cyan-200
-  GOLD: "#fde68a",    // amber-200
-  SILVER: "#e2e8f0",  // slate-200
-  BRONZE: "#fed7aa",  // orange-200
-  UNRANKED: "#94a3b8", // slate-400
+  DIAMOND: "#a5f3fc",   // cyan-200
+  PLATINUM: "#e9d5ff",  // violet-200
+  GOLD: "#fde68a",      // amber-200
+  SILVER: "#e2e8f0",    // slate-200
+  BRONZE: "#fed7aa",    // orange-200
+  UNRANKED: "#94a3b8",  // slate-400
 };
 
 /** Tailwind bg-class names for the web app badge. */
 export const CONVICTION_TAILWIND_BG: Record<ConvictionLevel, string> = {
   DIAMOND: "bg-cyan-200 text-cyan-900",
+  PLATINUM: "bg-violet-200 text-violet-900",
   GOLD: "bg-amber-200 text-amber-900",
   SILVER: "bg-slate-200 text-slate-700",
   BRONZE: "bg-orange-200 text-orange-900",

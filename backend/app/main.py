@@ -1,8 +1,13 @@
+import logging
+from contextlib import asynccontextmanager
+
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.router import api_router
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Sentry — initialised only when SENTRY_DSN is set in the environment.
@@ -19,12 +24,75 @@ if settings.sentry_dsn:
         send_default_pii=False,
     )
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI):  # noqa: ARG001
+    """
+    FastAPI lifespan handler — replaces the deprecated @app.on_event("startup").
+    Runs health checks on startup, then yields control for the app's lifetime.
+    """
+    from sqlalchemy import text  # noqa: PLC0415
+    from app.core.database import AsyncSessionLocal  # noqa: PLC0415
+
+    checks: dict[str, str] = {}
+
+    # 1. Database connectivity
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+        checks["db_connection"] = "OK"
+    except Exception as exc:
+        checks["db_connection"] = f"FAIL: {exc}"
+        logger.critical("[startup] DB connection failed — cannot continue: %s", exc)
+        raise RuntimeError("Database unreachable on startup") from exc
+
+    # 2. Consensus scores populated (warn if table is empty)
+    try:
+        async with AsyncSessionLocal() as session:
+            row = await session.execute(
+                text("SELECT COUNT(*) FROM consensus_app.consensus_scores")
+            )
+            count = row.scalar_one()
+        checks["consensus_scores"] = (
+            "WARN: table is empty — run the scoring pipeline" if count == 0
+            else f"OK ({count} rows)"
+        )
+    except Exception as exc:
+        checks["consensus_scores"] = f"WARN: could not query ({exc})"
+
+    # 3. CORS origins include a non-localhost origin in production
+    non_local = [
+        o for o in settings.cors_origins_list
+        if "localhost" not in o and "127.0.0.1" not in o
+    ]
+    if settings.app_env == "production" and not non_local:
+        checks["cors_origins"] = (
+            "WARN: no production domain in CORS_ORIGINS — frontend will be blocked"
+        )
+    else:
+        checks["cors_origins"] = f"OK ({len(settings.cors_origins_list)} origin(s) configured)"
+
+    # 4. SECRET_KEY is not the insecure default
+    checks["secret_key"] = (
+        "WARN: SECRET_KEY is still 'changeme' — change before production use"
+        if settings.secret_key == "changeme"
+        else "OK"
+    )
+
+    # Emit one structured log line per check
+    for check, status in checks.items():
+        level = logging.WARNING if status.startswith(("WARN", "FAIL")) else logging.INFO
+        logger.log(level, "[startup] %-22s %s", check, status)
+
+    yield  # app runs here
+
+
 app = FastAPI(
     title="Consensus Stock Research Platform",
     description="Multi-strategy consensus stock screener — US & Korea",
     version="0.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=_lifespan,
 )
 
 app.add_middleware(

@@ -11,64 +11,79 @@ from app.models.strategy_score import StrategyScore
 
 
 @pytest.mark.asyncio
-async def test_rankings_endpoint_uses_snapshot_fast_path(client, db_session):
+async def test_rankings_endpoint_returns_weinstein_stage_and_regime(client, db_session):
+    """
+    Phase 4.7: rankings endpoint is now a direct consensus_scores query (no
+    snapshot path). Verifies that the endpoint attaches the Weinstein stage
+    via JOIN and that the MarketRegime lookup populates ``regime_state``.
+    """
     snapshot_date = date(2026, 4, 13)
-    db_session.add(
-        ScoringSnapshot(
-            snapshot_date=snapshot_date,
-            market="US",
-            asset_type="stock",
-            regime_state="CONFIRMED_UPTREND",
-            rankings_json=[
-                {
-                    "rank": 1,
-                    "instrument_id": 101,
-                    "ticker": "NVDA",
-                    "name": "Nvidia",
-                    "conviction_level": "GOLD",
-                    "final_score": 74.5,
-                    "consensus_composite": 63.2,
-                    "technical_composite": 77.0,
-                    "strategy_pass_count": 4,
-                    "scores": {
-                        "canslim": 72.0,
-                        "piotroski": 80.0,
-                        "minervini": 88.0,
-                        "weinstein": 82.0,
-                        "dual_mom": 75.0,
-                    },
-                    "regime_warning": False,
-                    "score_date": snapshot_date.isoformat(),
-                },
-                {
-                    "rank": 2,
-                    "instrument_id": 102,
-                    "ticker": "AAPL",
-                    "name": "Apple",
-                    "conviction_level": "SILVER",
-                    "final_score": 66.2,
-                    "consensus_composite": 58.1,
-                    "technical_composite": 69.0,
-                    "strategy_pass_count": 3,
-                    "scores": {
-                        "canslim": 64.0,
-                        "piotroski": 78.0,
-                        "minervini": 70.0,
-                        "weinstein": 62.0,
-                        "dual_mom": 57.0,
-                    },
-                    "regime_warning": True,
-                    "score_date": snapshot_date.isoformat(),
-                },
-            ],
-            metadata_={
-                "instruments_count": 2,
-                "config_hash": "test-config",
-                "avg_final_score": 70.35,
-                "conviction_distribution": {"GOLD": 1, "SILVER": 1},
-            },
-        )
+    nvda = Instrument(
+        ticker="NVDA",
+        name="Nvidia",
+        market="US",
+        exchange="NASDAQ",
+        asset_type="stock",
+        is_active=True,
     )
+    aapl = Instrument(
+        ticker="AAPL",
+        name="Apple",
+        market="US",
+        exchange="NASDAQ",
+        asset_type="stock",
+        is_active=True,
+    )
+    db_session.add_all([nvda, aapl])
+    await db_session.flush()
+
+    db_session.add_all([
+        ConsensusScore(
+            instrument_id=nvda.id,
+            score_date=snapshot_date,
+            conviction_level="GOLD",
+            final_score=74.5,
+            consensus_composite=63.2,
+            technical_composite=77.0,
+            strategy_pass_count=4,
+            canslim_score=72.0,
+            piotroski_score=80.0,
+            minervini_score=88.0,
+            weinstein_score=82.0,
+            regime_warning=False,
+        ),
+        ConsensusScore(
+            instrument_id=aapl.id,
+            score_date=snapshot_date,
+            conviction_level="SILVER",
+            final_score=66.2,
+            consensus_composite=58.1,
+            technical_composite=69.0,
+            strategy_pass_count=3,
+            canslim_score=64.0,
+            piotroski_score=78.0,
+            minervini_score=70.0,
+            weinstein_score=62.0,
+            regime_warning=True,
+        ),
+        StrategyScore(
+            instrument_id=nvda.id,
+            score_date=snapshot_date,
+            weinstein_stage="2_mid",
+            weinstein_score=82.0,
+        ),
+        StrategyScore(
+            instrument_id=aapl.id,
+            score_date=snapshot_date,
+            weinstein_stage="1",
+            weinstein_score=62.0,
+        ),
+        MarketRegime(
+            market="US",
+            effective_date=snapshot_date,
+            state="CONFIRMED_UPTREND",
+        ),
+    ])
     await db_session.commit()
 
     response = await client.get(
@@ -81,6 +96,10 @@ async def test_rankings_endpoint_uses_snapshot_fast_path(client, db_session):
     assert payload["pagination"]["total"] == 2
     assert payload["regime_warning_count"] == 1
     assert [item["ticker"] for item in payload["items"]] == ["NVDA", "AAPL"]
+    # Weinstein stage is now exposed for gate display
+    stage_by_ticker = {item["ticker"]: item["weinstein_stage"] for item in payload["items"]}
+    assert stage_by_ticker["NVDA"] == "2_mid"
+    assert stage_by_ticker["AAPL"] == "1"
 
 
 @pytest.mark.asyncio

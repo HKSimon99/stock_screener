@@ -34,6 +34,13 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    # Task reliability
+    task_acks_late=True,                    # Ack task only after successful execution
+    task_reject_on_worker_lost=True,        # Reject task if worker dies mid-execution
+    task_time_limit=3600,                   # Hard limit: 1 hour
+    task_soft_time_limit=3300,              # Soft limit: 55 min (time for cleanup)
+    result_expires=86400,                   # Keep results for 1 day
+    worker_max_tasks_per_child=100,         # Restart worker after 100 tasks (prevent memory leaks)
     beat_schedule={
         "daily-data-integrity-monitor": {
             "task": "app.tasks.alerts.run_data_integrity_monitoring",

@@ -172,41 +172,63 @@ async def score_instrument(
     if not inst:
         return None
 
-    # ── Fetch quarterly fundamentals (last 8 quarters) ──────────────────────
-    qf_q = await db.execute(
-        select(FundamentalQuarterly)
-        .where(
-            FundamentalQuarterly.instrument_id == instrument_id,
-            FundamentalQuarterly.report_date <= score_date,
+    # ── Fetch supporting data — 4 independent queries run in parallel ───────
+    # Using asyncio.gather cuts per-instrument latency from ~4 serial round-
+    # trips to ~1 (asyncpg pipelines the queries on the same connection).
+    async def _fetch_quarterlies():
+        r = await db.execute(
+            select(FundamentalQuarterly)
+            .where(
+                FundamentalQuarterly.instrument_id == instrument_id,
+                FundamentalQuarterly.report_date <= score_date,
+            )
+            .order_by(desc(FundamentalQuarterly.report_date))
+            .limit(8)
         )
-        .order_by(desc(FundamentalQuarterly.report_date))
-        .limit(8)
-    )
-    quarterlies = list(reversed(qf_q.scalars().all()))  # oldest first
+        return list(reversed(r.scalars().all()))  # oldest first
 
-    # ── Fetch annual fundamentals (last 6 years) ────────────────────────────
-    af_q = await db.execute(
-        select(FundamentalAnnual)
-        .where(
-            FundamentalAnnual.instrument_id == instrument_id,
-            FundamentalAnnual.report_date <= score_date,
+    async def _fetch_annuals():
+        r = await db.execute(
+            select(FundamentalAnnual)
+            .where(
+                FundamentalAnnual.instrument_id == instrument_id,
+                FundamentalAnnual.report_date <= score_date,
+            )
+            .order_by(desc(FundamentalAnnual.report_date))
+            .limit(6)
         )
-        .order_by(desc(FundamentalAnnual.report_date))
-        .limit(6)
-    )
-    annuals = list(reversed(af_q.scalars().all()))  # oldest first
+        return list(reversed(r.scalars().all()))  # oldest first
 
-    # ── Fetch latest price data ─────────────────────────────────────────────
-    price_q = await db.execute(
-        select(Price)
-        .where(
-            Price.instrument_id == instrument_id,
-            Price.trade_date <= score_date,
+    async def _fetch_prices():
+        r = await db.execute(
+            select(Price)
+            .where(
+                Price.instrument_id == instrument_id,
+                Price.trade_date <= score_date,
+            )
+            .order_by(desc(Price.trade_date))
+            .limit(252)  # ~1 year for 52w high calc
         )
-        .order_by(desc(Price.trade_date))
-        .limit(252)  # ~1 year for 52w high calc
+        return list(reversed(r.scalars().all()))  # oldest first
+
+    async def _fetch_inst_own():
+        r = await db.execute(
+            select(InstitutionalOwnership)
+            .where(
+                InstitutionalOwnership.instrument_id == instrument_id,
+                InstitutionalOwnership.report_date <= score_date,
+            )
+            .order_by(desc(InstitutionalOwnership.report_date))
+            .limit(1)
+        )
+        return r.scalars().first()
+
+    quarterlies, annuals, prices, inst_own = await asyncio.gather(
+        _fetch_quarterlies(),
+        _fetch_annuals(),
+        _fetch_prices(),
+        _fetch_inst_own(),
     )
-    prices = list(reversed(price_q.scalars().all()))  # oldest first
 
     if not has_minimum_required_data(
         quarterly_count=len(quarterlies),
@@ -223,19 +245,7 @@ async def score_instrument(
         )
         return None
 
-    # ── Fetch institutional ownership ───────────────────────────────────────
-    io_q = await db.execute(
-        select(InstitutionalOwnership)
-        .where(
-            InstitutionalOwnership.instrument_id == instrument_id,
-            InstitutionalOwnership.report_date <= score_date,
-        )
-        .order_by(desc(InstitutionalOwnership.report_date))
-        .limit(1)
-    )
-    inst_own = io_q.scalars().first()
-
-    # ── Fetch market regime ─────────────────────────────────────────────────
+    # ── Fetch market regime (sequential — needs inst.market from above) ─────
     regime_q = await db.execute(
         select(MarketRegime)
         .where(

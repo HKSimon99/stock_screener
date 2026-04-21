@@ -6,6 +6,7 @@ import os
 from typing import Optional
 
 from sqlalchemy import select
+from tenacity import retry, wait_exponential, stop_after_attempt
 
 from app.core.database import AsyncSessionLocal
 from app.models.instrument import Instrument
@@ -34,6 +35,12 @@ from app.tasks.celery_app import celery_app
 
 KR_PRICE_REQUEST_DELAY_SECONDS = 1.0
 logger = logging.getLogger(__name__)
+
+# Retry strategy: exponential backoff 2s → 60s, max 3 attempts
+TASK_RETRY_DECORATOR = retry(
+    wait=wait_exponential(min=2, max=60),
+    stop=stop_after_attempt(3),
+)
 
 
 def _normalize_tickers(tickers: Optional[list[str]] = None) -> list[str]:
@@ -373,6 +380,7 @@ async def run_kr_price_ingestion(
 
 
 @celery_app.task(name="app.tasks.ingestion.run_us_fundamentals")
+@TASK_RETRY_DECORATOR
 def run_us_fundamentals_task(ticker: str, years: int = 5) -> dict:
     normalized = _normalize_tickers([ticker])
     if not normalized:
@@ -394,6 +402,7 @@ def run_us_fundamentals_task(ticker: str, years: int = 5) -> dict:
 
 
 @celery_app.task(name="app.tasks.ingestion.run_kr_fundamentals")
+@TASK_RETRY_DECORATOR
 def run_kr_fundamentals_task(ticker: str, years: int = 5) -> dict:
     normalized = _normalize_tickers([ticker])
     if not normalized:
@@ -415,6 +424,7 @@ def run_kr_fundamentals_task(ticker: str, years: int = 5) -> dict:
 
 
 @celery_app.task(name="app.tasks.ingestion.run_us_prices")
+@TASK_RETRY_DECORATOR
 def run_us_price_task(
     ticker: str,
     days: int = 730,
@@ -441,6 +451,7 @@ def run_us_price_task(
 
 
 @celery_app.task(name="app.tasks.ingestion.run_kr_prices")
+@TASK_RETRY_DECORATOR
 def run_kr_price_task(
     ticker: str,
     days: int = 730,
@@ -467,6 +478,7 @@ def run_kr_price_task(
 
 
 @celery_app.task(name="app.tasks.ingestion.run_us_fundamentals_batch")
+@TASK_RETRY_DECORATOR
 def run_us_fundamentals_batch_task(
     tickers: Optional[list[str]] = None,
     years: int = 5,
@@ -483,6 +495,7 @@ def run_us_fundamentals_batch_task(
 
 
 @celery_app.task(name="app.tasks.ingestion.run_kr_fundamentals_batch")
+@TASK_RETRY_DECORATOR
 def run_kr_fundamentals_batch_task(
     tickers: Optional[list[str]] = None,
     years: int = 5,
@@ -499,6 +512,7 @@ def run_kr_fundamentals_batch_task(
 
 
 @celery_app.task(name="app.tasks.ingestion.run_us_prices_batch")
+@TASK_RETRY_DECORATOR
 def run_us_price_batch_task(
     tickers: Optional[list[str]] = None,
     days: int = 730,
@@ -516,6 +530,7 @@ def run_us_price_batch_task(
 
 
 @celery_app.task(name="app.tasks.ingestion.run_kr_prices_batch")
+@TASK_RETRY_DECORATOR
 def run_kr_price_batch_task(
     tickers: Optional[list[str]] = None,
     days: int = 730,
@@ -533,6 +548,7 @@ def run_kr_price_batch_task(
 
 
 @celery_app.task(name="app.tasks.ingestion.run_us_institutional")
+@TASK_RETRY_DECORATOR
 def run_us_institutional_task(
     tickers: Optional[list[str]] = None,
     report_date: Optional[str] = None,
@@ -564,6 +580,7 @@ def run_us_institutional_task(
 
 
 @celery_app.task(name="app.tasks.ingestion.run_kr_investor_flows")
+@TASK_RETRY_DECORATOR
 def run_kr_investor_flows_task(
     tickers: Optional[list[str]] = None,
     report_date: Optional[str] = None,

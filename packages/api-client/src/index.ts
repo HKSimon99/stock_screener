@@ -26,6 +26,7 @@ export const BASE_URL = _baseUrl;
 
 export type ConvictionLevel =
   | "DIAMOND"
+  | "PLATINUM"
   | "GOLD"
   | "SILVER"
   | "BRONZE"
@@ -50,8 +51,7 @@ export type RankingSortField =
   | "canslim_score"
   | "piotroski_score"
   | "minervini_score"
-  | "weinstein_score"
-  | "dual_mom_score";
+  | "weinstein_score";
 
 export interface PaginationMeta {
   total: number;
@@ -93,7 +93,6 @@ export interface RankingItem {
   piotroski_score: number;
   minervini_score: number;
   weinstein_score: number;
-  dual_mom_score: number;
 }
 
 export interface RankingsResponse {
@@ -142,12 +141,6 @@ export interface StrategyDetail {
     sub_stage?: string;
     ma_slope: number;
     price_vs_ma: number;
-  };
-  dual_mom_detail?: {
-    abs_mom: boolean;
-    rel_mom: boolean;
-    ret_12m: number;
-    benchmark_ret_12m: number;
   };
   patterns?: Array<{
     pattern_name: string;
@@ -288,7 +281,6 @@ export interface AdvancedFilterQuery {
   min_minervini?: number;
   minervini_criteria_min?: number;
   weinstein_stage?: string[];
-  dual_mom_pass?: boolean;
   ad_rating?: string[];
   rs_line_new_high?: boolean;
   has_pattern?: string;
@@ -381,7 +373,6 @@ interface RawStrategyScores {
   piotroski?: number | null;
   minervini?: number | null;
   weinstein?: number | null;
-  dual_mom?: number | null;
 }
 
 interface RawRankingItem {
@@ -442,13 +433,6 @@ interface RawWeinsteinDetail {
   detail?: Record<string, unknown> | null;
 }
 
-interface RawDualMomentumDetail {
-  score?: number | null;
-  abs_pass?: boolean | null;
-  rel_pass?: boolean | null;
-  detail?: Record<string, unknown> | null;
-}
-
 interface RawTechnicalDetail {
   composite?: number | null;
   rs_rating?: number | null;
@@ -487,7 +471,6 @@ interface RawInstrumentDetail {
   piotroski: RawPiotroskiDetail;
   minervini: RawMinerviniDetail;
   weinstein: RawWeinsteinDetail;
-  dual_mom: RawDualMomentumDetail;
   technical: RawTechnicalDetail;
   score_breakdown?: Record<string, unknown> | null;
   factor_breakdown?: Record<string, unknown> | null;
@@ -670,7 +653,6 @@ function normalizeRankingItem(item: RawRankingItem): RankingItem {
     piotroski_score: toNumber(item.scores.piotroski),
     minervini_score: toNumber(item.scores.minervini),
     weinstein_score: toNumber(item.scores.weinstein),
-    dual_mom_score: toNumber(item.scores.dual_mom),
   };
 }
 
@@ -690,7 +672,6 @@ function normalizeRankingsResponse(raw: RawRankingsResponse): RankingsResponse {
 function normalizeInstrument(raw: RawInstrumentDetail): InstrumentDetail {
   const piotroskiCriteria = raw.piotroski.criteria ?? {};
   const minerviniCriteria = raw.minervini.criteria ?? {};
-  const dualMomDetail = raw.dual_mom.detail ?? {};
   const weinsteinDetail = raw.weinstein.detail ?? {};
   const technicalDetail = raw.technical.detail ?? {};
   const scoreBreakdown = raw.score_breakdown ?? {};
@@ -743,7 +724,6 @@ function normalizeInstrument(raw: RawInstrumentDetail): InstrumentDetail {
     piotroski_score: toNumber(raw.piotroski.score),
     minervini_score: toNumber(raw.minervini.score),
     weinstein_score: toNumber(raw.weinstein.score),
-    dual_mom_score: toNumber(raw.dual_mom.score),
     computed_at: raw.computed_at ?? undefined,
     rs_rating: raw.technical.rs_rating ?? undefined,
     ad_rating: raw.technical.ad_rating ?? undefined,
@@ -789,18 +769,6 @@ function normalizeInstrument(raw: RawInstrumentDetail): InstrumentDetail {
           : undefined,
       ma_slope: toNumber(rawMaSlope),
       price_vs_ma: toNumber(rawPriceVsMa),
-    },
-    dual_mom_detail: {
-      abs_mom: raw.dual_mom.abs_pass ?? false,
-      rel_mom: raw.dual_mom.rel_pass ?? false,
-      ret_12m: toNumber(
-        typeof dualMomDetail.ret_12m === "number" ? dualMomDetail.ret_12m : null
-      ),
-      benchmark_ret_12m: toNumber(
-        typeof dualMomDetail.benchmark_ret_12m === "number"
-          ? dualMomDetail.benchmark_ret_12m
-          : null
-      ),
     },
     patterns:
       raw.technical.patterns?.map((pattern) => ({

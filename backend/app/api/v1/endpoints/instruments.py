@@ -20,9 +20,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Optional
 
-import asyncio
-
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +32,7 @@ from app.models.price import Price
 from app.models.strategy_score import StrategyScore
 from app.schemas.v1 import (
     ChartLinePoint, ChartPatternAnchor, ChartPatternOverlay, ChartPriceBar,
-    CANSLIMDetail, DualMomentumDetail, InstrumentDetailResponse,
+    CANSLIMDetail, InstrumentDetailResponse,
     InstrumentChartResponse,
     ScoreHistoryPoint, WeinsteinStageHistoryPoint,
     MinerviniDetail, PiotroskiDetail, TechnicalDetail, WeinsteinDetail,
@@ -475,6 +473,12 @@ async def get_instrument(
     )
     cs = cs_q.scalars().first()
 
+    if cs is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No scoring data available yet for '{ticker}'. Run the scoring pipeline to generate consensus scores.",
+        )
+
     score_history_q = await db.execute(
         select(
             ConsensusScore.score_date,
@@ -578,12 +582,6 @@ async def get_instrument(
             stage  = ss.weinstein_stage      if ss else None,
             detail = ss.weinstein_detail     if ss else None,
         ),
-        dual_mom = DualMomentumDetail(
-            score    = _f(ss.dual_mom_score) if ss else None,
-            abs_pass = ss.dual_mom_abs        if ss else None,
-            rel_pass = ss.dual_mom_rel        if ss else None,
-            detail   = ss.dual_mom_detail     if ss else None,
-        ),
         technical = TechnicalDetail(
             composite        = _f(ss.technical_composite) if ss else None,
             rs_rating        = _f(ss.rs_rating)            if ss else None,
@@ -594,44 +592,3 @@ async def get_instrument(
             detail           = ss.technical_detail         if ss else None,
         ),
     )
-
-
-@router.websocket("/stream/quotes")
-async def stream_quotes(websocket: WebSocket) -> None:
-    await websocket.accept()
-    market = websocket.query_params.get("market")
-    ticker = websocket.query_params.get("ticker")
-    if market not in {"US", "KR"} or not ticker:
-        await websocket.send_json({"type": "error", "detail": "market and ticker are required"})
-        await websocket.close(code=1008)
-        return
-
-    try:
-        while True:
-            async with AsyncSessionLocal() as db:
-                instrument = await _resolve_instrument(ticker=ticker, market=market, db=db)
-                latest_price_q = await db.execute(
-                    select(Price)
-                    .where(Price.instrument_id == instrument.id)
-                    .order_by(desc(Price.trade_date))
-                    .limit(1)
-                )
-                latest_price = latest_price_q.scalars().first()
-                coverage_map = await build_coverage_map(db, [instrument])
-                coverage = coverage_map[instrument.id]
-
-                await websocket.send_json(
-                    {
-                        "type": "quote",
-                        "ticker": instrument.ticker,
-                        "market": instrument.market,
-                        "delay_minutes": coverage.delay_minutes,
-                        "coverage_state": coverage.coverage_state,
-                        "as_of": latest_price.trade_date.isoformat() if latest_price else None,
-                        "price": float(latest_price.close) if latest_price and latest_price.close is not None else None,
-                        "volume": int(latest_price.volume or 0) if latest_price else None,
-                    }
-                )
-            await asyncio.sleep(15)
-    except (WebSocketDisconnect, HTTPException):
-        return

@@ -22,7 +22,6 @@ class StrategyScores(BaseModel):
     piotroski: Optional[float] = None
     minervini: Optional[float] = None
     weinstein: Optional[float] = None
-    dual_mom:  Optional[float] = None
 
 
 class PaginationMeta(BaseModel):
@@ -56,12 +55,13 @@ class RankingEntry(BaseModel):
     market:              str
     exchange:            Optional[str] = None
     asset_type:          Optional[str] = None
-    conviction_level:    str                       # DIAMOND | GOLD | SILVER | BRONZE | UNRANKED
+    conviction_level:    str                       # DIAMOND | PLATINUM | GOLD | SILVER | BRONZE | UNRANKED
     final_score:         float
     consensus_composite: Optional[float] = None
     technical_composite: Optional[float] = None
     strategy_pass_count: int
     scores:              StrategyScores
+    weinstein_stage:     Optional[str] = None      # '1' | '2_early' | '2_mid' | '2_late' | '3' | '4' — used for gate display
     regime_warning:      bool = False
     score_date:          date
     coverage_state:      Optional[str] = None
@@ -108,13 +108,6 @@ class WeinsteinDetail(BaseModel):
     score:  Optional[float] = None
     stage:  Optional[str]   = None   # '1'|'2_early'|'2_mid'|'2_late'|'3'|'4'
     detail: Optional[dict]  = None
-
-
-class DualMomentumDetail(BaseModel):
-    score:    Optional[float] = None
-    abs_pass: Optional[bool]  = None
-    rel_pass: Optional[bool]  = None
-    detail:   Optional[dict]  = None
 
 
 class TechnicalDetail(BaseModel):
@@ -215,12 +208,12 @@ class InstrumentDetailResponse(BaseModel):
     final_score:         Optional[float] = None
     consensus_composite: Optional[float] = None
     strategy_pass_count: Optional[int]   = None
+    weinstein_stage:     Optional[str]   = None   # For UI gate visibility
 
     canslim:    CANSLIMDetail     = Field(default_factory=CANSLIMDetail)
     piotroski:  PiotroskiDetail   = Field(default_factory=PiotroskiDetail)
     minervini:  MinerviniDetail   = Field(default_factory=MinerviniDetail)
     weinstein:  WeinsteinDetail   = Field(default_factory=WeinsteinDetail)
-    dual_mom:   DualMomentumDetail = Field(default_factory=DualMomentumDetail)
     technical:  TechnicalDetail   = Field(default_factory=TechnicalDetail)
 
     score_breakdown: Optional[dict] = None
@@ -268,7 +261,6 @@ class FilterQuery(BaseModel):
     min_minervini:    Optional[float] = None
     minervini_criteria_min: Optional[int] = None     # Of 8 criteria
     weinstein_stage:  Optional[list[str]] = None     # ["2_early", "2_mid"]
-    dual_mom_pass:    Optional[bool]  = None         # Both abs + rel passing
     ad_rating:        Optional[list[str]] = None     # ["A+", "A", "B"]
     rs_line_new_high: Optional[bool]  = None
     has_pattern:      Optional[str]   = None         # pattern_type filter
@@ -276,7 +268,7 @@ class FilterQuery(BaseModel):
     offset:           int = Field(default=0, ge=0)
     sort_by:          str = Field(
         default="final_score",
-        pattern="^(final_score|consensus_composite|technical_composite|canslim_score|piotroski_score|minervini_score|weinstein_score|dual_mom_score)$"
+        pattern="^(final_score|consensus_composite|technical_composite|canslim_score|piotroski_score|minervini_score|weinstein_score)$"
     )
     sort_dir:         str = Field(default="desc", pattern="^(asc|desc)$")
 

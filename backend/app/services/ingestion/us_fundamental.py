@@ -6,6 +6,7 @@ import math
 
 import pandas as pd
 from edgar import set_identity, Company
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception
 
 from app.core.database import AsyncSessionLocal
 from app.models.fundamental import FundamentalAnnual, FundamentalQuarterly
@@ -16,6 +17,12 @@ logger = logging.getLogger(__name__)
 
 # Must set identity for SEC EDGAR access
 set_identity('ConsensusApp consensus@example.com')
+
+def is_rate_limit_error(exc: Exception) -> bool:
+    """Check if exception is from EDGAR rate limiting (429/503)."""
+    # edgartools wraps HTTPStatusError from requests/httpx
+    exc_str = str(exc)
+    return '429' in exc_str or '503' in exc_str
 
 class EdgarFundamentalIngester:
     def __init__(self):
@@ -112,8 +119,18 @@ class EdgarFundamentalIngester:
                         return None
         return None
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        stop=stop_after_attempt(3),
+        retry=retry_if_exception(is_rate_limit_error),
+        reraise=True
+    )
     async def ingest_fundamentals(self, ticker: str, years: int = 5):
-        """Fetches 10-K and 10-Q for the specified ticker and upserts into database."""
+        """Fetches 10-K and 10-Q for the specified ticker and upserts into database.
+
+        Retries automatically on 429 (Too Many Requests) or 503 (Service Unavailable)
+        with exponential backoff (2s, 4s, 8s... max 60s).
+        """
         logger.info(f"Starting US Fundamental ingestion for {ticker} over {years} years")
         
         async with AsyncSessionLocal() as db:
@@ -141,22 +158,25 @@ class EdgarFundamentalIngester:
                 for filing in filings_10k_list:
                     try:
                         df = filing.xbrl().facts.to_dataframe()
-                        
+
                         record_dict = {
                             "instrument_id": instrument.id,
                             "fiscal_year": filing.filing_date.year, # Approximate fiscal year by filing date
                             "report_date": filing.filing_date
                         }
-                        
+
                         for attr, concepts in self.annual_concept_map.items():
                             val = self._extract_fact(df, concepts)
                             # Handle infinites or NaN
                             if val is not None and math.isfinite(val):
                                 record_dict[attr] = val
-                                
+
                         annual_records.append(record_dict)
                     except Exception as e:
                         logger.warning(f"Error parsing 10-K {filing.accession_no} for {ticker}: {e}")
+                    finally:
+                        # Rate limiting: stay under 10 req/sec to avoid 429
+                        await asyncio.sleep(0.1)
                 
                 # Compute YoY for Annual
                 annual_records = sorted(annual_records, key=lambda x: x['report_date'])
@@ -203,26 +223,29 @@ class EdgarFundamentalIngester:
                 for filing in filings_10q_list:
                     try:
                         df = filing.xbrl().facts.to_dataframe()
-                        
+
                         # Approximating Quarter by month
                         month = filing.filing_date.month
                         quarter = (month - 1) // 3 + 1
-                        
+
                         record_dict = {
                             "instrument_id": instrument.id,
                             "fiscal_year": filing.filing_date.year,
                             "fiscal_quarter": quarter,
                             "report_date": filing.filing_date
                         }
-                        
+
                         for attr, concepts in self.quarterly_concept_map.items():
                             val = self._extract_fact(df, concepts)
                             if val is not None and math.isfinite(val):
                                 record_dict[attr] = val
-                                
+
                         quarterly_records.append(record_dict)
                     except Exception as e:
                         logger.warning(f"Error parsing 10-Q {filing.accession_no} for {ticker}: {e}")
+                    finally:
+                        # Rate limiting: stay under 10 req/sec to avoid 429
+                        await asyncio.sleep(0.1)
                         
                 # Compute YoY for Quarterly (Compare Q(t) with Q(t-4))
                 quarterly_records = sorted(quarterly_records, key=lambda x: x['report_date'])

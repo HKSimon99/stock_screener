@@ -225,8 +225,6 @@ async def filter_instruments(
         stmt = stmt.where(StrategyScore.minervini_criteria_count >= body.minervini_criteria_min)
     if body.weinstein_stage:
         stmt = stmt.where(StrategyScore.weinstein_stage.in_(body.weinstein_stage))
-    if body.dual_mom_pass is True:
-        stmt = stmt.where(StrategyScore.dual_mom_abs == True, StrategyScore.dual_mom_rel == True)
     if body.ad_rating:
         stmt = stmt.where(StrategyScore.ad_rating.in_(body.ad_rating))
     if body.rs_line_new_high is not None:

@@ -76,7 +76,12 @@ async def test_search_endpoint_returns_coverage_state_and_reasons(client, db_ses
 
 
 @pytest.mark.asyncio
-async def test_instrument_endpoint_returns_price_ready_symbol_without_scores(client, db_session):
+async def test_instrument_endpoint_returns_404_when_not_yet_scored(client, db_session):
+    """
+    Phase 4.6: instrument detail now returns 404 (not 200/UNRANKED) when no
+    ConsensusScore row exists for the instrument.  This prevents a silent
+    UNRANKED response that could mask a missing-pipeline problem.
+    """
     instrument = Instrument(
         ticker="MSFT",
         name="Microsoft",
@@ -105,13 +110,9 @@ async def test_instrument_endpoint_returns_price_ready_symbol_without_scores(cli
 
     response = await client.get("/api/v1/instruments/MSFT?market=US")
 
-    assert response.status_code == 200
+    assert response.status_code == 404
     payload = response.json()
-    assert payload["coverage_state"] == "price_ready"
-    assert payload["conviction_level"] == "UNRANKED"
-    assert payload["freshness"]["price_as_of"] == "2026-04-13"
-    assert "no_fundamentals" in payload["ranking_eligibility"]["reasons"]
-    assert "score_not_generated" in payload["ranking_eligibility"]["reasons"]
+    assert "scoring" in payload["detail"].lower() or "score" in payload["detail"].lower()
 
 
 @pytest.mark.asyncio

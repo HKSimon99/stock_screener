@@ -36,11 +36,12 @@ dependencies = [
     "pandas>=2.2.0",
     "numpy>=1.26.0",
 
-    # HTTP
+    # HTTP + Resilience
     "httpx>=0.27.0",
     "aiohttp>=3.9.0",
     "PyJWT[crypto]>=2.10.1",
     "cryptography>=44.0.0",
+    "tenacity>=8.2.0",              # Retry logic with exponential backoff
 
     # Cloud storage — R2 (S3-compatible) for snapshot CDN upload (env-gated)
     "boto3>=1.34.0",

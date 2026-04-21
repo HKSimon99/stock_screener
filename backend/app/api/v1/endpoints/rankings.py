@@ -3,14 +3,21 @@ GET /api/v1/rankings
 GET /api/v1/rankings/{ticker}  (convenience redirect to instruments)
 
 Returns the consensus-ranked list of instruments, optionally filtered by
-market, conviction level, asset_type, and date.  Results are served from
-the latest ``scoring_snapshots`` record when available (fast path), falling
-back to a live ``consensus_scores`` query.
+market, conviction level, asset_type, and date.
+
+Implementation (Phase 4.7 refactor)
+-----------------------------------
+Queries ``consensus_scores`` directly (no more snapshot-JSON filtering in
+Python). The snapshot fallback was removed because it required Python-side
+pagination and filtering that couldn't leverage DB indexes; the direct
+query uses the ``idx_cs_score_date`` composite index (see migration 0006)
+and returns the total in the same round-trip via a
+``COUNT(*) OVER ()`` window function — eliminating the separate count query.
 
 Query parameters
 ----------------
 market          US | KR (default: all)
-conviction      DIAMOND | GOLD | SILVER | BRONZE | UNRANKED (repeatable)
+conviction      DIAMOND | PLATINUM | GOLD | SILVER | BRONZE | UNRANKED (repeatable)
 asset_type      stock | etf (default: stock)
 score_date      ISO date (default: latest available)
 limit           1-200 (default 50)
@@ -32,7 +39,7 @@ from app.api.deps import get_read_db
 from app.models.consensus_score import ConsensusScore
 from app.models.instrument import Instrument
 from app.models.market_regime import MarketRegime
-from app.models.snapshot import ScoringSnapshot
+from app.models.strategy_score import StrategyScore
 from app.schemas.v1 import (
     PaginationMeta,
     RankingEntry,
@@ -47,14 +54,27 @@ from app.services.universe import RANK_MODEL_VERSION
 _CACHE_CONTROL = "public, max-age=300, stale-while-revalidate=60"
 
 
-def _make_etag(score_date, market: str, asset_type: str, total: int, source: str) -> str:
+def _make_etag(
+    score_date,
+    market: str,
+    asset_type: str,
+    conviction: list[str],
+    limit: int,
+    offset: int,
+    total: int,
+) -> str:
     """
-    Deterministic weak ETag based on the ranking's identity.
-
-    Using score_date + market + asset_type + total ensures the ETag changes
-    whenever the underlying data changes, without having to hash the full body.
+    Deterministic weak ETag that fingerprints every dimension a client can
+    vary. Previously the ETag ignored ``conviction``, ``limit`` and
+    ``offset``, which caused different filter combinations to collide on
+    the same cache entry.
     """
-    key = f"{score_date}:{market}:{asset_type}:{total}:{source}"
+    # Normalise conviction (order-insensitive, case-insensitive)
+    conviction_key = ",".join(sorted(c.upper() for c in conviction)) or "*"
+    key = (
+        f"{score_date}:{market}:{asset_type}:{conviction_key}:"
+        f"{limit}:{offset}:{total}"
+    )
     digest = hashlib.sha256(key.encode()).hexdigest()[:16]
     return f'W/"{digest}"'
 
@@ -67,65 +87,59 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 
-def _entry_from_snapshot_row(row: dict, market: str, asset_type: str) -> RankingEntry:
-    return RankingEntry(
-        rank=row.get("rank", 0),
-        instrument_id=row["instrument_id"],
-        ticker=row.get("ticker", ""),
-        name=row.get("name", ""),
-        market=market,
-        exchange=row.get("exchange"),
-        asset_type=row.get("asset_type", asset_type),
-        conviction_level=row.get("conviction_level", "UNRANKED"),
-        final_score=row.get("final_score", 0.0),
-        consensus_composite=row.get("consensus_composite"),
-        technical_composite=row.get("technical_composite"),
-        strategy_pass_count=row.get("strategy_pass_count", 0),
-        scores=StrategyScores(
-            canslim=row.get("scores", {}).get("canslim"),
-            piotroski=row.get("scores", {}).get("piotroski"),
-            minervini=row.get("scores", {}).get("minervini"),
-            weinstein=row.get("scores", {}).get("weinstein"),
-            dual_mom=row.get("scores", {}).get("dual_mom"),
-        ),
-        regime_warning=row.get("regime_warning", False),
-        score_date=date.fromisoformat(str(row.get("score_date", date.today()))),
-        coverage_state=row.get("coverage_state", "ranked"),
-        rank_model_version=row.get("rank_model_version", RANK_MODEL_VERSION),
-    )
+def _f(val) -> Optional[float]:
+    return float(val) if val is not None else None
 
 
-def _entry_from_consensus(
-    cs: ConsensusScore,
-    ticker: str,
-    name: str,
-    market: str,
-    exchange: str,
-    asset_type: str,
+def _entry_from_row(
+    row: tuple,
     rank: int,
 ) -> RankingEntry:
+    """Convert a joined query row into a RankingEntry.
+
+    ``row`` tuple layout (must match the SELECT order in ``get_rankings``):
+        0  instrument_id
+        1  ticker
+        2  name
+        3  market
+        4  exchange
+        5  asset_type
+        6  conviction_level
+        7  final_score
+        8  consensus_composite
+        9  technical_composite
+        10 strategy_pass_count
+        11 canslim_score
+        12 piotroski_score
+        13 minervini_score
+        14 weinstein_score
+        15 regime_warning
+        16 score_date
+        17 weinstein_stage
+        18 total_count  (from COUNT(*) OVER ())
+    """
     return RankingEntry(
         rank=rank,
-        instrument_id=cs.instrument_id,
-        ticker=ticker,
-        name=name,
-        market=market,
-        exchange=exchange,
-        asset_type=asset_type,
-        conviction_level=cs.conviction_level,
-        final_score=float(cs.final_score) if cs.final_score else 0.0,
-        consensus_composite=float(cs.consensus_composite) if cs.consensus_composite else None,
-        technical_composite=float(cs.technical_composite) if cs.technical_composite else None,
-        strategy_pass_count=cs.strategy_pass_count or 0,
+        instrument_id=row[0],
+        ticker=row[1],
+        name=row[2] or "",
+        market=row[3],
+        exchange=row[4],
+        asset_type=row[5],
+        conviction_level=row[6] or "UNRANKED",
+        final_score=_f(row[7]) or 0.0,
+        consensus_composite=_f(row[8]),
+        technical_composite=_f(row[9]),
+        strategy_pass_count=row[10] or 0,
         scores=StrategyScores(
-            canslim=float(cs.canslim_score) if cs.canslim_score else None,
-            piotroski=float(cs.piotroski_score) if cs.piotroski_score else None,
-            minervini=float(cs.minervini_score) if cs.minervini_score else None,
-            weinstein=float(cs.weinstein_score) if cs.weinstein_score else None,
-            dual_mom=float(cs.dual_mom_score) if cs.dual_mom_score else None,
+            canslim=_f(row[11]),
+            piotroski=_f(row[12]),
+            minervini=_f(row[13]),
+            weinstein=_f(row[14]),
         ),
-        regime_warning=cs.regime_warning or False,
-        score_date=cs.score_date,
+        weinstein_stage=row[17],
+        regime_warning=bool(row[15]) if row[15] is not None else False,
+        score_date=row[16],
         coverage_state="ranked",
         rank_model_version=RANK_MODEL_VERSION,
     )
@@ -169,9 +183,13 @@ async def get_rankings(
     db: AsyncSession = Depends(get_read_db),
 ) -> RankingsResponse:
     """
-    Returns the consensus-ranked list.
+    Returns the consensus-ranked list using a direct indexed query.
 
-    Tries the snapshot table first (fast), falls back to live consensus_scores.
+    Uses ``COUNT(*) OVER ()`` so the total row count is returned in the
+    same query as the page, avoiding a second round-trip. The LEFT JOIN
+    to ``strategy_scores`` attaches the Weinstein stage so the UI can
+    show the gate reason ("capped at SILVER because Stage 1") without
+    hitting the instrument-detail endpoint.
     """
     # ── Resolve score_date ──────────────────────────────────────────────────
     if score_date is None:
@@ -181,71 +199,79 @@ async def get_rankings(
             404, detail="No consensus scores found. Run the scoring pipeline first."
         )
 
-    # ── Try snapshot fast path ──────────────────────────────────────────────
-    snap_market = market or "US"
-    snap_q = await db.execute(
-        select(ScoringSnapshot).where(
-            ScoringSnapshot.snapshot_date == score_date,
-            ScoringSnapshot.market == snap_market,
-            ScoringSnapshot.asset_type == asset_type,
+    # ── Build direct query with window-function count ───────────────────────
+    # Window function gives total matching rows (pre-limit/offset) in the
+    # same round-trip — no separate COUNT query needed.
+    total_col = func.count().over().label("total_count")
+
+    stmt = (
+        select(
+            ConsensusScore.instrument_id,                # 0
+            Instrument.ticker,                           # 1
+            Instrument.name,                             # 2
+            Instrument.market,                           # 3
+            Instrument.exchange,                         # 4
+            Instrument.asset_type,                       # 5
+            ConsensusScore.conviction_level,             # 6
+            ConsensusScore.final_score,                  # 7
+            ConsensusScore.consensus_composite,          # 8
+            ConsensusScore.technical_composite,          # 9
+            ConsensusScore.strategy_pass_count,          # 10
+            ConsensusScore.canslim_score,                # 11
+            ConsensusScore.piotroski_score,              # 12
+            ConsensusScore.minervini_score,              # 13
+            ConsensusScore.weinstein_score,              # 14
+            ConsensusScore.regime_warning,               # 15
+            ConsensusScore.score_date,                   # 16
+            StrategyScore.weinstein_stage,               # 17
+            total_col,                                   # 18
+        )
+        .join(Instrument, ConsensusScore.instrument_id == Instrument.id)
+        .outerjoin(
+            StrategyScore,
+            (StrategyScore.instrument_id == ConsensusScore.instrument_id)
+            & (StrategyScore.score_date == ConsensusScore.score_date),
+        )
+        .where(
+            ConsensusScore.score_date == score_date,
+            Instrument.is_active.is_(True),
+            Instrument.asset_type == asset_type,
         )
     )
-    snapshot = snap_q.scalars().first()
-
-    if snapshot:
-        rows: list[dict] = snapshot.rankings_json or []
-        # Filter by conviction
-        if conviction:
-            rows = [r for r in rows if r.get("conviction_level") in conviction]
-        total = len(rows)
-        page = rows[offset : offset + limit]
-        items = [_entry_from_snapshot_row(r, snap_market, asset_type) for r in page]
-        regime = snapshot.regime_state
-        regime_warning_count = sum(1 for r in rows if r.get("regime_warning"))
-    else:
-        # ── Live fallback ───────────────────────────────────────────────────
-        stmt = (
-            select(
-                ConsensusScore,
-                Instrument.ticker,
-                Instrument.name,
-                Instrument.market,
-                Instrument.exchange,
-                Instrument.asset_type,
-            )
-            .join(Instrument, ConsensusScore.instrument_id == Instrument.id)
-            .where(
-                ConsensusScore.score_date == score_date,
-                Instrument.is_active.is_(True),
-                Instrument.asset_type == asset_type,
-            )
+    if market:
+        stmt = stmt.where(Instrument.market == market)
+    if conviction:
+        # Normalise to upper-case to match the DB convention
+        stmt = stmt.where(
+            ConsensusScore.conviction_level.in_([c.upper() for c in conviction])
         )
-        if market:
-            stmt = stmt.where(Instrument.market == market)
-        if conviction:
-            stmt = stmt.where(ConsensusScore.conviction_level.in_(conviction))
 
-        # Count
-        count_q = await db.execute(select(func.count()).select_from(stmt.subquery()))
-        total = count_q.scalar_one()
+    # Order & paginate — indexed by (score_date DESC, instrument_id) after 0006
+    stmt = (
+        stmt.order_by(desc(ConsensusScore.final_score), Instrument.ticker)
+        .limit(limit)
+        .offset(offset)
+    )
 
-        # Page
-        stmt = stmt.order_by(desc(ConsensusScore.final_score)).limit(limit).offset(offset)
-        result = await db.execute(stmt)
-        rows_live = result.all()
+    result = await db.execute(stmt)
+    rows_live = result.all()
 
-        items = [
-            _entry_from_consensus(
-                cs, ticker, name, mkt, exchange, asset_type_value, offset + idx + 1
-            )
-            for idx, (cs, ticker, name, mkt, exchange, asset_type_value) in enumerate(rows_live)
-        ]
-        regime = await _get_regime(market or "US", score_date, db) if items else None
-        regime_warning_count = sum(1 for it in items if it.regime_warning)
+    total = rows_live[0][18] if rows_live else 0
+    items = [_entry_from_row(row, offset + idx + 1) for idx, row in enumerate(rows_live)]
+    regime = await _get_regime(market or "US", score_date, db) if items else None
+    regime_warning_count = sum(1 for it in items if it.regime_warning)
 
-    # ── Caching headers ────────────────────────────────────────────────────────
-    source = "snapshot" if snapshot else "live"
-    etag = _make_etag(score_date, market or snap_market, asset_type, total, source)
+    # ── Caching headers ────────────────────────────────────────────────────
+    resolved_market = market or "US"
+    etag = _make_etag(
+        score_date=score_date,
+        market=resolved_market,
+        asset_type=asset_type,
+        conviction=conviction,
+        limit=limit,
+        offset=offset,
+        total=total,
+    )
     response.headers["Cache-Control"] = _CACHE_CONTROL
     response.headers["ETag"] = etag
 
@@ -255,7 +281,7 @@ async def get_rankings(
 
     return RankingsResponse(
         score_date=score_date,
-        market=market or snap_market,
+        market=resolved_market,
         regime_state=regime,
         regime_warning_count=regime_warning_count,
         pagination=PaginationMeta(

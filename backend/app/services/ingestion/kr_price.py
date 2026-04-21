@@ -24,6 +24,70 @@ from app.models.price import Price
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Minimum bars required to consider a price fetch successful
+MIN_PRICE_ROWS = 5
+
+
+class KISAPIError(Exception):
+    """Raised when the KIS API fails to return valid price data."""
+
+
+class InsufficientDataError(Exception):
+    """Raised when fetched price data has fewer rows than MIN_PRICE_ROWS."""
+
+
+async def _fetch_prices_via_kis(
+    kis_client: "pykis.PyKis",
+    ticker: str,
+    dt_start: datetime,
+    dt_end: datetime,
+) -> pd.DataFrame:
+    """Fetch OHLCV bars via KIS (pykis). Raises KISAPIError on any failure."""
+    try:
+        stock = kis_client.stock(ticker)
+        price_data = await asyncio.to_thread(
+            stock.chart, start=dt_start.date(), end=dt_end.date(), adjust=True
+        )
+        df = price_data.df()
+        if df is None or df.empty:
+            raise KISAPIError(f"KIS returned empty DataFrame for {ticker}")
+        return df
+    except KISAPIError:
+        raise
+    except Exception as exc:
+        raise KISAPIError(f"KIS chart fetch failed for {ticker}: {exc}") from exc
+
+
+async def _fetch_prices_via_pykrx(
+    ticker: str,
+    dt_start: datetime,
+    dt_end: datetime,
+) -> pd.DataFrame:
+    """Fetch OHLCV bars via pykrx (KRX web scraping). Used as KIS fallback."""
+    try:
+        from pykrx import stock as pkrx_stock  # noqa: PLC0415
+
+        start_str = dt_start.strftime("%Y%m%d")
+        end_str = dt_end.strftime("%Y%m%d")
+        df = await asyncio.to_thread(
+            pkrx_stock.get_market_ohlcv_by_date, start_str, end_str, ticker
+        )
+        if df is None or df.empty:
+            raise InsufficientDataError(f"pykrx returned empty DataFrame for {ticker}")
+
+        # pykrx uses Korean column names — normalise to English
+        col_map = {"시가": "open", "고가": "high", "저가": "low", "종가": "close", "거래량": "volume"}
+        df = df.rename(columns=col_map)
+        df.index.name = "trade_date"
+        df = df.reset_index()
+        df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
+        return df
+
+    except InsufficientDataError:
+        raise
+    except Exception as exc:
+        raise InsufficientDataError(f"pykrx fetch failed for {ticker}: {exc}") from exc
+
 async def fetch_kr_tickers() -> list[dict]:
     """Fetch official KRX listings using FinanceDataReader."""
     instruments = []
@@ -93,81 +157,101 @@ async def sync_kr_instruments(session: AsyncSession):
     logger.info("KR Instruments Sync finished.")
 
 
-async def fetch_and_store_kr_prices(session: AsyncSession, instrument_id: int, ticker: str, kis_client: 'pykis.PyKis', days: int = 730):
+def _normalise_price_df(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    """Rename columns to standard names and sort by trade_date ascending."""
+    # KIS returns a 'time' column; pykrx returns index already converted by caller
+    if "time" in df.columns:
+        df = df.rename(columns={"time": "trade_date"})
+
+    df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
+    df = df.sort_values("trade_date")
+
+    needed_cols = ["trade_date", "open", "high", "low", "close", "volume"]
+    missing = [c for c in needed_cols if c not in df.columns]
+    if missing:
+        raise ValueError(f"Price DataFrame for {ticker} missing columns: {missing}")
+
+    return df
+
+
+async def fetch_and_store_kr_prices(
+    session: AsyncSession,
+    instrument_id: int,
+    ticker: str,
+    kis_client: "pykis.PyKis",
+    days: int = 730,
+) -> int:
     """
-    Fetch and store historical prices using KIS wrapper.
-    `pykis` fetches historical data.
+    Fetch and store historical KR prices.
+
+    Attempts KIS (pykis) first. On KISAPIError falls back to pykrx.
+    Raises InsufficientDataError when fewer than MIN_PRICE_ROWS bars are returned
+    by both sources (so the Celery task can retry via tenacity).
+
+    Returns the number of rows upserted.
     """
+    dt_end = datetime.now()
+    dt_start = dt_end - timedelta(days=days)
+
+    logger.info("Fetching %s prices (from %s to %s) …", ticker, dt_start.date(), dt_end.date())
+
+    # ------------------------------------------------------------------
+    # 1. Fetch from KIS; fall back to pykrx if KIS fails
+    # ------------------------------------------------------------------
     try:
-        dt_end = datetime.now()
-        dt_start = dt_end - timedelta(days=days)
-        
-        logger.info(f"Fetching {ticker} prices via KIS (from {dt_start.date()} to {dt_end.date()})...")
-        stock = kis_client.stock(ticker)
-        
-        # chart fetches up to the exact dates requested
-        price_data = await asyncio.to_thread(stock.chart, start=dt_start.date(), end=dt_end.date(), adjust=True)
-        df = price_data.df()
-        
-        if df is None or df.empty:
-            logger.warning(f"No price data found for {ticker}")
-            return
-            
-        # KisChart.df() returns columns: time, open, high, low, close, volume
-        rename_map = {'time': 'trade_date'}
-        
-        # Only rename columns that exist
-        current_cols = df.columns.tolist()
-        for k, v in rename_map.items():
-            if k in current_cols:
-                df.rename(columns={k: v}, inplace=True)
-                
-        # Ensure it's sorted by date ascending for rolling averages
-        df['trade_date'] = pd.to_datetime(df['trade_date']).dt.date
-        df = df.sort_values('trade_date')
-        
-        needed_cols = ['trade_date', 'open', 'high', 'low', 'close', 'volume']
-        for col in needed_cols:
-            if col not in df.columns:
-                 logger.warning(f"Missing column {col} for {ticker}")
-                 return
+        df = await _fetch_prices_via_kis(kis_client, ticker, dt_start, dt_end)
+        source = "KIS"
+    except KISAPIError as exc:
+        logger.warning("KIS failed for %s (%s); falling back to pykrx", ticker, exc)
+        df = await _fetch_prices_via_pykrx(ticker, dt_start, dt_end)
+        source = "pykrx"
 
-        df['avg_volume_50d'] = df['volume'].rolling(window=50, min_periods=1).mean()
-        
-        prices_data = []
-        for _, row in df.iterrows():
-            prices_data.append({
-                'instrument_id': instrument_id,
-                'trade_date': row['trade_date'],
-                'open': float(row['open']) if pd.notnull(row['open']) else None,
-                'high': float(row['high']) if pd.notnull(row['high']) else None,
-                'low': float(row['low']) if pd.notnull(row['low']) else None,
-                'close': float(row['close']) if pd.notnull(row['close']) else None,
-                'volume': int(row['volume']) if pd.notnull(row['volume']) else 0,
-                'avg_volume_50d': int(row['avg_volume_50d']) if pd.notnull(row['avg_volume_50d']) else 0,
-            })
-            
-        if not prices_data:
-            return
+    # ------------------------------------------------------------------
+    # 2. Normalise columns and validate minimum row count
+    # ------------------------------------------------------------------
+    df = _normalise_price_df(df, ticker)
 
-        stmt = insert(Price).values(prices_data)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=['instrument_id', 'trade_date'],
-            set_={
-                'open': stmt.excluded.open,
-                'high': stmt.excluded.high,
-                'low': stmt.excluded.low,
-                'close': stmt.excluded.close,
-                'volume': stmt.excluded.volume,
-                'avg_volume_50d': stmt.excluded.avg_volume_50d
-            }
+    if len(df) < MIN_PRICE_ROWS:
+        raise InsufficientDataError(
+            f"{source} returned only {len(df)} rows for {ticker} (minimum {MIN_PRICE_ROWS})"
         )
-        await session.execute(stmt)
-        await session.commit()
-        logger.info(f"Stored {len(prices_data)} days of prices for {ticker}")
-        
-    except Exception as e:
-        logger.error(f"Error fetching prices for {ticker}: {e}")
+
+    # ------------------------------------------------------------------
+    # 3. Build upsert payload
+    # ------------------------------------------------------------------
+    df["avg_volume_50d"] = df["volume"].rolling(window=50, min_periods=1).mean()
+
+    prices_data = [
+        {
+            "instrument_id": instrument_id,
+            "trade_date": row["trade_date"],
+            "open":  float(row["open"])  if pd.notnull(row["open"])  else None,
+            "high":  float(row["high"])  if pd.notnull(row["high"])  else None,
+            "low":   float(row["low"])   if pd.notnull(row["low"])   else None,
+            "close": float(row["close"]) if pd.notnull(row["close"]) else None,
+            "volume":        int(row["volume"])        if pd.notnull(row["volume"])        else 0,
+            "avg_volume_50d": int(row["avg_volume_50d"]) if pd.notnull(row["avg_volume_50d"]) else 0,
+        }
+        for _, row in df.iterrows()
+    ]
+
+    stmt = insert(Price).values(prices_data)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["instrument_id", "trade_date"],
+        set_={
+            "open":          stmt.excluded.open,
+            "high":          stmt.excluded.high,
+            "low":           stmt.excluded.low,
+            "close":         stmt.excluded.close,
+            "volume":        stmt.excluded.volume,
+            "avg_volume_50d": stmt.excluded.avg_volume_50d,
+        },
+    )
+    await session.execute(stmt)
+    await session.commit()
+
+    logger.info("Stored %d days of prices for %s (source: %s)", len(prices_data), ticker, source)
+    return len(prices_data)
 
 async def test_run():
     if not pykis:

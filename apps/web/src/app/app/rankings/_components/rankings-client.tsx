@@ -1,17 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Pin } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import {
-  buildInstrumentPath,
   fetchRankings,
   type RankingItem,
   type RankingsResponse,
 } from "@/lib/api";
-import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { RankingRow } from "@/components/ranking-row";
 
 interface RankingsClientProps {
   initialFilters: {
@@ -23,31 +21,11 @@ interface RankingsClientProps {
   initialData: RankingsResponse | null;
 }
 
-function convictionColor(level: string): string {
-  if (level === "HIGH") return "text-[oklch(0.92_0.04_150)]";
-  if (level === "MEDIUM") return "text-[oklch(0.94_0.04_88)]";
-  return "text-faint";
-}
-
-function scoreBar(score: number) {
-  const pct = Math.min(100, Math.max(0, score)).toFixed(0);
-  return (
-    <div className="relative mt-1 h-1 w-24 overflow-hidden rounded-full bg-white/8">
-      <div
-        className="absolute inset-y-0 left-0 rounded-full bg-[oklch(0.78_0.11_84_/_0.6)]"
-        style={{ width: `${pct}%` }}
-      />
-    </div>
-  );
-}
-
 export function RankingsClient({ initialFilters, initialData }: RankingsClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const market = (searchParams.get("market") as "US" | "KR") ?? initialFilters.market;
   const assetType = (searchParams.get("asset_type") as "stock" | "etf") ?? initialFilters.assetType;
-  const togglePinned = useUIStore((state) => state.togglePinnedInstrument);
-  const isPinned = useUIStore((state) => state.isPinned);
 
   const { data, isFetching } = useQuery({
     queryKey: ["rankings", market, assetType, initialFilters.limit],
@@ -123,78 +101,22 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
 
       {/* List */}
       <div className="space-y-2">
-        {data?.items.map((item: RankingItem) => {
-          const pinned = isPinned(item.ticker, item.market);
-          return (
-            <div
-              key={`${item.market}-${item.ticker}`}
-              className="surface-panel rounded-[1.45rem] px-4 py-4 sm:px-5"
-            >
-              <div className="flex items-start gap-4">
-                {/* Rank */}
-                <div className="w-10 shrink-0 text-right font-mono text-lg text-faint">
-                  {item.rank}
-                </div>
-
-                {/* Name + scores */}
-                <div className="min-w-0 flex-1">
-                  <Link
-                    href={buildInstrumentPath(item.ticker, item.market)}
-                    className="flex flex-wrap items-center gap-2"
-                  >
-                    <span className="font-heading text-2xl uppercase text-white">
-                      {item.ticker}
-                    </span>
-                    {item.exchange && (
-                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-[0.65rem] uppercase tracking-widest text-faint">
-                        {item.market} / {item.exchange}
-                      </span>
-                    )}
-                  </Link>
-                  {item.name && (
-                    <div className="mt-0.5 truncate text-sm text-quiet">{item.name}</div>
-                  )}
-                  <div className={cn("mt-1 text-[0.68rem] uppercase tracking-widest", convictionColor(item.conviction_level))}>
-                    {item.conviction_level} conviction · {item.strategy_pass_count} strategies
-                    {item.regime_warning && (
-                      <span className="ml-2 text-[oklch(0.9_0.06_75)]">⚠ regime</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Score + pin */}
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <div className="text-right">
-                    <div className="font-mono text-lg text-white">
-                      {item.final_score.toFixed(1)}
-                    </div>
-                    {scoreBar(item.final_score)}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      togglePinned({
-                        ticker: item.ticker,
-                        market: item.market,
-                        name: item.name ?? item.ticker,
-                        exchange: item.exchange ?? "",
-                      })
-                    }
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[0.65rem] uppercase tracking-[0.14em] transition-colors",
-                      pinned
-                        ? "border-[oklch(0.78_0.11_84_/_0.42)] bg-[oklch(0.8_0.11_84_/_0.14)] text-white"
-                        : "border-white/8 text-faint hover:text-white"
-                    )}
-                  >
-                    <Pin className="size-3" />
-                    {pinned ? "Pinned" : "Pin"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {data?.items.map((item: RankingItem) => (
+          <RankingRow
+            key={`${item.market}-${item.ticker}`}
+            item={{
+              rank:                 item.rank,
+              ticker:               item.ticker,
+              name:                 item.name,
+              market:               item.market,
+              exchange:             item.exchange,
+              conviction_level:     item.conviction_level,
+              final_score:          item.final_score,
+              strategy_pass_count:  item.strategy_pass_count,
+              regime_warning:       item.regime_warning,
+            }}
+          />
+        ))}
 
         {!data?.items.length && !isFetching && (
           <div className="surface-panel rounded-[1.65rem] px-5 py-8 text-center text-sm text-quiet">

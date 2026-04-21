@@ -22,6 +22,13 @@ const CONVICTION_CONFIG: Record<
     label: "Diamond",
     detail: "Top-tier alignment",
   },
+  PLATINUM: {
+    dot: "bg-[oklch(0.85_0.06_280)]",
+    shell:
+      "border-[oklch(0.85_0.06_280_/_0.45)] bg-[oklch(0.35_0.03_280_/_0.22)] text-[oklch(0.92_0.02_275)]",
+    label: "Platinum",
+    detail: "Elite prospects",
+  },
   GOLD: {
     dot: "bg-[oklch(0.82_0.15_78)]",
     shell:

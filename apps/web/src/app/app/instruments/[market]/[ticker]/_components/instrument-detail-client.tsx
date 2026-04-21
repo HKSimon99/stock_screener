@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Pin } from "lucide-react";
 import {
@@ -10,6 +11,7 @@ import {
 } from "@/lib/api";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { InstrumentChart as InstrumentChartComponent, type ChartInterval, type ChartRangeDays } from "@/components/instrument-chart";
 
 interface InstrumentDetailClientProps {
   ticker: string;
@@ -35,12 +37,15 @@ function scoreChip(label: string, score: number, max = 100) {
 }
 
 function convictionBadge(level: string) {
-  const color =
-    level === "HIGH"
-      ? "border-[oklch(0.92_0.04_150_/_0.4)] bg-[oklch(0.92_0.04_150_/_0.1)] text-[oklch(0.92_0.04_150)]"
-      : level === "MEDIUM"
-      ? "border-[oklch(0.94_0.04_88_/_0.4)] bg-[oklch(0.94_0.04_88_/_0.1)] text-[oklch(0.94_0.04_88)]"
-      : "border-white/10 text-faint";
+  const colorMap: Record<string, string> = {
+    DIAMOND: "border-cyan-400/40 bg-cyan-400/10 text-cyan-300",
+    PLATINUM: "border-violet-400/40 bg-violet-400/10 text-violet-300",
+    GOLD: "border-amber-400/40 bg-amber-400/10 text-amber-300",
+    SILVER: "border-slate-400/40 bg-slate-400/10 text-slate-300",
+    BRONZE: "border-orange-400/40 bg-orange-400/10 text-orange-300",
+    UNRANKED: "border-slate-600/40 bg-slate-600/10 text-slate-400",
+  };
+  const color = colorMap[level] || "border-white/10 text-faint";
   return (
     <span
       className={cn(
@@ -48,7 +53,7 @@ function convictionBadge(level: string) {
         color
       )}
     >
-      {level} conviction
+      {level}
     </span>
   );
 }
@@ -59,6 +64,9 @@ export function InstrumentDetailClient({
   initialData,
   initialChartData,
 }: InstrumentDetailClientProps) {
+  const [chartInterval, setChartInterval] = useState<ChartInterval>("1d");
+  const [chartRangeDays, setChartRangeDays] = useState<ChartRangeDays>(365);
+
   const togglePinned = useUIStore((state) => state.togglePinnedInstrument);
   const isPinned = useUIStore((state) => state.isPinned);
   const pinned = isPinned(ticker, market);
@@ -70,10 +78,17 @@ export function InstrumentDetailClient({
     staleTime: 60_000,
   });
 
-  const { data: chart } = useQuery({
-    queryKey: ["instrument-chart", ticker, market],
-    queryFn: () => fetchInstrumentChart(ticker, market),
-    initialData: initialChartData ?? undefined,
+  const { data: chart, isFetching: chartFetching } = useQuery({
+    queryKey: ["instrument-chart", ticker, market, chartInterval, chartRangeDays],
+    queryFn: () =>
+      fetchInstrumentChart(ticker, market, {
+        interval: chartInterval,
+        range_days: chartRangeDays,
+      }),
+    initialData:
+      chartInterval === "1d" && chartRangeDays === 365
+        ? (initialChartData ?? undefined)
+        : undefined,
     staleTime: 60_000,
   });
 
@@ -246,60 +261,18 @@ export function InstrumentDetailClient({
               </div>
             </div>
           )}
-
-          {/* Dual Momentum */}
-          {data.dual_mom_detail && (
-            <div>
-              <div className="mb-2 text-xs text-faint uppercase tracking-widest">Dual Momentum</div>
-              <div className="flex flex-wrap gap-1">
-                <span
-                  className={cn(
-                    "rounded border px-2 py-0.5 text-[0.65rem] uppercase tracking-widest",
-                    data.dual_mom_detail.abs_mom
-                      ? "border-[oklch(0.92_0.04_150_/_0.4)] text-[oklch(0.92_0.04_150)]"
-                      : "border-white/10 text-faint"
-                  )}
-                >
-                  Abs
-                </span>
-                <span
-                  className={cn(
-                    "rounded border px-2 py-0.5 text-[0.65rem] uppercase tracking-widest",
-                    data.dual_mom_detail.rel_mom
-                      ? "border-[oklch(0.92_0.04_150_/_0.4)] text-[oklch(0.92_0.04_150)]"
-                      : "border-white/10 text-faint"
-                  )}
-                >
-                  Rel
-                </span>
-              </div>
-              <div className="mt-1 text-xs text-faint">
-                12m ret {data.dual_mom_detail.ret_12m > 0 ? "+" : ""}
-                {(data.dual_mom_detail.ret_12m * 100).toFixed(1)}% · bmark{" "}
-                {data.dual_mom_detail.benchmark_ret_12m > 0 ? "+" : ""}
-                {(data.dual_mom_detail.benchmark_ret_12m * 100).toFixed(1)}%
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Chart summary (bars count) */}
-      {chart && (
-        <div className="surface-panel rounded-[1.65rem] px-5 py-5">
-          <div className="tiny-label mb-2">Price Data</div>
-          <div className="text-sm text-quiet">
-            {chart.bars.length} {chart.interval} bars · {chart.range_days}d range
-            {chart.patterns.length > 0 && ` · ${chart.patterns.length} pattern${chart.patterns.length !== 1 ? "s" : ""} detected`}
-          </div>
-          {chart.patterns.map((p, i) => (
-            <div key={i} className="mt-2 text-xs text-faint">
-              {p.pattern_type.replace(/_/g, " ")} · {(p.confidence * 100).toFixed(0)}% confidence
-              {p.pivot_price != null && ` · pivot $${p.pivot_price.toFixed(2)}`}
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Price chart */}
+      <InstrumentChartComponent
+        data={chart ?? null}
+        interval={chartInterval}
+        rangeDays={chartRangeDays}
+        onIntervalChange={setChartInterval}
+        onRangeChange={setChartRangeDays}
+        isFetching={chartFetching}
+      />
 
       {/* Freshness */}
       {data.freshness && (

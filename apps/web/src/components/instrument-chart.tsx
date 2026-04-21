@@ -280,7 +280,7 @@ export function InstrumentChart({
       <div className="relative">
         {/* Skeleton / loading overlay */}
         {isFetching && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[oklch(0.11_0.01_240_/_0.75)]">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/75">
             <div className="text-xs text-faint">Loading…</div>
           </div>
         )}
@@ -292,10 +292,11 @@ export function InstrumentChart({
           style={{ height: 400 }}
         />
 
-        {/* Empty state */}
-        {!data && !isFetching && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-xs text-faint">No chart data available</div>
+        {/* Empty state: no data or empty bars array */}
+        {(!data || !data.bars?.length) && !isFetching && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+            <div className="text-xs text-faint">No price data available</div>
+            <div className="text-[0.62rem] text-faint/60">Run price ingestion to populate chart</div>
           </div>
         )}
       </div>

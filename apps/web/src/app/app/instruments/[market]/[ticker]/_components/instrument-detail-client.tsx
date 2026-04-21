@@ -282,7 +282,7 @@ export function InstrumentDetailClient({
             {Object.entries(data.freshness).map(([k, v]) => (
               <span key={k}>
                 <span className="capitalize">{k.replace(/_/g, " ")}</span>:{" "}
-                <span className="text-white">{String(v)}</span>
+                <span className={v ? "text-white" : "text-faint"}>{v ?? "—"}</span>
               </span>
             ))}
           </div>

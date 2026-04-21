@@ -289,10 +289,21 @@ async def get_instrument_chart(
         score_date=score_date,
         db=db,
     )
+
+    from datetime import date as date_type  # noqa: PLC0415
+    _empty_date = reference_date or date_type.today()
+
     if reference_date is None:
-        raise HTTPException(
-            404,
-            detail=f"No chart price history found for '{ticker}'. Run price ingestion first.",
+        return InstrumentChartResponse(
+            ticker=ticker,
+            market=instrument.market,
+            score_date=_empty_date,
+            interval=interval,
+            range_days=range_days,
+            bars=[],
+            rs_line=[],
+            patterns=[],
+            benchmark_note="Price data not yet ingested. Run price ingestion to see the chart.",
         )
 
     price_q = await db.execute(
@@ -315,9 +326,16 @@ async def get_instrument_chart(
         and row.close is not None
     ]
     if not valid_rows:
-        raise HTTPException(
-            404,
-            detail=f"No chart price history found for '{ticker}'. Run price ingestion first.",
+        return InstrumentChartResponse(
+            ticker=ticker,
+            market=instrument.market,
+            score_date=_empty_date,
+            interval=interval,
+            range_days=range_days,
+            bars=[],
+            rs_line=[],
+            patterns=[],
+            benchmark_note="Price data not yet ingested. Run price ingestion to see the chart.",
         )
 
     stride = {"1d": 1, "1w": 5, "1m": 21}[interval]

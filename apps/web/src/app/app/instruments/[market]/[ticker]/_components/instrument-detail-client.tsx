@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Pin } from "lucide-react";
 import {
+  APIError,
   fetchInstrument,
   fetchInstrumentChart,
   type InstrumentChart,
@@ -20,12 +21,14 @@ interface InstrumentDetailClientProps {
   initialChartData: InstrumentChart | null;
 }
 
-function scoreChip(label: string, score: number, max = 100) {
-  const pct = Math.min(100, Math.max(0, (score / max) * 100));
+function scoreChip(label: string, score?: number, max = 100) {
+  const hasScore = typeof score === "number" && Number.isFinite(score);
+  const safeScore = hasScore ? score : 0;
+  const pct = hasScore ? Math.min(100, Math.max(0, (safeScore / max) * 100)) : 0;
   return (
     <div className="surface-panel-soft rounded-[1.2rem] px-4 py-3">
       <div className="text-[0.65rem] uppercase tracking-widest text-faint">{label}</div>
-      <div className="mt-1 font-mono text-lg text-white">{score.toFixed(1)}</div>
+      <div className="mt-1 font-mono text-lg text-white">{hasScore ? safeScore.toFixed(1) : "—"}</div>
       <div className="relative mt-2 h-1 w-full overflow-hidden rounded-full bg-white/8">
         <div
           className="absolute inset-y-0 left-0 rounded-full bg-[oklch(0.78_0.11_84_/_0.6)]"
@@ -71,12 +74,19 @@ export function InstrumentDetailClient({
   const isPinned = useUIStore((state) => state.isPinned);
   const pinned = isPinned(ticker, market);
 
-  const { data } = useQuery({
+  const {
+    data,
+    error,
+    isPending,
+    isFetching,
+  } = useQuery({
     queryKey: ["instrument", ticker, market],
     queryFn: () => fetchInstrument(ticker, market),
     initialData: initialData ?? undefined,
-    staleTime: 0,
-    refetchOnMount: "always",
+    staleTime: initialData ? 30_000 : 0,
+    refetchOnMount: false,
+    retry: (failureCount, queryError) =>
+      queryError instanceof APIError && queryError.status >= 500 && failureCount < 2,
   });
 
   const { data: chart, isFetching: chartFetching } = useQuery({
@@ -91,17 +101,34 @@ export function InstrumentDetailClient({
       chartInterval === "1d" && chartRangeDays === 365
         ? (initialChartData ?? undefined)
         : undefined,
-    staleTime: 0,
-    refetchOnMount: "always",
+    staleTime: chartInterval === "1d" && chartRangeDays === 365 && initialChartData ? 30_000 : 0,
+    refetchOnMount: false,
   });
 
-  if (!data) {
+  if (isPending && !data) {
     return (
       <div className="app-shell py-12 text-center">
         <div className="text-sm text-quiet">Loading instrument data…</div>
       </div>
     );
   }
+
+  if (!data) {
+    const detail =
+      error instanceof APIError
+        ? error.detail ?? "This instrument detail request failed."
+        : "Instrument detail is temporarily unavailable.";
+
+    return (
+      <div className="app-shell py-12">
+        <div className="surface-panel rounded-[1.65rem] px-5 py-5 text-sm text-[oklch(0.9_0.03_88)]">
+          {detail}
+        </div>
+      </div>
+    );
+  }
+
+  const isRanked = data.coverage_state === "ranked" && data.conviction_level !== "UNRANKED";
 
   return (
     <div className="app-shell space-y-4 py-4 sm:py-6">
@@ -121,6 +148,11 @@ export function InstrumentDetailClient({
               <div className="mt-1 text-sm text-quiet">
                 {data.name}
                 {data.name_kr ? ` · ${data.name_kr}` : ""}
+              </div>
+            )}
+            {isFetching && (
+              <div className="mt-2 text-xs uppercase tracking-[0.16em] text-faint">
+                Refreshing…
               </div>
             )}
             <div className="mt-3 flex flex-wrap gap-2">
@@ -161,13 +193,40 @@ export function InstrumentDetailClient({
         </div>
       </div>
 
+      {!isRanked && (
+        <div className="surface-panel rounded-[1.65rem] border border-[oklch(0.9_0.03_88_/_0.18)] px-5 py-4">
+          <div className="tiny-label">Coverage Status</div>
+          <div className="mt-2 text-sm leading-6 text-quiet">
+            This symbol is in the universe, but the full ranking model has not scored it yet. We’re
+            showing available identity, freshness, and chart data while scoring catches up.
+          </div>
+          {data.ranking_eligibility?.reasons && data.ranking_eligibility.reasons.length > 0 && (
+            <div className="mt-3 text-xs text-faint">
+              {data.ranking_eligibility.reasons.join(" · ")}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Scores grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {scoreChip("Consensus", data.final_score)}
-        {scoreChip("CANSLIM", data.canslim_score)}
-        {scoreChip("Piotroski", (data.piotroski_score / 9) * 100, 100)}
-        {scoreChip("Minervini", (data.minervini_score / 8) * 100, 100)}
-        {scoreChip("Weinstein", data.weinstein_score)}
+        {scoreChip("Consensus", isRanked ? data.final_score : undefined)}
+        {scoreChip("CANSLIM", typeof data.canslim_score === "number" && data.canslim_score > 0 ? data.canslim_score : undefined)}
+        {scoreChip(
+          "Piotroski",
+          typeof data.piotroski_score === "number" && data.piotroski_score > 0
+            ? (data.piotroski_score / 9) * 100
+            : undefined,
+          100
+        )}
+        {scoreChip(
+          "Minervini",
+          typeof data.minervini_score === "number" && data.minervini_score > 0
+            ? (data.minervini_score / 8) * 100
+            : undefined,
+          100
+        )}
+        {scoreChip("Weinstein", typeof data.weinstein_score === "number" && data.weinstein_score > 0 ? data.weinstein_score : undefined)}
       </div>
 
       {/* Strategy passes */}

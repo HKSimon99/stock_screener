@@ -491,42 +491,40 @@ async def get_instrument(
     )
     cs = cs_q.scalars().first()
 
-    if cs is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No scoring data available yet for '{ticker}'. Run the scoring pipeline to generate consensus scores.",
+    score_history_rows: list[tuple[date, Optional[float], Optional[float], Optional[float]]] = []
+    if cs is not None:
+        score_history_q = await db.execute(
+            select(
+                ConsensusScore.score_date,
+                ConsensusScore.final_score,
+                ConsensusScore.consensus_composite,
+                ConsensusScore.technical_composite,
+            )
+            .where(
+                ConsensusScore.instrument_id == instrument.id,
+                ConsensusScore.score_date <= reference_date,
+            )
+            .order_by(desc(ConsensusScore.score_date))
+            .limit(30)
         )
+        score_history_rows = list(reversed(score_history_q.all()))
 
-    score_history_q = await db.execute(
-        select(
-            ConsensusScore.score_date,
-            ConsensusScore.final_score,
-            ConsensusScore.consensus_composite,
-            ConsensusScore.technical_composite,
+    stage_history_rows: list[tuple[date, Optional[str], Optional[float]]] = []
+    if ss is not None:
+        stage_history_q = await db.execute(
+            select(
+                StrategyScore.score_date,
+                StrategyScore.weinstein_stage,
+                StrategyScore.weinstein_score,
+            )
+            .where(
+                StrategyScore.instrument_id == instrument.id,
+                StrategyScore.score_date <= reference_date,
+            )
+            .order_by(desc(StrategyScore.score_date))
+            .limit(12)
         )
-        .where(
-            ConsensusScore.instrument_id == instrument.id,
-            ConsensusScore.score_date <= reference_date,
-        )
-        .order_by(desc(ConsensusScore.score_date))
-        .limit(30)
-    )
-    score_history_rows = list(reversed(score_history_q.all()))
-
-    stage_history_q = await db.execute(
-        select(
-            StrategyScore.score_date,
-            StrategyScore.weinstein_stage,
-            StrategyScore.weinstein_score,
-        )
-        .where(
-            StrategyScore.instrument_id == instrument.id,
-            StrategyScore.score_date <= reference_date,
-        )
-        .order_by(desc(StrategyScore.score_date))
-        .limit(12)
-    )
-    stage_history_rows = list(reversed(stage_history_q.all()))
+        stage_history_rows = list(reversed(stage_history_q.all()))
 
     # Build response
     return InstrumentDetailResponse(
@@ -554,6 +552,7 @@ async def get_instrument(
         final_score          = _f(cs.final_score)    if cs else None,
         consensus_composite  = _f(cs.consensus_composite) if cs else None,
         strategy_pass_count  = cs.strategy_pass_count if cs else None,
+        weinstein_stage      = ss.weinstein_stage if ss else None,
         score_breakdown      = cs.score_breakdown     if cs else None,
         factor_breakdown     = (cs.score_breakdown or {}).get("factor_core") if cs else None,
         score_history        = [

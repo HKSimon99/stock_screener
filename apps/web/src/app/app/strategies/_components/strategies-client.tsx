@@ -15,6 +15,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  APIError,
   fetchStrategyRankings,
   type StrategyRankingsResponse,
 } from "@/lib/api";
@@ -48,17 +49,29 @@ interface StrategyListProps {
 }
 
 function StrategyList({ strategy, market, initialData }: StrategyListProps) {
-  const { data, isFetching } = useQuery({
+  const { data, error, isFetching } = useQuery({
     queryKey: ["strategy-rankings", strategy, market],
     queryFn:  () => fetchStrategyRankings(strategy, market),
     initialData,
     staleTime: 60_000,
+    retry: (failureCount, queryError) =>
+      queryError instanceof APIError && queryError.status >= 500 && failureCount < 2,
   });
 
   if (isFetching && !data) {
     return (
       <div className="surface-panel rounded-[1.65rem] px-5 py-8 text-center text-sm text-quiet">
         Loading…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="surface-panel rounded-[1.65rem] border border-[oklch(0.68_0.18_28_/_0.3)] bg-[oklch(0.31_0.06_28_/_0.14)] px-5 py-5 text-sm text-[oklch(0.89_0.04_24)]">
+        {error instanceof APIError
+          ? error.detail ?? `${TAB_LABELS[strategy]} rankings are temporarily unavailable.`
+          : `${TAB_LABELS[strategy]} rankings are temporarily unavailable.`}
       </div>
     );
   }

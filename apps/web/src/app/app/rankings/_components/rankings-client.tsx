@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import {
+  APIError,
   fetchRankings,
   type RankingItem,
   type RankingsResponse,
@@ -28,7 +29,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
   const assetType = (searchParams.get("asset_type") as "stock" | "etf") ?? initialFilters.assetType;
   const conviction = searchParams.get("conviction") ?? initialFilters.conviction;
 
-  const { data, isFetching } = useQuery({
+  const { data, error, isFetching } = useQuery({
     queryKey: ["rankings", market, assetType, conviction, initialFilters.limit],
     queryFn: () =>
       fetchRankings({
@@ -40,6 +41,8 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
     initialData: initialData ?? undefined,
     staleTime: 0,
     refetchOnMount: "always",
+    retry: (failureCount, queryError) =>
+      queryError instanceof APIError && queryError.status >= 500 && failureCount < 2,
   });
 
   function setFilter(key: string, value: string) {
@@ -108,6 +111,14 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
 
       {/* List */}
       <div className="space-y-2">
+        {error && (
+          <div className="surface-panel rounded-[1.65rem] border border-[oklch(0.68_0.18_28_/_0.3)] bg-[oklch(0.31_0.06_28_/_0.14)] px-5 py-5 text-sm text-[oklch(0.89_0.04_24)]">
+            {error instanceof APIError
+              ? error.detail ?? "Rankings are temporarily unavailable."
+              : "Rankings are temporarily unavailable."}
+          </div>
+        )}
+
         {data?.items.map((item: RankingItem) => (
           <RankingRow
             key={`${item.market}-${item.ticker}`}
@@ -125,7 +136,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
           />
         ))}
 
-        {!data?.items.length && !isFetching && (
+        {!error && !data?.items.length && !isFetching && (
           <div className="surface-panel rounded-[1.65rem] px-5 py-8 text-center text-sm text-quiet">
             No ranked instruments found for the current filters.
           </div>

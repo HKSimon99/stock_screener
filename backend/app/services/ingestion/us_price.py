@@ -23,12 +23,12 @@ NASDAQ_DIRECTORY_URLS = {
     "otherlisted": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt",
 }
 EXCHANGE_CODE_MAP = {
-    "A": "NYSE American",
+    "A": "NYSEAMER",
     "N": "NYSE",
-    "P": "NYSE Arca",
+    "P": "NYSEARCA",
     "Q": "NASDAQ",
     "V": "IEX",
-    "Z": "Cboe BZX",
+    "Z": "CBOEBZX",
 }
 UNSUPPORTED_SECURITY_TOKENS = (
     " warrant",
@@ -59,10 +59,16 @@ def _build_instrument_payload(row: dict[str, str], source_name: str) -> dict | N
         security_name = row.get("Security Name", "").strip()
         test_issue = row.get("Test Issue", "N").strip().upper() == "Y"
         etf_flag = row.get("ETF", "N").strip().upper()
-        if not symbol or not security_name or not _is_supported_security(security_name, etf_flag=etf_flag):
+        normalized_ticker = _normalize_ticker(symbol)
+        if (
+            not symbol
+            or not security_name
+            or len(normalized_ticker) > 10
+            or not _is_supported_security(security_name, etf_flag=etf_flag)
+        ):
             return None
         return {
-            "ticker": _normalize_ticker(symbol),
+            "ticker": normalized_ticker,
             "name": security_name[:200],
             "market": "US",
             "exchange": "NASDAQ",
@@ -83,11 +89,17 @@ def _build_instrument_payload(row: dict[str, str], source_name: str) -> dict | N
     security_name = row.get("Security Name", "").strip()
     test_issue = row.get("Test Issue", "N").strip().upper() == "Y"
     etf_flag = row.get("ETF", "N").strip().upper()
-    if not symbol or not security_name or not _is_supported_security(security_name, etf_flag=etf_flag):
+    normalized_ticker = _normalize_ticker(symbol)
+    if (
+        not symbol
+        or not security_name
+        or len(normalized_ticker) > 10
+        or not _is_supported_security(security_name, etf_flag=etf_flag)
+    ):
         return None
     exchange_code = row.get("Exchange", "").strip().upper()
     return {
-        "ticker": _normalize_ticker(symbol),
+        "ticker": normalized_ticker,
         "name": security_name[:200],
         "market": "US",
         "exchange": EXCHANGE_CODE_MAP.get(exchange_code, exchange_code or "OTHER"),

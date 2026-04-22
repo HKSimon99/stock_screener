@@ -17,15 +17,16 @@ score_date    ISO date (default: latest available for this instrument)
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
+import zoneinfo
+import asyncio
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
-from app.core.database import AsyncSessionLocal
+from app.api.deps import get_read_db
 from app.models.consensus_score import ConsensusScore
 from app.models.instrument import Instrument
 from app.models.price import Price
@@ -88,17 +89,46 @@ async def _resolve_reference_date(
     if score_date is not None:
         return score_date
 
-    candidate_queries = [
-        select(func.max(ConsensusScore.score_date)).where(ConsensusScore.instrument_id == instrument_id),
-        select(func.max(StrategyScore.score_date)).where(StrategyScore.instrument_id == instrument_id),
-        select(func.max(Price.trade_date)).where(Price.instrument_id == instrument_id),
-    ]
-    for query in candidate_queries:
-        result = await db.execute(query)
-        resolved = result.scalar_one_or_none()
-        if resolved is not None:
-            return resolved
-    return None
+    candidate_dates = union_all(
+        select(func.max(ConsensusScore.score_date).label("candidate_date")).where(
+            ConsensusScore.instrument_id == instrument_id
+        ),
+        select(func.max(StrategyScore.score_date).label("candidate_date")).where(
+            StrategyScore.instrument_id == instrument_id
+        ),
+        select(func.max(Price.trade_date).label("candidate_date")).where(
+            Price.instrument_id == instrument_id
+        ),
+    ).subquery()
+    result = await db.execute(select(func.max(candidate_dates.c.candidate_date)))
+    return result.scalar_one_or_none()
+
+
+async def _load_score_rows(
+    instrument_id: int,
+    reference_date: date,
+    db: AsyncSession,
+) -> tuple[Optional[StrategyScore], Optional[ConsensusScore]]:
+    score_row = (
+        await db.execute(
+            select(StrategyScore, ConsensusScore)
+            .select_from(Instrument)
+            .outerjoin(
+                StrategyScore,
+                (StrategyScore.instrument_id == Instrument.id)
+                & (StrategyScore.score_date == reference_date),
+            )
+            .outerjoin(
+                ConsensusScore,
+                (ConsensusScore.instrument_id == Instrument.id)
+                & (ConsensusScore.score_date == reference_date),
+            )
+            .where(Instrument.id == instrument_id)
+        )
+    ).first()
+    if score_row is None:
+        return None, None
+    return score_row[0], score_row[1]
 
 
 def _rolling_sma(values: list[float], window: int) -> list[Optional[float]]:
@@ -269,6 +299,66 @@ def _build_pattern_overlays(
     return overlays
 
 
+def get_latest_market_close_date(market: str) -> date:
+    tz_kr = zoneinfo.ZoneInfo("Asia/Seoul")
+    tz_us = zoneinfo.ZoneInfo("America/New_York")
+    
+    now = datetime.now(zoneinfo.ZoneInfo("UTC"))
+    
+    if market == "KR":
+        now_local = now.astimezone(tz_kr)
+        close_time = now_local.replace(hour=16, minute=0, second=0, microsecond=0)
+    else:
+        now_local = now.astimezone(tz_us)
+        close_time = now_local.replace(hour=16, minute=30, second=0, microsecond=0)
+
+    target_date = now_local.date()
+    if now_local < close_time:
+        target_date -= timedelta(days=1)
+        
+    weekday = target_date.weekday()
+    if weekday == 5:
+        target_date -= timedelta(days=1)
+    elif weekday == 6:
+        target_date -= timedelta(days=2)
+        
+    return target_date
+
+
+@router.post("/{ticker}/ingest", summary="Run full on-demand ingestion for an unpopulated instrument")
+async def ingest_instrument(
+    ticker: str,
+    market: Optional[str] = Query(None, pattern="^(US|KR)$"),
+    db: AsyncSession = Depends(get_read_db),
+) -> dict:
+    """
+    Synchronously ingest prices, fundamentals, and run scoring for this instrument.
+    Useful for ad-hoc requests when data is 'searchable' but not yet 'price_ready' or 'ranked'.
+    """
+    instrument = await _resolve_instrument(ticker=ticker, market=market, db=db)
+    
+    from app.tasks.ingestion_tasks import run_us_price_ingestion, run_kr_price_ingestion, run_market_fundamentals_ingestion
+    from app.tasks.scoring_tasks import run_full_scoring_pipeline
+
+    if instrument.market == "US":
+        price_task = run_us_price_ingestion(tickers=[instrument.ticker], days=365)
+    else:
+        price_task = run_kr_price_ingestion(tickers=[instrument.ticker], days=365)
+        
+    fundamentals_task = run_market_fundamentals_ingestion(market=instrument.market, tickers=[instrument.ticker], years=5)
+    
+    # Run price and fundamental ingestion concurrently
+    await asyncio.gather(price_task, fundamentals_task)
+
+    await run_full_scoring_pipeline(
+        instrument_ids=[instrument.id],
+        market=instrument.market,
+        generate_snapshots=False,
+    )
+    
+    return {"message": f"Successfully ingested {instrument.ticker}", "instrument_id": instrument.id}
+
+
 @router.get(
     "/{ticker}/chart",
     response_model=InstrumentChartResponse,
@@ -281,14 +371,27 @@ async def get_instrument_chart(
     interval: str = Query("1d", pattern="^(1d|1w|1m)$"),
     range_days: int = Query(350, ge=30, le=1500),
     include_indicators: bool = Query(True),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
 ) -> InstrumentChartResponse:
     instrument = await _resolve_instrument(ticker=ticker, market=market, db=db)
-    reference_date = await _resolve_reference_date(
-        instrument.id,
-        score_date=score_date,
-        db=db,
+    coverage_map = await build_coverage_map(
+        db,
+        [instrument],
+        score_date=score_date if score_date is not None else None,
     )
+    coverage = coverage_map[instrument.id]
+
+    reference_date = score_date
+    if reference_date is None:
+        reference_date = (
+            coverage.freshness.get("ranked_as_of")
+            or coverage.freshness.get("price_as_of")
+            or await _resolve_reference_date(
+                instrument.id,
+                score_date=None,
+                db=db,
+            )
+        )
 
     from datetime import date as date_type  # noqa: PLC0415
     _empty_date = reference_date or date_type.today()
@@ -364,27 +467,24 @@ async def get_instrument_chart(
     rs_line: list[ChartLinePoint] = []
 
     if benchmark_ticker:
-        benchmark_inst_q = await db.execute(
-            select(Instrument.id).where(
+        benchmark_q = await db.execute(
+            select(Price.trade_date, Price.close)
+            .join(Instrument, Price.instrument_id == Instrument.id)
+            .where(
                 func.upper(Instrument.ticker) == benchmark_ticker.upper(),
                 Instrument.market == instrument.market,
+                Price.trade_date <= reference_date,
             )
+            .order_by(desc(Price.trade_date))
+            .limit(max(range_days * 2, 420))
         )
-        benchmark_id = benchmark_inst_q.scalar_one_or_none()
+        benchmark_rows = list(reversed(benchmark_q.all()))
 
-        if benchmark_id is None:
-            benchmark_note = f"Benchmark ticker '{benchmark_ticker}' is not loaded in the instrument universe."
-        else:
-            benchmark_q = await db.execute(
-                select(Price.trade_date, Price.close)
-                .where(
-                    Price.instrument_id == benchmark_id,
-                    Price.trade_date <= reference_date,
-                )
-                .order_by(desc(Price.trade_date))
-                .limit(max(range_days * 2, 420))
+        if not benchmark_rows:
+            benchmark_note = (
+                f"Benchmark ticker '{benchmark_ticker}' is missing or has no price history for this chart range."
             )
-            benchmark_rows = list(reversed(benchmark_q.all()))
+        else:
             benchmark_by_date = {
                 trade_date: float(close)
                 for trade_date, close in benchmark_rows
@@ -414,9 +514,6 @@ async def get_instrument_chart(
                 )
     else:
         benchmark_note = "No benchmark mapping is configured for this market."
-
-    coverage_map = await build_coverage_map(db, [instrument], score_date=reference_date)
-    coverage = coverage_map[instrument.id]
 
     return InstrumentChartResponse(
         ticker=instrument.ticker,
@@ -454,7 +551,7 @@ async def get_instrument(
     ticker:     str,
     market:     Optional[str]  = Query(None, pattern="^(US|KR)$"),
     score_date: Optional[date] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
 ) -> InstrumentDetailResponse:
     """
     Return complete breakdown for one instrument:
@@ -473,23 +570,7 @@ async def get_instrument(
     if reference_date is None:
         reference_date = coverage.freshness.get("price_as_of") or date.today()
 
-    # Fetch strategy_scores row
-    ss_q = await db.execute(
-        select(StrategyScore).where(
-            StrategyScore.instrument_id == instrument.id,
-            StrategyScore.score_date == reference_date,
-        )
-    )
-    ss = ss_q.scalars().first()
-
-    # Fetch consensus_scores row
-    cs_q = await db.execute(
-        select(ConsensusScore).where(
-            ConsensusScore.instrument_id == instrument.id,
-            ConsensusScore.score_date == reference_date,
-        )
-    )
-    cs = cs_q.scalars().first()
+    ss, cs = await _load_score_rows(instrument.id, reference_date, db)
 
     score_history_rows: list[tuple[date, Optional[float], Optional[float], Optional[float]]] = []
     if cs is not None:
@@ -526,6 +607,21 @@ async def get_instrument(
         )
         stage_history_rows = list(reversed(stage_history_q.all()))
 
+    needs_refresh = False
+    if score_date is None:
+        latest_expected = get_latest_market_close_date(instrument.market)
+        price_as_of = coverage.freshness.get("price_as_of")
+        
+        if not price_as_of or price_as_of < latest_expected:
+            needs_refresh = True
+            
+            # Anti-infinite-loop: if we already ran scoring recently, abstain.
+            if cs and cs.computed_at:
+                now_utc = datetime.now(timezone.utc)
+                computed_at_utc = cs.computed_at.replace(tzinfo=timezone.utc) if cs.computed_at.tzinfo is None else cs.computed_at.astimezone(timezone.utc)
+                if (now_utc - computed_at_utc) < timedelta(hours=6):
+                    needs_refresh = False
+
     # Build response
     return InstrumentDetailResponse(
         instrument_id        = instrument.id,
@@ -547,6 +643,7 @@ async def get_instrument(
         freshness            = coverage.freshness,
         delay_minutes        = coverage.delay_minutes,
         rank_model_version   = coverage.rank_model_version,
+        needs_refresh        = needs_refresh,
 
         conviction_level     = cs.conviction_level   if cs else "UNRANKED",
         final_score          = _f(cs.final_score)    if cs else None,

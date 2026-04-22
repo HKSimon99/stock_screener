@@ -8,7 +8,7 @@ from typing import Optional
 import sentry_sdk
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.orm import aliased
-from app.core.database import AsyncSessionLocal
+from app.core.database import AsyncTaskSessionLocal
 from app.models.consensus_score import ConsensusScore
 from app.models.instrument import Instrument
 from app.models.user import UserPushToken
@@ -46,7 +46,7 @@ def _parse_date(value: Optional[str]) -> Optional[date]:
 
 
 async def _run_conviction_upgrade_push_alerts(limit: int = 5) -> dict:
-    async with AsyncSessionLocal() as db:
+    async with AsyncTaskSessionLocal() as db:
         latest_date = (
             await db.execute(select(func.max(ConsensusScore.score_date)))
         ).scalar_one_or_none()

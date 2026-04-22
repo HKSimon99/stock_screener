@@ -3,9 +3,11 @@ from datetime import date, timedelta
 import pytest
 
 from app.models.consensus_score import ConsensusScore
+from app.models.coverage_summary import InstrumentCoverageSummary
 from app.models.fundamental import FundamentalAnnual
 from app.models.instrument import Instrument
 from app.models.price import Price
+from app.services.universe import build_coverage_map, refresh_instrument_coverage_summary
 from app.services.strategies.snapshot_generator import build_snapshot_payload
 
 
@@ -76,11 +78,11 @@ async def test_search_endpoint_returns_coverage_state_and_reasons(client, db_ses
 
 
 @pytest.mark.asyncio
-async def test_instrument_endpoint_returns_404_when_not_yet_scored(client, db_session):
+async def test_instrument_endpoint_returns_partial_detail_when_not_yet_scored(client, db_session):
     """
-    Phase 4.6: instrument detail now returns 404 (not 200/UNRANKED) when no
-    ConsensusScore row exists for the instrument.  This prevents a silent
-    UNRANKED response that could mask a missing-pipeline problem.
+    Unranked but price-ready instruments should still return a usable partial
+    detail payload so the frontend can show coverage and refresh state instead
+    of hanging on a missing-score 404.
     """
     instrument = Instrument(
         ticker="MSFT",
@@ -110,9 +112,12 @@ async def test_instrument_endpoint_returns_404_when_not_yet_scored(client, db_se
 
     response = await client.get("/api/v1/instruments/MSFT?market=US")
 
-    assert response.status_code == 404
+    assert response.status_code == 200
     payload = response.json()
-    assert "scoring" in payload["detail"].lower() or "score" in payload["detail"].lower()
+    assert payload["ticker"] == "MSFT"
+    assert payload["coverage_state"] == "price_ready"
+    assert payload["conviction_level"] == "UNRANKED"
+    assert payload["final_score"] is None
 
 
 @pytest.mark.asyncio
@@ -263,6 +268,116 @@ async def test_universe_coverage_endpoint_groups_states(client, db_session):
     assert us_etf["ranked"] == 0
     assert kr_stock["searchable"] == 1
     assert kr_stock["price_ready"] == 0
+
+
+@pytest.mark.asyncio
+async def test_refresh_coverage_summary_persists_and_build_coverage_map_reuses_it(db_session):
+    instrument = Instrument(
+        ticker="META",
+        name="Meta Platforms",
+        market="US",
+        exchange="NASDAQ",
+        asset_type="stock",
+        listing_status="LISTED",
+        is_active=True,
+    )
+    db_session.add(instrument)
+    await db_session.flush()
+
+    for idx in range(126):
+        trade_date = date(2025, 12, 1) + timedelta(days=idx)
+        db_session.add(
+            Price(
+                instrument_id=instrument.id,
+                trade_date=trade_date,
+                open=500 + idx,
+                high=503 + idx,
+                low=498 + idx,
+                close=501 + idx,
+                volume=3_000_000,
+                avg_volume_50d=2_500_000,
+            )
+        )
+    db_session.add(
+        FundamentalAnnual(
+            instrument_id=instrument.id,
+            fiscal_year=2025,
+            report_date=date(2026, 2, 1),
+            revenue=2_000,
+            net_income=400,
+            total_assets=1_200,
+            current_assets=450,
+            current_liabilities=180,
+            operating_cash_flow=420,
+            data_source="EDGAR",
+        )
+    )
+    db_session.add(
+        ConsensusScore(
+            instrument_id=instrument.id,
+            score_date=date(2026, 4, 13),
+            conviction_level="GOLD",
+            final_score=80.0,
+            consensus_composite=74.0,
+            technical_composite=84.0,
+            strategy_pass_count=4,
+            regime_warning=False,
+        )
+    )
+    await db_session.commit()
+
+    refreshed = await refresh_instrument_coverage_summary(db_session, instrument_ids=[instrument.id])
+    await db_session.commit()
+
+    assert refreshed == 1
+    stored = await db_session.get(InstrumentCoverageSummary, instrument.id)
+    assert stored is not None
+    assert stored.coverage_state == "ranked"
+    assert stored.ranking_eligible is True
+    assert stored.price_bar_count == 126
+
+    coverage_map = await build_coverage_map(db_session, [instrument])
+    assert coverage_map[instrument.id].coverage_state == "ranked"
+    assert coverage_map[instrument.id].ranking_eligibility["eligible"] is True
+
+
+@pytest.mark.asyncio
+async def test_search_endpoint_prioritizes_exact_and_prefix_matches(client, db_session):
+    exact = Instrument(
+        ticker="NV",
+        name="Exact Match",
+        market="US",
+        exchange="NASDAQ",
+        asset_type="stock",
+        listing_status="LISTED",
+        is_active=True,
+    )
+    prefix = Instrument(
+        ticker="NVDA",
+        name="NVIDIA",
+        market="US",
+        exchange="NASDAQ",
+        asset_type="stock",
+        listing_status="LISTED",
+        is_active=True,
+    )
+    contains = Instrument(
+        ticker="ABNV",
+        name="Contains Only",
+        market="US",
+        exchange="NASDAQ",
+        asset_type="stock",
+        listing_status="LISTED",
+        is_active=True,
+    )
+    db_session.add_all([exact, prefix, contains])
+    await db_session.commit()
+
+    response = await client.get("/api/v1/search?q=NV")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["ticker"] for item in payload["items"][:3]] == ["NV", "NVDA", "ABNV"]
 
 
 @pytest.mark.asyncio

@@ -53,7 +53,7 @@ def compute_ad_rating(
     closes: list[float],
     volumes: list[float],
     window: int = 65,
-) -> tuple[str, float]:
+) -> tuple[str, Optional[float]]:
     """
     Accumulation/Distribution Rating based on 13-week (65-bar) Up/Down volume.
 
@@ -73,14 +73,15 @@ def compute_ad_rating(
         elif closes[i] < closes[i - 1]:
             down_vol += vol
 
-    ud_ratio = up_vol / down_vol if down_vol > 0 else float("inf")
+    ud_ratio = up_vol / down_vol if down_vol > 0 else None
     grade = "E"
+    comparison_ratio = ud_ratio if ud_ratio is not None else float("inf")
     for threshold, g in _AD_THRESHOLDS:
-        if ud_ratio >= threshold:
+        if comparison_ratio >= threshold:
             grade = g
             break
 
-    return grade, round(ud_ratio, 3)
+    return grade, round(ud_ratio, 3) if ud_ratio is not None else None
 
 
 def compute_ud_volume_ratio(

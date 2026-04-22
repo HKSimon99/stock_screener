@@ -11,3 +11,4 @@ from app.models.etf import EtfConstituent, EtfScore   # noqa: F401
 from app.models.alert import Alert                    # noqa: F401
 from app.models.user import UserPushToken             # noqa: F401
 from app.models.snapshot import ScoringSnapshot, DataFreshness  # noqa: F401
+from app.models.coverage_summary import InstrumentCoverageSummary  # noqa: F401

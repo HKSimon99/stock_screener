@@ -208,6 +208,57 @@ async def test_market_regime_endpoint_includes_current_and_history(client, db_se
 
 
 @pytest.mark.asyncio
+async def test_ingest_endpoint_uses_single_symbol_scoring_without_snapshots(client, db_session, monkeypatch):
+    from app.tasks import ingestion_tasks, scoring_tasks
+
+    instrument = Instrument(
+        ticker="MSFT",
+        name="Microsoft",
+        market="US",
+        exchange="NASDAQ",
+        asset_type="stock",
+        is_active=True,
+    )
+    db_session.add(instrument)
+    await db_session.commit()
+    await db_session.refresh(instrument)
+
+    captured: dict[str, object] = {}
+
+    async def fake_us_price_ingestion(*, tickers=None, days=365):
+        captured["price_tickers"] = tickers
+        captured["price_days"] = days
+        return {"ok": True}
+
+    async def fake_fundamentals_ingestion(*, market=None, tickers=None, years=5):
+        captured["fundamentals_market"] = market
+        captured["fundamentals_tickers"] = tickers
+        captured["fundamentals_years"] = years
+        return {"ok": True}
+
+    async def fake_full_scoring_pipeline(*, instrument_ids=None, market=None, generate_snapshots=True, pipeline_mode=None, score_date=None):
+        captured["instrument_ids"] = instrument_ids
+        captured["scoring_market"] = market
+        captured["generate_snapshots"] = generate_snapshots
+        return {"ok": True}
+
+    monkeypatch.setattr(ingestion_tasks, "run_us_price_ingestion", fake_us_price_ingestion)
+    monkeypatch.setattr(ingestion_tasks, "run_market_fundamentals_ingestion", fake_fundamentals_ingestion)
+    monkeypatch.setattr(scoring_tasks, "run_full_scoring_pipeline", fake_full_scoring_pipeline)
+
+    response = await client.post("/api/v1/instruments/MSFT/ingest?market=US")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["instrument_id"] == instrument.id
+    assert captured["price_tickers"] == ["MSFT"]
+    assert captured["fundamentals_market"] == "US"
+    assert captured["instrument_ids"] == [instrument.id]
+    assert captured["scoring_market"] == "US"
+    assert captured["generate_snapshots"] is False
+
+
+@pytest.mark.asyncio
 async def test_alerts_endpoint_filters_by_severity_market_and_acknowledged(client, db_session):
     instrument = Instrument(
         ticker="NVDA",

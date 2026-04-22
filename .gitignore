@@ -8,8 +8,10 @@ venv/
 dist/
 build/
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
+*.tsbuildinfo
 
 # Environment
 .env
@@ -47,6 +49,7 @@ antigravity_phone_chat/
 
 # Celery beat persistence files
 backend/celerybeat-schedule.*
+backend/tmp/
 
 # Ad-hoc scratch / one-off scripts (not part of the production codebase)
 backend/scratch_*.py

@@ -175,6 +175,7 @@ export interface InstrumentDetail extends RankingItem, StrategyDetail {
   ranking_eligibility?: RankingEligibility;
   freshness?: FreshnessSummary;
   delay_minutes?: number;
+  needs_refresh?: boolean;
   score_history?: ScoreHistoryPoint[];
   weinstein_stage_history?: WeinsteinStageHistoryPoint[];
   consensus_composite?: number;
@@ -462,6 +463,7 @@ interface RawInstrumentDetail {
   ranking_eligibility?: RankingEligibility | null;
   freshness?: FreshnessSummary | null;
   delay_minutes?: number | null;
+  needs_refresh?: boolean | null;
   rank_model_version?: string | null;
   conviction_level: ConvictionLevel;
   final_score?: number | null;
@@ -708,6 +710,7 @@ function normalizeInstrument(raw: RawInstrumentDetail): InstrumentDetail {
     coverage_state: raw.coverage_state ?? undefined,
     ranking_eligibility: raw.ranking_eligibility ?? undefined,
     freshness: raw.freshness ?? undefined,
+    needs_refresh: raw.needs_refresh ?? false,
     delay_minutes:
       typeof raw.delay_minutes === "number" ? raw.delay_minutes : undefined,
     rank_model_version: raw.rank_model_version ?? undefined,
@@ -997,6 +1000,16 @@ export async function fetchInstrument(
     `/instruments/${encodeURIComponent(ticker)}?market=${market}`
   );
   return normalizeInstrument(raw);
+}
+
+export async function ingestInstrument(
+  ticker: string,
+  market: "US" | "KR"
+): Promise<{ message: string; instrument_id: number }> {
+  return apiFetch<{ message: string; instrument_id: number }>(
+    `/instruments/${encodeURIComponent(ticker)}/ingest?market=${market}`,
+    { method: "POST" }
+  );
 }
 
 export async function fetchInstrumentChart(

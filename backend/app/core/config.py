@@ -6,16 +6,21 @@ from urllib.parse import quote_plus
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-ENV_FILE = REPO_ROOT / ".env"
+# Load shared defaults from `.env`, then let the gitignored `.env.local`
+# override machine-specific settings like a local Postgres source-of-truth DB.
+ENV_FILES = tuple(
+    str(path) for path in (REPO_ROOT / ".env", REPO_ROOT / ".env.local") if path.exists()
+)
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
+    model_config = SettingsConfigDict(env_file=ENV_FILES or None, extra="ignore")
 
     # App
     app_env: str = "development"
     secret_key: str = "changeme"
     api_v1_prefix: str = "/api/v1"
+    scoring_pipeline_mode: str = "context"
     api_keys: str = ""  # Comma-separated list of valid API keys
     clerk_secret_key: str = ""
     clerk_publishable_key: str = Field(
@@ -45,6 +50,14 @@ class Settings(BaseSettings):
                 "Generate one with: openssl rand -hex 32"
             )
         return v
+
+    @field_validator("scoring_pipeline_mode")
+    @classmethod
+    def normalize_scoring_pipeline_mode(cls, v: str) -> str:
+        normalized = (v or "context").strip().lower()
+        if normalized not in {"context", "legacy", "auto"}:
+            raise ValueError("SCORING_PIPELINE_MODE must be one of: context, legacy, auto")
+        return normalized
 
     @property
     def cors_origins_list(self) -> list[str]:
@@ -81,6 +94,14 @@ class Settings(BaseSettings):
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
+    @property
+    def database_url_direct(self) -> str:
+        """Async URL that always uses the direct Postgres host."""
+        return (
+            f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
     @property

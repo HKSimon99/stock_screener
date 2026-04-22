@@ -56,6 +56,7 @@ from app.models.consensus_score import ConsensusScore
 from app.models.instrument import Instrument
 from app.models.market_regime import MarketRegime
 from app.models.strategy_score import StrategyScore
+from app.services.universe import refresh_instrument_coverage_summary
 
 logger = logging.getLogger(__name__)
 
@@ -402,6 +403,12 @@ async def run_consensus_scoring(
                 )
 
         await db.commit()
+        if results:
+            await refresh_instrument_coverage_summary(
+                db,
+                instrument_ids=[row["instrument_id"] for row in results],
+            )
+            await db.commit()
         logger.info(
             "Consensus complete: %d scored. Distribution: %s",
             len(results), conviction_counts,

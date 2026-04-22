@@ -46,6 +46,7 @@ from app.schemas.v1 import (
     RankingsResponse,
     StrategyScores,
 )
+from app.services.request_cache import TtlCache
 from app.services.universe import RANK_MODEL_VERSION
 
 # Rankings data changes at most once per day (after the scoring pipeline runs).
@@ -80,6 +81,8 @@ def _make_etag(
 
 
 router = APIRouter()
+_LATEST_CONSENSUS_DATE_CACHE = TtlCache[Optional[date]](ttl_seconds=60)
+_REGIME_CACHE = TtlCache[Optional[str]](ttl_seconds=60)
 
 
 # ---------------------------------------------------------------------------
@@ -146,23 +149,31 @@ def _entry_from_row(
 
 
 async def _latest_consensus_date(market: Optional[str], db: AsyncSession) -> Optional[date]:
+    cache_key = market or "*"
+    cached = _LATEST_CONSENSUS_DATE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     q = select(func.max(ConsensusScore.score_date))
     if market:
         q = q.join(Instrument, ConsensusScore.instrument_id == Instrument.id).where(
             Instrument.market == market
         )
     result = await db.execute(q)
-    return result.scalar_one_or_none()
+    return _LATEST_CONSENSUS_DATE_CACHE.set(cache_key, result.scalar_one_or_none())
 
 
 async def _get_regime(market: str, score_date: date, db: AsyncSession) -> Optional[str]:
+    cache_key = f"{market}:{score_date.isoformat()}"
+    cached = _REGIME_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     q = await db.execute(
         select(MarketRegime.state)
         .where(MarketRegime.market == market, MarketRegime.effective_date <= score_date)
         .order_by(desc(MarketRegime.effective_date))
         .limit(1)
     )
-    return q.scalar_one_or_none()
+    return _REGIME_CACHE.set(cache_key, q.scalar_one_or_none())
 
 
 # ---------------------------------------------------------------------------

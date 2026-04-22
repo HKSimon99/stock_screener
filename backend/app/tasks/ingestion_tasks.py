@@ -8,7 +8,7 @@ from typing import Optional
 from sqlalchemy import select
 from tenacity import retry, wait_exponential, stop_after_attempt
 
-from app.core.database import AsyncSessionLocal
+from app.core.database import AsyncTaskSessionLocal
 from app.models.instrument import Instrument
 from app.models.price import Price
 from app.services.ingestion.kr_fundamental import run_kr_fundamentals_ingestion
@@ -30,6 +30,7 @@ from app.services.ingestion.us_fundamental import run_us_fundamentals_ingestion
 from app.services.ingestion.us_institutional import ingest_us_institutional
 from app.services.ingestion.kr_investor_flow import ingest_kr_investor_flows
 from app.services.ingestion.us_price import fetch_and_store_prices, sync_instruments
+from app.services.universe import refresh_coverage_summary_for_market_tickers, refresh_instrument_coverage_summary
 from app.tasks.celery_app import celery_app
 
 
@@ -41,6 +42,10 @@ TASK_RETRY_DECORATOR = retry(
     wait=wait_exponential(min=2, max=60),
     stop=stop_after_attempt(3),
 )
+
+# Preserve the legacy module-level session name for tests while the task layer
+# uses the direct-host session factory under the hood.
+AsyncSessionLocal = AsyncTaskSessionLocal
 
 
 def _normalize_tickers(tickers: Optional[list[str]] = None) -> list[str]:
@@ -59,7 +64,7 @@ def _normalize_tickers(tickers: Optional[list[str]] = None) -> list[str]:
 
 
 async def _get_active_tickers(market: str, limit: Optional[int] = None) -> list[str]:
-    async with AsyncSessionLocal() as db:
+    async with AsyncTaskSessionLocal() as db:
         stmt = (
             select(Instrument.ticker)
             .where(
@@ -138,7 +143,7 @@ async def _record_source_freshness(
     succeeded = processed_count > 0 or (requested_count == 0 and detail is None)
 
     try:
-        async with AsyncSessionLocal() as session:
+        async with AsyncTaskSessionLocal() as session:
             await record_data_freshness(
                 session,
                 source_name=source_name,
@@ -155,6 +160,32 @@ async def _record_source_freshness(
             market,
             exc,
         )
+
+
+async def _refresh_coverage_for_tickers(market: str, tickers: list[str]) -> None:
+    if not tickers:
+        return
+    try:
+        async with AsyncTaskSessionLocal() as session:
+            await refresh_coverage_summary_for_market_tickers(
+                session,
+                market=market,
+                tickers=tickers,
+            )
+            await session.commit()
+    except Exception as exc:
+        logger.warning("Unable to refresh coverage summary for %s tickers: %s", market, exc)
+
+
+async def _refresh_coverage_for_instrument_ids(instrument_ids: list[int]) -> None:
+    if not instrument_ids:
+        return
+    try:
+        async with AsyncTaskSessionLocal() as session:
+            await refresh_instrument_coverage_summary(session, instrument_ids=instrument_ids)
+            await session.commit()
+    except Exception as exc:
+        logger.warning("Unable to refresh coverage summary for instrument ids: %s", exc)
 
 
 async def run_market_fundamentals_ingestion(
@@ -207,6 +238,7 @@ async def run_market_fundamentals_ingestion(
         processed_count=len(processed_tickers),
         failed_tickers=failed_tickers,
     )
+    await _refresh_coverage_for_tickers(market, selected_tickers)
 
     return {
         "market": market,
@@ -231,7 +263,7 @@ async def run_us_price_ingestion(
     failed_tickers: list[str] = []
 
     try:
-        async with AsyncSessionLocal() as session:
+        async with AsyncTaskSessionLocal() as session:
             if sync_universe:
                 await sync_instruments(session)
 
@@ -272,6 +304,7 @@ async def run_us_price_ingestion(
         processed_count=len(processed_tickers),
         failed_tickers=failed_tickers,
     )
+    await _refresh_coverage_for_instrument_ids([instrument_id for instrument_id, _ in instrument_refs])
 
     return {
         "market": "US",
@@ -331,7 +364,7 @@ async def run_kr_price_ingestion(
         kis_client = None
 
     try:
-        async with AsyncSessionLocal() as session:
+        async with AsyncTaskSessionLocal() as session:
             if sync_universe:
                 await sync_kr_instruments(session)
 
@@ -379,6 +412,7 @@ async def run_kr_price_ingestion(
         processed_count=len(processed_tickers),
         failed_tickers=failed_tickers,
     )
+    await _refresh_coverage_for_instrument_ids([instrument_id for instrument_id, _ in instrument_refs])
 
     return {
         "market": "KR",

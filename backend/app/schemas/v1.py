@@ -203,6 +203,7 @@ class InstrumentDetailResponse(BaseModel):
     freshness: FreshnessSummary = Field(default_factory=FreshnessSummary)
     delay_minutes: Optional[int] = None
     rank_model_version: Optional[str] = None
+    needs_refresh: bool = False
 
     conviction_level:    str
     final_score:         Optional[float] = None

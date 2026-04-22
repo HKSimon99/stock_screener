@@ -8,22 +8,55 @@ export default function BiometricGate({ children }: { children: React.ReactNode 
   const [isSupported, setIsSupported] = useState(false);
 
   useEffect(() => {
-    checkDeviceSupport();
+    let isMounted = true;
+
+    const checkDeviceSupport = async () => {
+      const compatible = await LocalAuthentication.hasHardwareAsync();
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+
+      if (!isMounted) {
+        return;
+      }
+
+      setIsSupported(compatible && enrolled);
+
+      if (compatible && enrolled) {
+        try {
+          const result = await LocalAuthentication.authenticateAsync({
+            promptMessage: 'Unlock Consensus',
+            fallbackLabel: 'Use Passcode',
+            cancelLabel: 'Cancel',
+          });
+
+          if (!isMounted) {
+            return;
+          }
+
+          if (result.success) {
+            setIsUnlocked(true);
+            setHasError(false);
+          } else {
+            setHasError(true);
+          }
+        } catch (e) {
+          console.error(e);
+          if (isMounted) {
+            setHasError(true);
+          }
+        }
+      } else {
+        // Fail-open in unsupported environments so dev/demo devices are not blocked.
+        console.warn('Biometrics not supported or enrolled on this device. Bypassing gate.');
+        setIsUnlocked(true);
+      }
+    };
+
+    void checkDeviceSupport();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
-
-  const checkDeviceSupport = async () => {
-    const compatible = await LocalAuthentication.hasHardwareAsync();
-    const enrolled = await LocalAuthentication.isEnrolledAsync();
-    setIsSupported(compatible && enrolled);
-
-    if (compatible && enrolled) {
-      authenticate();
-    } else {
-      // IF biometrics aren't supported or enrolled, fail-open (unlock) for demo purposes
-      console.warn('Biometrics not supported or enrolled on this device. Bypassing gate.');
-      setIsUnlocked(true);
-    }
-  };
 
   const authenticate = async () => {
     try {

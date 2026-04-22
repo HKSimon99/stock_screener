@@ -18,7 +18,7 @@ from sqlalchemy import select, desc, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_api_key
-from app.api.deps import get_db
+from app.api.deps import get_read_db
 from app.models.alert import Alert
 from app.models.market_regime import MarketRegime
 from app.models.snapshot import ScoringSnapshot
@@ -41,7 +41,7 @@ router = APIRouter()
 async def get_market_regime(
     include_history: int = Query(default=0, ge=0, le=30,
                                  description="Number of past regime records to include per market"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
 ) -> MarketRegimeResponse:
     """
     Returns the latest market regime state for US and KR.
@@ -113,7 +113,7 @@ async def get_latest_snapshot(
     asset_type: str = Query(default="stock", pattern="^(stock|etf)$"),
     limit:      int = Query(default=50, ge=1, le=200),
     offset:     int = Query(default=0, ge=0),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
 ) -> SnapshotResponse:
     """Return the most recent snapshot for a given market + asset_type."""
     q = await db.execute(
@@ -143,7 +143,7 @@ async def get_snapshot_by_date(
     asset_type: str = Query(default="stock", pattern="^(stock|etf)$"),
     limit:      int = Query(default=50, ge=1, le=200),
     offset:     int = Query(default=0, ge=0),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
 ) -> SnapshotResponse:
     q = await db.execute(
         select(ScoringSnapshot).where(
@@ -172,7 +172,7 @@ async def get_alerts(
     days:       int           = Query(default=7, ge=1, le=90),
     limit:      int           = Query(default=100, ge=1, le=500),
     acknowledged: Optional[bool] = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
 ) -> AlertsResponse:
     """
     Return alerts from the last ``days`` days.

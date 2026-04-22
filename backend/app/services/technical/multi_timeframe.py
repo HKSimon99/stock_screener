@@ -287,8 +287,10 @@ def compute_volume_score(technical_detail: Optional[dict]) -> tuple[float, dict]
         dry_pts = 0.0
 
     # UD Ratio 65d (A/D base)
-    ud_65 = technical_detail.get("ud_ratio_65d", 0)
-    if ud_65 >= 2.5:
+    ud_65 = technical_detail.get("ud_ratio_65d")
+    if ud_65 is None:
+        ud65_pts = 0.0
+    elif ud_65 >= 2.5:
         ud65_pts = 10.0
     elif ud_65 >= 1.8:
         ud65_pts = 7.0

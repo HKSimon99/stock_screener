@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Pin } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Pin, RefreshCw } from "lucide-react";
 import {
   APIError,
   fetchInstrument,
   fetchInstrumentChart,
+  ingestInstrument,
   type InstrumentChart,
   type InstrumentDetail,
 } from "@/lib/api";
@@ -70,6 +71,8 @@ export function InstrumentDetailClient({
   const [chartInterval, setChartInterval] = useState<ChartInterval>("1d");
   const [chartRangeDays, setChartRangeDays] = useState<ChartRangeDays>(365);
 
+  const queryClient = useQueryClient();
+
   const togglePinned = useUIStore((state) => state.togglePinnedInstrument);
   const isPinned = useUIStore((state) => state.isPinned);
   const pinned = isPinned(ticker, market);
@@ -104,6 +107,23 @@ export function InstrumentDetailClient({
     staleTime: chartInterval === "1d" && chartRangeDays === 365 && initialChartData ? 30_000 : 0,
     refetchOnMount: false,
   });
+
+  const ingestMutation = useMutation({
+    mutationFn: () => ingestInstrument(ticker, market),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["instrument", ticker, market] });
+      queryClient.invalidateQueries({ queryKey: ["instrument-chart", ticker, market] });
+    },
+  });
+
+  const [hasAutoTriggered, setHasAutoTriggered] = useState(false);
+
+  useEffect(() => {
+    if (data?.needs_refresh && !hasAutoTriggered && !ingestMutation.isPending && !ingestMutation.isSuccess) {
+      setHasAutoTriggered(true);
+      ingestMutation.mutate();
+    }
+  }, [data?.needs_refresh, hasAutoTriggered, ingestMutation.isPending, ingestMutation.isSuccess, ingestMutation]);
 
   if (isPending && !data) {
     return (
@@ -197,12 +217,31 @@ export function InstrumentDetailClient({
         <div className="surface-panel rounded-[1.65rem] border border-[oklch(0.9_0.03_88_/_0.18)] px-5 py-4">
           <div className="tiny-label">Coverage Status</div>
           <div className="mt-2 text-sm leading-6 text-quiet">
-            This symbol is in the universe, but the full ranking model has not scored it yet. We’re
-            showing available identity, freshness, and chart data while scoring catches up.
+            {data.needs_refresh 
+              ? "We are fetching the latest baseline which includes real-time prices, fundamentals, and consensus calculations..." 
+              : "This symbol is in the universe, but the full ranking model has not scored it yet."}
           </div>
           {data.ranking_eligibility?.reasons && data.ranking_eligibility.reasons.length > 0 && (
             <div className="mt-3 text-xs text-faint">
               {data.ranking_eligibility.reasons.join(" · ")}
+            </div>
+          )}
+          <div className="mt-4">
+            <button
+              onClick={() => {
+                setHasAutoTriggered(true);
+                ingestMutation.mutate();
+              }}
+              disabled={ingestMutation.isPending || (data.needs_refresh && ingestMutation.isSuccess)}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/5 hover:bg-white/10 px-5 py-2.5 text-xs font-medium uppercase tracking-[0.08em] text-white transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={cn("size-3.5", ingestMutation.isPending && "animate-spin")} />
+              {ingestMutation.isPending ? "Ingesting Data..." : "Load Real-Time Data"}
+            </button>
+          </div>
+          {ingestMutation.isError && (
+            <div className="mt-3 text-xs text-[oklch(0.6_0.15_20)]">
+              {ingestMutation.error instanceof Error ? ingestMutation.error.message : "Failed to ingest instrument."}
             </div>
           )}
         </div>

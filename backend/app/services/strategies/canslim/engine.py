@@ -14,7 +14,7 @@ import logging
 import math
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import select, desc, func as sqlfunc
 
@@ -157,6 +157,7 @@ async def score_instrument(
     db,
     rs_lookup: Optional[dict[int, float]] = None,
     rs_4w_lookup: Optional[dict[int, float]] = None,
+    shared_data: Optional[Any] = None,
 ) -> Optional[dict]:
     """
     Compute full CANSLIM score for one instrument on a given date.
@@ -164,71 +165,90 @@ async def score_instrument(
     Returns a dict with all sub-scores, composite, and detail,
     or None if critical data is missing.
     """
-    # ── Fetch instrument ────────────────────────────────────────────────────
-    inst_q = await db.execute(
-        select(Instrument).where(Instrument.id == instrument_id)
-    )
-    inst = inst_q.scalars().first()
-    if not inst:
-        return None
-
-    # ── Fetch supporting data — 4 independent queries run in parallel ───────
-    # Using asyncio.gather cuts per-instrument latency from ~4 serial round-
-    # trips to ~1 (asyncpg pipelines the queries on the same connection).
-    async def _fetch_quarterlies():
-        r = await db.execute(
-            select(FundamentalQuarterly)
-            .where(
-                FundamentalQuarterly.instrument_id == instrument_id,
-                FundamentalQuarterly.report_date <= score_date,
-            )
-            .order_by(desc(FundamentalQuarterly.report_date))
-            .limit(8)
+    if shared_data:
+        # DataLoader returns items newest-first, CANSLIM expects oldest-first
+        quarterlies = list(reversed(shared_data.quarterlies[:8]))
+        annuals = list(reversed(shared_data.annuals[:6]))
+        prices = list(reversed(shared_data.prices[:252]))
+        inst_own = shared_data.inst_own
+        market_name = shared_data.market
+        instrument_market = market_name
+        market_regime = shared_data.regime
+        # Need sector for normalization
+        inst_sector = shared_data.instrument.sector
+        inst_exchange = shared_data.instrument.exchange
+        inst_float = shared_data.instrument.float_shares
+        inst_shares = shared_data.instrument.shares_outstanding
+        inst_chaebol = shared_data.instrument.is_chaebol_cross
+    else:
+        inst_q = await db.execute(
+            select(Instrument).where(Instrument.id == instrument_id)
         )
-        return list(reversed(r.scalars().all()))  # oldest first
+        inst = inst_q.scalars().first()
+        if not inst:
+            return None
+        market_name = inst.market
+        inst_sector = inst.sector
+        inst_exchange = inst.exchange
+        inst_float = inst.float_shares
+        inst_shares = inst.shares_outstanding
+        inst_chaebol = inst.is_chaebol_cross
+        instrument_market = inst.market
 
-    async def _fetch_annuals():
-        r = await db.execute(
-            select(FundamentalAnnual)
-            .where(
-                FundamentalAnnual.instrument_id == instrument_id,
-                FundamentalAnnual.report_date <= score_date,
+        async def _fetch_quarterlies():
+            r = await db.execute(
+                select(FundamentalQuarterly)
+                .where(
+                    FundamentalQuarterly.instrument_id == instrument_id,
+                    FundamentalQuarterly.report_date <= score_date,
+                )
+                .order_by(desc(FundamentalQuarterly.report_date))
+                .limit(8)
             )
-            .order_by(desc(FundamentalAnnual.report_date))
-            .limit(6)
-        )
-        return list(reversed(r.scalars().all()))  # oldest first
+            return list(reversed(r.scalars().all()))  # oldest first
 
-    async def _fetch_prices():
-        r = await db.execute(
-            select(Price)
-            .where(
-                Price.instrument_id == instrument_id,
-                Price.trade_date <= score_date,
+        async def _fetch_annuals():
+            r = await db.execute(
+                select(FundamentalAnnual)
+                .where(
+                    FundamentalAnnual.instrument_id == instrument_id,
+                    FundamentalAnnual.report_date <= score_date,
+                )
+                .order_by(desc(FundamentalAnnual.report_date))
+                .limit(6)
             )
-            .order_by(desc(Price.trade_date))
-            .limit(252)  # ~1 year for 52w high calc
-        )
-        return list(reversed(r.scalars().all()))  # oldest first
+            return list(reversed(r.scalars().all()))  # oldest first
 
-    async def _fetch_inst_own():
-        r = await db.execute(
-            select(InstitutionalOwnership)
-            .where(
-                InstitutionalOwnership.instrument_id == instrument_id,
-                InstitutionalOwnership.report_date <= score_date,
+        async def _fetch_prices():
+            r = await db.execute(
+                select(Price)
+                .where(
+                    Price.instrument_id == instrument_id,
+                    Price.trade_date <= score_date,
+                )
+                .order_by(desc(Price.trade_date))
+                .limit(252)  # ~1 year for 52w high calc
             )
-            .order_by(desc(InstitutionalOwnership.report_date))
-            .limit(1)
-        )
-        return r.scalars().first()
+            return list(reversed(r.scalars().all()))  # oldest first
 
-    quarterlies, annuals, prices, inst_own = await asyncio.gather(
-        _fetch_quarterlies(),
-        _fetch_annuals(),
-        _fetch_prices(),
-        _fetch_inst_own(),
-    )
+        async def _fetch_inst_own():
+            r = await db.execute(
+                select(InstitutionalOwnership)
+                .where(
+                    InstitutionalOwnership.instrument_id == instrument_id,
+                    InstitutionalOwnership.report_date <= score_date,
+                )
+                .order_by(desc(InstitutionalOwnership.report_date))
+                .limit(1)
+            )
+            return r.scalars().first()
+
+        quarterlies, annuals, prices, inst_own = await asyncio.gather(
+            _fetch_quarterlies(),
+            _fetch_annuals(),
+            _fetch_prices(),
+            _fetch_inst_own(),
+        )
 
     if not has_minimum_required_data(
         quarterly_count=len(quarterlies),
@@ -245,17 +265,20 @@ async def score_instrument(
         )
         return None
 
-    # ── Fetch market regime (sequential — needs inst.market from above) ─────
-    regime_q = await db.execute(
-        select(MarketRegime)
-        .where(
-            MarketRegime.market == inst.market,
-            MarketRegime.effective_date <= score_date,
+    if shared_data:
+        regime = market_regime
+    else:
+        # ── Fetch market regime (sequential — needs market_name from above) ─────
+        regime_q = await db.execute(
+            select(MarketRegime)
+            .where(
+                MarketRegime.market == market_name,
+                MarketRegime.effective_date <= score_date,
+            )
+            .order_by(desc(MarketRegime.effective_date))
+            .limit(1)
         )
-        .order_by(desc(MarketRegime.effective_date))
-        .limit(1)
-    )
-    regime = regime_q.scalars().first()
+        regime = regime_q.scalars().first()
 
     # ════════════════════════════════════════════════════════════════════════
     # C — Current quarterly earnings
@@ -279,7 +302,11 @@ async def score_instrument(
 
         # Apply Korea sector normalization
         eps_series = [_dec(q.eps) for q in quarterlies]
-        eps_current = normalize_eps(eps_series, inst.sector) if inst.market == "KR" else eps_current_raw
+        eps_current = (
+            normalize_eps(eps_series, inst_sector)
+            if instrument_market == "KR"
+            else eps_current_raw
+        )
 
         rev_yoy = _dec(q_current.revenue_yoy_growth)
         eps_yoy_series = [_dec(q.eps_yoy_growth) for q in quarterlies]
@@ -289,7 +316,7 @@ async def score_instrument(
             eps_same_q_prior=eps_prior_raw,
             revenue_yoy_growth=rev_yoy,
             eps_yoy_growth_series=eps_yoy_series,
-            sector=inst.sector,
+            sector=inst_sector,
         )
     else:
         c_detail["reason"] = f"insufficient quarterly data ({len(quarterlies)} < 5)"
@@ -355,8 +382,8 @@ async def score_instrument(
     # ════════════════════════════════════════════════════════════════════════
     s_score = 0.0
     s_detail: dict = {}
-    float_sh = _dec(inst.float_shares)
-    shares_out = _dec(inst.shares_outstanding)
+    float_sh = _dec(inst_float)
+    shares_out = _dec(inst_shares)
 
     # Compute volume surge days (last 20 trading days)
     surge_days = 0
@@ -393,7 +420,7 @@ async def score_instrument(
         volume_surge_days_20d=surge_days,
         ud_volume_ratio_50d=ud_ratio,
         is_buyback_active=buyback,
-        exchange=inst.exchange,
+        exchange=inst_exchange,
     )
 
     # ════════════════════════════════════════════════════════════════════════
@@ -402,9 +429,11 @@ async def score_instrument(
     l_score = 0.0
     l_detail: dict = {}
     if rs_lookup is None:
-        rs_lookup = await build_market_rs_lookup(db, inst.market, score_date)
+        rs_lookup = await build_market_rs_lookup(db, instrument_market, score_date)
     if rs_4w_lookup is None:
-        rs_4w_lookup = await build_market_rs_lookup(db, inst.market, score_date - timedelta(days=28))
+        rs_4w_lookup = await build_market_rs_lookup(
+            db, instrument_market, score_date - timedelta(days=28)
+        )
 
     rs_val = rs_lookup.get(instrument_id)
     rs_4w_ago = rs_4w_lookup.get(instrument_id)
@@ -419,7 +448,7 @@ async def score_instrument(
     # ════════════════════════════════════════════════════════════════════════
     i_score = 0.0
     i_detail: dict = {}
-    if inst.market == "US":
+    if instrument_market == "US":
         i_score, i_detail = score_i(
             market="US",
             institutional_pct=_dec(inst_own.institutional_pct) if inst_own else None,
@@ -433,7 +462,7 @@ async def score_instrument(
             foreign_ownership_pct=_dec(inst_own.foreign_ownership_pct) if inst_own else None,
             foreign_net_buy_30d=_dec(inst_own.foreign_net_buy_30d) if inst_own else None,
             institutional_net_buy_30d=_dec(inst_own.institutional_net_buy_30d) if inst_own else None,
-            is_chaebol_cross=inst.is_chaebol_cross,
+            is_chaebol_cross=inst_chaebol,
         )
 
     # ════════════════════════════════════════════════════════════════════════

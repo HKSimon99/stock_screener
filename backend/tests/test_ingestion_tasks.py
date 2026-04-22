@@ -167,10 +167,11 @@ def test_run_us_price_ingestion_uses_refs_and_sync(monkeypatch):
     async def fake_sync(session):
         processed.append(("SYNC", None))
 
-    async def fake_refs(session, market, tickers=None, limit=None):
+    async def fake_refs(session, market, tickers=None, limit=None, asset_types=None):
         assert market == "US"
         assert tickers == ["AAPL", "NVDA"]
         assert limit is None
+        assert asset_types is None
         return [(40, "AAPL"), (346, "NVDA")]
 
     async def fake_fetch(session, instrument_id, ticker, days=730):
@@ -266,10 +267,11 @@ def test_run_kr_price_ingestion_uses_refs_and_client(monkeypatch):
     async def fake_sync(session):
         processed.append(("SYNC", None))
 
-    async def fake_refs(session, market, tickers=None, limit=None):
+    async def fake_refs(session, market, tickers=None, limit=None, asset_types=None):
         assert market == "KR"
         assert tickers == ["005930", "000660"]
         assert limit is None
+        assert asset_types is None
         return [(519, "005930"), (520, "000660")]
 
     async def fake_fetch(session, instrument_id, ticker, kis_client, days=730):

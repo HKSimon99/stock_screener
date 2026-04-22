@@ -15,16 +15,18 @@ from sqlalchemy import select, desc, asc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import ClerkAuthUser, get_clerk_user
-from app.api.deps import get_db
+from app.api.deps import get_db, get_read_db
 from app.models.consensus_score import ConsensusScore
 from app.models.instrument import Instrument
 from app.models.strategy_score import StrategyScore
+from app.services.request_cache import TtlCache
 from app.schemas.v1 import (
     FilterQuery, FilterResponse, PaginationMeta,
     RankingEntry, StrategyRankingEntry, StrategyRankingsResponse, StrategyScores,
 )
 
 router = APIRouter()
+_LATEST_STRATEGY_DATE_CACHE = TtlCache[Optional[date]](ttl_seconds=60)
 
 
 # ---------------------------------------------------------------------------
@@ -62,13 +64,17 @@ _CONSENSUS_SORT_COL = {
 
 
 async def _latest_ss_date(market: Optional[str], db: AsyncSession) -> Optional[date]:
+    cache_key = market or "*"
+    cached = _LATEST_STRATEGY_DATE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     q = select(func.max(StrategyScore.score_date))
     if market:
         q = q.join(Instrument, StrategyScore.instrument_id == Instrument.id).where(
             Instrument.market == market
         )
     result = await db.execute(q)
-    return result.scalar_one_or_none()
+    return _LATEST_STRATEGY_DATE_CACHE.set(cache_key, result.scalar_one_or_none())
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +89,7 @@ async def get_strategy_rankings(
     score_date: Optional[date] = Query(None),
     limit:      int            = Query(default=50, ge=1, le=200),
     offset:     int            = Query(default=0, ge=0),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
 ) -> StrategyRankingsResponse:
     if name not in _STRATEGY_SCORE_COL:
         raise HTTPException(
@@ -101,7 +107,16 @@ async def get_strategy_rankings(
     detail_col = _STRATEGY_DETAIL_COL[name]
 
     stmt = (
-        select(StrategyScore, Instrument.ticker, Instrument.name, Instrument.market)
+        select(
+            StrategyScore.instrument_id,
+            StrategyScore.score_date,
+            score_col.label("score"),
+            detail_col.label("detail"),
+            Instrument.ticker,
+            Instrument.name,
+            Instrument.market,
+            func.count().over().label("total_count"),
+        )
         .join(Instrument, StrategyScore.instrument_id == Instrument.id)
         .where(
             StrategyScore.score_date == score_date,
@@ -112,26 +127,31 @@ async def get_strategy_rankings(
     if market:
         stmt = stmt.where(Instrument.market == market)
 
-    # Count
-    count_q = await db.execute(select(func.count()).select_from(stmt.subquery()))
-    total = count_q.scalar_one()
-
-    # Page
     stmt = stmt.order_by(desc(score_col)).limit(limit).offset(offset)
     rows = (await db.execute(stmt)).all()
+    total = int(rows[0].total_count) if rows else 0
 
     items = [
         StrategyRankingEntry(
             rank          = offset + idx + 1,
-            instrument_id = ss.instrument_id,
+            instrument_id = instrument_id,
             ticker        = ticker,
             name          = name_,
             market        = mkt,
-            score         = float(getattr(ss, score_col.key)) if getattr(ss, score_col.key) is not None else None,
-            detail        = getattr(ss, detail_col.key),
-            score_date    = ss.score_date,
+            score         = float(score) if score is not None else None,
+            detail        = detail,
+            score_date    = item_score_date,
         )
-        for idx, (ss, ticker, name_, mkt) in enumerate(rows)
+        for idx, (
+            instrument_id,
+            item_score_date,
+            score,
+            detail,
+            ticker,
+            name_,
+            mkt,
+            _total_count,
+        ) in enumerate(rows)
     ]
 
     return StrategyRankingsResponse(

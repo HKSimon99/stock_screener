@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_read_db
 from app.schemas.v1 import (
     CoverageBucket,
     SearchResponse,
@@ -21,7 +21,7 @@ async def search_symbols(
     market: str | None = Query(None, pattern="^(US|KR)$"),
     asset_type: str | None = Query(None, pattern="^(stock|etf)$"),
     limit: int = Query(20, ge=1, le=50),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
 ) -> SearchResponse:
     instruments = await search_instruments(
         db,
@@ -59,7 +59,7 @@ async def search_symbols(
     response_model=UniverseCoverageResponse,
     summary="Coverage summary for the searchable universe",
 )
-async def get_universe_coverage(db: AsyncSession = Depends(get_db)) -> UniverseCoverageResponse:
+async def get_universe_coverage(db: AsyncSession = Depends(get_read_db)) -> UniverseCoverageResponse:
     summary = await summarize_universe_coverage(db)
     return UniverseCoverageResponse(
         as_of=summary["as_of"],

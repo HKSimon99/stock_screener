@@ -88,9 +88,26 @@ class Settings(BaseSettings):
     postgres_ssl: bool = False
 
     @property
+    def uses_nonpublic_schema(self) -> bool:
+        return bool(self.postgres_schema and self.postgres_schema != "public")
+
+    @property
+    def can_use_pooled_runtime_hosts(self) -> bool:
+        # Neon/PgBouncer pooled endpoints do not reliably cooperate with our
+        # non-public search_path startup configuration. Prefer the direct host
+        # whenever the app runs under a custom schema such as consensus_app.
+        return not self.uses_nonpublic_schema
+
+    @property
+    def runtime_postgres_host(self) -> str:
+        if self.postgres_host_pooler and self.can_use_pooled_runtime_hosts:
+            return self.postgres_host_pooler
+        return self.postgres_host
+
+    @property
     def database_url(self) -> str:
-        """Async runtime URL — uses Neon pooler host if configured."""
-        host = self.postgres_host_pooler or self.postgres_host
+        """Async runtime URL — uses Neon pooler only when runtime-safe."""
+        host = self.runtime_postgres_host
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{host}:{self.postgres_port}/{self.postgres_db}"
@@ -108,6 +125,8 @@ class Settings(BaseSettings):
     def database_url_replica(self) -> str | None:
         """Async URL for the Neon read replica, or None when not configured."""
         if not self.postgres_host_replica:
+            return None
+        if self.uses_nonpublic_schema and "pooler" in self.postgres_host_replica.lower():
             return None
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"

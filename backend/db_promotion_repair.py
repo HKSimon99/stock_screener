@@ -117,19 +117,19 @@ def _ensure_read_indexes(cur, *, schema: str) -> None:
         """,
         """
         CREATE INDEX IF NOT EXISTS idx_instruments_ticker_trgm
-        ON {schema}.instruments USING gin (ticker gin_trgm_ops)
+        ON {schema}.instruments USING gin (ticker public.gin_trgm_ops)
         """,
         """
         CREATE INDEX IF NOT EXISTS idx_instruments_name_trgm
-        ON {schema}.instruments USING gin (name gin_trgm_ops)
+        ON {schema}.instruments USING gin (name public.gin_trgm_ops)
         """,
         """
         CREATE INDEX IF NOT EXISTS idx_instruments_name_kr_trgm
-        ON {schema}.instruments USING gin (name_kr gin_trgm_ops)
+        ON {schema}.instruments USING gin (name_kr public.gin_trgm_ops)
         """,
         """
         CREATE INDEX IF NOT EXISTS idx_instruments_exchange_trgm
-        ON {schema}.instruments USING gin (exchange gin_trgm_ops)
+        ON {schema}.instruments USING gin (exchange public.gin_trgm_ops)
         """,
     ]
 

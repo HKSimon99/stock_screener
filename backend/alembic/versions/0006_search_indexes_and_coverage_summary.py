@@ -73,13 +73,13 @@ def upgrade() -> None:
         BEGIN
             IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm') THEN
                 EXECUTE 'CREATE INDEX IF NOT EXISTS idx_instruments_ticker_trgm
-                         ON consensus_app.instruments USING gin (ticker gin_trgm_ops)';
+                         ON consensus_app.instruments USING gin (ticker public.gin_trgm_ops)';
                 EXECUTE 'CREATE INDEX IF NOT EXISTS idx_instruments_name_trgm
-                         ON consensus_app.instruments USING gin (name gin_trgm_ops)';
+                         ON consensus_app.instruments USING gin (name public.gin_trgm_ops)';
                 EXECUTE 'CREATE INDEX IF NOT EXISTS idx_instruments_name_kr_trgm
-                         ON consensus_app.instruments USING gin (name_kr gin_trgm_ops)';
+                         ON consensus_app.instruments USING gin (name_kr public.gin_trgm_ops)';
                 EXECUTE 'CREATE INDEX IF NOT EXISTS idx_instruments_exchange_trgm
-                         ON consensus_app.instruments USING gin (exchange gin_trgm_ops)';
+                         ON consensus_app.instruments USING gin (exchange public.gin_trgm_ops)';
             END IF;
         END
         $$;

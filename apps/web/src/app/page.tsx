@@ -10,7 +10,7 @@ const FEATURE_GRID = [
   },
   {
     title: "Coverage-aware ranking",
-    body: "The product separates searchable names from fundamentals-ready and ranked names so the board stays honest about what it knows.",
+    body: "The product separates symbols that need more data, scoring, or freshness repair from ranked names so the board stays honest about what it knows.",
     icon: ShieldCheck,
   },
   {
@@ -41,7 +41,7 @@ export default function Home() {
               </h1>
               <p className="mt-6 max-w-2xl text-base leading-7 text-[oklch(0.84_0.02_88)] sm:text-lg">
                 Consensus Signal Research is being rebuilt as a full-market search,
-                ranking, and chart workspace. It separates searchable universe coverage
+                ranking, and chart workspace. It separates incomplete or stale coverage
                 from truly ranked names, keeps live-vs-delayed context visible, and
                 treats market regime as part of the product instead of a footnote.
               </p>
@@ -72,7 +72,7 @@ export default function Home() {
                     Major listed equities + ETFs
                   </div>
                   <div className="mt-2 text-sm leading-6 text-quiet">
-                    US and KR are searchable from day one. Rankings stay honest about eligibility.
+                    US and KR can be discovered from day one. Rankings stay honest about eligibility.
                   </div>
                 </div>
                 <div className="rounded-[1.4rem] border border-white/10 bg-white/6 p-4">

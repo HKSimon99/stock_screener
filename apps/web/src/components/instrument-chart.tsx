@@ -75,6 +75,22 @@ const RANGE_LABELS: Record<ChartRangeDays, string> = {
   730: "2Y",
 };
 
+function chartEmptyCopy(data: InstrumentChartData | null) {
+  const market = data?.market;
+  if (market === "KR") {
+    return {
+      title: "차트 데이터가 아직 없습니다",
+      body: data?.benchmark_note ?? "가격 수집이 완료되면 캔들, 이동평균선, RS 라인이 표시됩니다.",
+      action: "새로고침 대기열은 다음 단계에서 연결됩니다.",
+    };
+  }
+  return {
+    title: "Chart candles are not available yet",
+    body: data?.benchmark_note ?? "Once price ingestion is complete, candles, moving averages, and the RS line will appear here.",
+    action: "The manual refresh queue connects in the next phase.",
+  };
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function InstrumentChart({
@@ -86,6 +102,7 @@ export function InstrumentChart({
   isFetching = false,
 }: InstrumentChartProps) {
   const { containerRef, chart } = useChart();
+  const emptyCopy = chartEmptyCopy(data);
 
   // ── Data layer: rebuild all series whenever chart instance or data changes ──
   useEffect(() => {
@@ -294,15 +311,20 @@ export function InstrumentChart({
 
         {/* Empty state: no data or empty bars array */}
         {(!data || !data.bars?.length) && !isFetching && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-            <div className="text-xs text-faint">No price data available</div>
-            <div className="text-[0.62rem] text-faint/60">Run price ingestion to populate chart</div>
+          <div className="absolute inset-0 flex items-center justify-center p-6">
+            <div className="max-w-md rounded-[1.35rem] border border-white/10 bg-black/40 px-5 py-5 text-center shadow-2xl backdrop-blur">
+              <div className="text-sm font-medium text-white">{emptyCopy.title}</div>
+              <div className="mt-2 text-xs leading-5 text-faint">{emptyCopy.body}</div>
+              <div className="mt-3 rounded-full border border-white/10 px-3 py-1.5 text-[0.62rem] uppercase tracking-[0.16em] text-faint">
+                {emptyCopy.action}
+              </div>
+            </div>
           </div>
         )}
       </div>
 
       {/* ── Benchmark note ───────────────────────────────────────────────── */}
-      {data?.benchmark_note && (
+      {data?.benchmark_note && data.bars?.length > 0 && (
         <div className="px-5 pb-3 pt-1 text-[0.62rem] text-faint">
           {data.benchmark_note}
         </div>

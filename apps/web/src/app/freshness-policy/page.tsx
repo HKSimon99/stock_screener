@@ -1,9 +1,10 @@
 import { SiteChrome } from "@/components/site-chrome";
 
 const rows = [
-  ["Searchable", "The security exists in the supported universe but may not yet have price or filing coverage."],
-  ["Price ready", "Historical pricing is available and the chart workspace can open."],
-  ["Fundamentals ready", "At least one supported filing series is available for factor and profile work."],
+  ["Needs Price", "The security exists in the supported universe but does not yet have usable price history."],
+  ["Needs Fundamentals", "Historical pricing exists, but supported stock filing coverage is not available yet."],
+  ["Needs Scoring", "The required raw data exists, but a stored score has not been generated yet."],
+  ["Stale", "A price or fundamentals layer is older than the market-aware freshness policy expects."],
   ["Ranked", "A stored score snapshot exists and the symbol can appear in the leaderboard."],
 ] as const;
 

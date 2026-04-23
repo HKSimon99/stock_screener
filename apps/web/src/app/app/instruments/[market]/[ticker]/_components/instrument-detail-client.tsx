@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Pin, RefreshCw } from "lucide-react";
 import {
   APIError,
   fetchInstrument,
   fetchInstrumentChart,
-  ingestInstrument,
   type InstrumentChart,
   type InstrumentDetail,
 } from "@/lib/api";
@@ -62,6 +61,157 @@ function convictionBadge(level: string) {
   );
 }
 
+function missingLabel(market: "US" | "KR") {
+  return market === "KR" ? "데이터 없음" : "Not available";
+}
+
+function formatDate(value: string | undefined, market: "US" | "KR") {
+  if (!value) return missingLabel(market);
+  try {
+    return new Intl.DateTimeFormat(market === "KR" ? "ko-KR" : "en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }).format(new Date(`${value}T00:00:00`));
+  } catch {
+    return value;
+  }
+}
+
+function formatPrice(value: number | undefined, market: "US" | "KR") {
+  if (typeof value !== "number" || !Number.isFinite(value)) return missingLabel(market);
+  return new Intl.NumberFormat(market === "KR" ? "ko-KR" : "en-US", {
+    style: "currency",
+    currency: market === "KR" ? "KRW" : "USD",
+    maximumFractionDigits: market === "KR" ? 0 : 2,
+  }).format(value);
+}
+
+function compactMoney(value: number | undefined, market: "US" | "KR") {
+  if (typeof value !== "number" || !Number.isFinite(value)) return missingLabel(market);
+  const sign = value < 0 ? "-" : "";
+  const abs = Math.abs(value);
+  if (market === "KR") {
+    if (abs >= 1_000_000_000_000) return `${sign}₩${(abs / 1_000_000_000_000).toFixed(1)}조`;
+    if (abs >= 100_000_000) return `${sign}₩${(abs / 100_000_000).toFixed(1)}억`;
+    if (abs >= 10_000) return `${sign}₩${(abs / 10_000).toFixed(1)}만`;
+    return `${sign}₩${abs.toLocaleString("ko-KR")}`;
+  }
+  if (abs >= 1_000_000_000_000) return `${sign}$${(abs / 1_000_000_000_000).toFixed(1)}T`;
+  if (abs >= 1_000_000_000) return `${sign}$${(abs / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}$${abs.toLocaleString("en-US")}`;
+}
+
+function compactShares(value: number | undefined, market: "US" | "KR") {
+  if (typeof value !== "number" || !Number.isFinite(value)) return missingLabel(market);
+  const abs = Math.abs(value);
+  if (market === "KR") {
+    if (abs >= 100_000_000) return `${(abs / 100_000_000).toFixed(1)}억주`;
+    if (abs >= 10_000) return `${(abs / 10_000).toFixed(1)}만주`;
+    return `${abs.toLocaleString("ko-KR")}주`;
+  }
+  if (abs >= 1_000_000_000) return `${(abs / 1_000_000_000).toFixed(1)}B sh`;
+  if (abs >= 1_000_000) return `${(abs / 1_000_000).toFixed(1)}M sh`;
+  if (abs >= 1_000) return `${(abs / 1_000).toFixed(1)}K sh`;
+  return `${abs.toLocaleString("en-US")} sh`;
+}
+
+function compactCount(value: number | undefined, market: "US" | "KR") {
+  if (typeof value !== "number" || !Number.isFinite(value)) return missingLabel(market);
+  return new Intl.NumberFormat(market === "KR" ? "ko-KR" : "en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function formatPercent(value: number | undefined, market: "US" | "KR", mode: "ratio" | "points" = "ratio") {
+  if (typeof value !== "number" || !Number.isFinite(value)) return missingLabel(market);
+  const percent = mode === "ratio" ? value * 100 : value;
+  return `${percent > 0 ? "+" : ""}${percent.toFixed(1)}%`;
+}
+
+function formatRatio(value: number | undefined, market: "US" | "KR") {
+  if (typeof value !== "number" || !Number.isFinite(value)) return missingLabel(market);
+  return value.toFixed(2);
+}
+
+function plainValue(value: string | number | undefined | null, market: "US" | "KR") {
+  if (value === undefined || value === null || value === "") return missingLabel(market);
+  if (typeof value === "number") return Number.isFinite(value) ? value.toLocaleString(market === "KR" ? "ko-KR" : "en-US") : missingLabel(market);
+  return value;
+}
+
+function MetricCard({
+  label,
+  value,
+  note,
+  tone,
+  market,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: "up" | "down" | "neutral";
+  market: "US" | "KR";
+}) {
+  return (
+    <div className="surface-panel-soft rounded-[1.25rem] border border-white/8 px-4 py-4">
+      <div className="text-[0.65rem] uppercase tracking-[0.18em] text-faint">{label}</div>
+      <div
+        className={cn(
+          "mt-2 font-mono text-xl text-white",
+          tone === "up" && market === "US" && "text-[oklch(0.82_0.12_145)]",
+          tone === "up" && market === "KR" && "text-[oklch(0.7_0.15_25)]",
+          tone === "down" && market === "US" && "text-[oklch(0.7_0.15_25)]",
+          tone === "down" && market === "KR" && "text-[oklch(0.7_0.12_250)]"
+        )}
+      >
+        {value}
+      </div>
+      {note && <div className="mt-1 text-xs text-faint">{note}</div>}
+    </div>
+  );
+}
+
+function MetricSection({
+  title,
+  subtitle,
+  children,
+  defaultOpen = true,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details className="group rounded-[1.25rem] border border-white/8 bg-white/[0.03] px-4 py-3" open={defaultOpen}>
+      <summary className="cursor-pointer list-none">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-xs uppercase tracking-[0.18em] text-faint">{title}</div>
+            {subtitle && <div className="mt-1 text-xs text-faint">{subtitle}</div>}
+          </div>
+          <span className="text-xs uppercase tracking-[0.16em] text-faint group-open:hidden">Open</span>
+          <span className="hidden text-xs uppercase tracking-[0.16em] text-faint group-open:inline">Close</span>
+        </div>
+      </summary>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
+    </details>
+  );
+}
+
+function MetricRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[0.95rem] border border-white/8 bg-black/10 px-3 py-3">
+      <div className="text-[0.65rem] uppercase tracking-[0.15em] text-faint">{label}</div>
+      <div className="mt-1 font-mono text-sm text-white">{value}</div>
+    </div>
+  );
+}
+
 export function InstrumentDetailClient({
   ticker,
   market,
@@ -70,8 +220,6 @@ export function InstrumentDetailClient({
 }: InstrumentDetailClientProps) {
   const [chartInterval, setChartInterval] = useState<ChartInterval>("1d");
   const [chartRangeDays, setChartRangeDays] = useState<ChartRangeDays>(365);
-
-  const queryClient = useQueryClient();
 
   const togglePinned = useUIStore((state) => state.togglePinnedInstrument);
   const isPinned = useUIStore((state) => state.isPinned);
@@ -108,23 +256,6 @@ export function InstrumentDetailClient({
     refetchOnMount: false,
   });
 
-  const ingestMutation = useMutation({
-    mutationFn: () => ingestInstrument(ticker, market),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["instrument", ticker, market] });
-      queryClient.invalidateQueries({ queryKey: ["instrument-chart", ticker, market] });
-    },
-  });
-
-  const [hasAutoTriggered, setHasAutoTriggered] = useState(false);
-
-  useEffect(() => {
-    if (data?.needs_refresh && !hasAutoTriggered && !ingestMutation.isPending && !ingestMutation.isSuccess) {
-      setHasAutoTriggered(true);
-      ingestMutation.mutate();
-    }
-  }, [data?.needs_refresh, hasAutoTriggered, ingestMutation.isPending, ingestMutation.isSuccess, ingestMutation]);
-
   if (isPending && !data) {
     return (
       <div className="app-shell py-12 text-center">
@@ -149,6 +280,124 @@ export function InstrumentDetailClient({
   }
 
   const isRanked = data.coverage_state === "ranked" && data.conviction_level !== "UNRANKED";
+  const displayName = market === "KR" && data.name_kr ? data.name_kr : data.name || ticker;
+  const secondaryName = market === "KR" && data.name_kr ? data.name : data.name_kr;
+  const price = data.price_metrics ?? {};
+  const quarterly = data.quarterly_metrics;
+  const annual = data.annual_metrics;
+  const changeTone =
+    typeof price.change === "number" && price.change > 0
+      ? "up"
+      : typeof price.change === "number" && price.change < 0
+        ? "down"
+        : "neutral";
+  const labels = market === "KR"
+    ? {
+        investorMetrics: "투자 지표",
+        latestClose: "최근 종가",
+        dayChange: "전일 대비",
+        volume: "거래량",
+        avgVolume: "50일 평균 거래량",
+        identity: "시장 정보",
+        float: "유통 주식",
+        priceLiquidity: "가격 및 유동성",
+        quarterly: "최근 분기 실적",
+        annualIncome: "연간 손익",
+        balance: "재무 상태",
+        technical: "기술적 신호",
+        fundamentalsDate: "보고 기준",
+        coverageStatus: "커버리지 상태",
+        needsPrice: "가격 데이터가 아직 없습니다. 차트와 기술 지표는 가격 수집 후 표시됩니다.",
+        needsFundamentals: "가격 데이터는 있지만 재무제표가 부족합니다. 실적 지표와 전체 점수는 아직 제한됩니다.",
+        needsScoring: "기초 데이터는 준비되었지만 순위 모델 점수가 아직 생성되지 않았습니다.",
+        stale: "데이터가 오래되었습니다. 최신 순위에 반영되기 전까지 주의해서 봐주세요.",
+        unranked: "이 종목은 유니버스에 있지만 아직 전체 순위 모델 점수가 없습니다.",
+        refreshPlaceholder: "새로고침 대기열은 Part 2에서 연결됩니다.",
+        refreshCta: "새로고침 준비 중",
+        close: "종가",
+        previousClose: "전일 종가",
+        change: "변동",
+        changePercent: "변동률",
+        revenue: "매출",
+        revenueGrowth: "매출 성장률",
+        netIncome: "순이익",
+        eps: "EPS",
+        dilutedEps: "희석 EPS",
+        epsGrowth: "EPS 성장률",
+        grossProfit: "매출총이익",
+        operatingCashFlow: "영업현금흐름",
+        totalAssets: "총자산",
+        currentAssets: "유동자산",
+        currentLiabilities: "유동부채",
+        longTermDebt: "장기부채",
+        roa: "ROA",
+        currentRatio: "유동비율",
+        grossMargin: "매출총이익률",
+        assetTurnover: "자산회전율",
+        leverageRatio: "레버리지 비율",
+        technicalComposite: "기술 점수",
+        rsRating: "RS 등급",
+        adRating: "A/D 등급",
+        bbSqueeze: "BB 스퀴즈",
+        rsLineNewHigh: "RS 라인 신고가",
+        stopLoss: "7% 손절가",
+        previous: "이전",
+        yes: "예",
+        no: "아니오",
+      }
+    : {
+        investorMetrics: "Investor Metrics",
+        latestClose: "Latest Close",
+        dayChange: "Day Change",
+        volume: "Volume",
+        avgVolume: "50D Avg Volume",
+        identity: "Market Info",
+        float: "Float",
+        priceLiquidity: "Price & Liquidity",
+        quarterly: "Latest Quarter",
+        annualIncome: "Annual Income",
+        balance: "Balance Sheet",
+        technical: "Technical Pulse",
+        fundamentalsDate: "Reported",
+        coverageStatus: "Coverage Status",
+        needsPrice: "Price history is not available yet. Charts and technical indicators will appear after price ingestion.",
+        needsFundamentals: "Price data exists, but fundamentals are still missing. Financial metrics and full scoring are limited.",
+        needsScoring: "Baseline data is available, but the ranking model has not generated scores yet.",
+        stale: "This dataset is stale. Treat the view as a snapshot until a fresh batch ranking runs.",
+        unranked: "This symbol is in the universe, but the full ranking model has not scored it yet.",
+        refreshPlaceholder: "Manual refresh queue connects in Part 2.",
+        refreshCta: "Refresh queue pending",
+        close: "Close",
+        previousClose: "Previous Close",
+        change: "Change",
+        changePercent: "Change %",
+        revenue: "Revenue",
+        revenueGrowth: "Revenue Growth",
+        netIncome: "Net Income",
+        eps: "EPS",
+        dilutedEps: "Diluted EPS",
+        epsGrowth: "EPS Growth",
+        grossProfit: "Gross Profit",
+        operatingCashFlow: "Operating Cash Flow",
+        totalAssets: "Total Assets",
+        currentAssets: "Current Assets",
+        currentLiabilities: "Current Liabilities",
+        longTermDebt: "Long-Term Debt",
+        roa: "ROA",
+        currentRatio: "Current Ratio",
+        grossMargin: "Gross Margin",
+        assetTurnover: "Asset Turnover",
+        leverageRatio: "Leverage Ratio",
+        technicalComposite: "Technical Composite",
+        rsRating: "RS Rating",
+        adRating: "A/D Rating",
+        bbSqueeze: "BB Squeeze",
+        rsLineNewHigh: "RS Line New High",
+        stopLoss: "Stop Loss 7%",
+        previous: "Prev",
+        yes: "Yes",
+        no: "No",
+      };
 
   return (
     <div className="app-shell space-y-4 py-4 sm:py-6">
@@ -161,15 +410,13 @@ export function InstrumentDetailClient({
                 {market} / {data.exchange ?? ""}
               </div>
             </div>
-            <h1 className="mt-2 font-heading text-5xl uppercase tracking-[0.03em] text-white">
-              {ticker}
+            <h1 className="mt-2 font-heading text-4xl uppercase tracking-[0.03em] text-white sm:text-5xl">
+              {displayName}
             </h1>
-            {data.name && (
-              <div className="mt-1 text-sm text-quiet">
-                {data.name}
-                {data.name_kr ? ` · ${data.name_kr}` : ""}
-              </div>
-            )}
+            <div className="mt-1 text-sm text-quiet">
+              {ticker}
+              {secondaryName ? ` · ${secondaryName}` : ""}
+            </div>
             {isFetching && (
               <div className="mt-2 text-xs uppercase tracking-[0.16em] text-faint">
                 Refreshing…
@@ -215,37 +462,151 @@ export function InstrumentDetailClient({
 
       {!isRanked && (
         <div className="surface-panel rounded-[1.65rem] border border-[oklch(0.9_0.03_88_/_0.18)] px-5 py-4">
-          <div className="tiny-label">Coverage Status</div>
+          <div className="tiny-label">{labels.coverageStatus}</div>
           <div className="mt-2 text-sm leading-6 text-quiet">
-            {data.needs_refresh 
-              ? "We are fetching the latest baseline which includes real-time prices, fundamentals, and consensus calculations..." 
-              : "This symbol is in the universe, but the full ranking model has not scored it yet."}
+            {data.coverage_state === "needs_price"
+              ? labels.needsPrice
+              : data.coverage_state === "needs_fundamentals"
+                ? labels.needsFundamentals
+                : data.coverage_state === "needs_scoring"
+                  ? labels.needsScoring
+                  : data.coverage_state === "stale"
+                    ? labels.stale
+                    : labels.unranked}
           </div>
           {data.ranking_eligibility?.reasons && data.ranking_eligibility.reasons.length > 0 && (
             <div className="mt-3 text-xs text-faint">
               {data.ranking_eligibility.reasons.join(" · ")}
             </div>
           )}
-          <div className="mt-4">
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
             <button
-              onClick={() => {
-                setHasAutoTriggered(true);
-                ingestMutation.mutate();
-              }}
-              disabled={ingestMutation.isPending || (data.needs_refresh && ingestMutation.isSuccess)}
+              type="button"
+              disabled
               className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/5 hover:bg-white/10 px-5 py-2.5 text-xs font-medium uppercase tracking-[0.08em] text-white transition-colors disabled:opacity-50"
             >
-              <RefreshCw className={cn("size-3.5", ingestMutation.isPending && "animate-spin")} />
-              {ingestMutation.isPending ? "Ingesting Data..." : "Load Real-Time Data"}
+              <RefreshCw className="size-3.5" />
+              {labels.refreshCta}
             </button>
-          </div>
-          {ingestMutation.isError && (
-            <div className="mt-3 text-xs text-[oklch(0.6_0.15_20)]">
-              {ingestMutation.error instanceof Error ? ingestMutation.error.message : "Failed to ingest instrument."}
+            <div className="text-xs text-faint">
+              {labels.refreshPlaceholder}
             </div>
-          )}
+          </div>
         </div>
       )}
+
+      <div className="surface-panel rounded-[1.65rem] px-5 py-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="tiny-label">{labels.investorMetrics}</div>
+            <div className="mt-2 text-sm text-quiet">
+              Only sourced backend fields are shown. Missing metrics stay explicit until provider data is reliable.
+            </div>
+          </div>
+          <div className="text-xs text-faint">
+            {labels.fundamentalsDate}: {formatDate(quarterly?.report_date ?? annual?.report_date, market)}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <MetricCard
+            market={market}
+            label={labels.latestClose}
+            value={formatPrice(price.close, market)}
+            note={formatDate(price.trade_date, market)}
+          />
+          <MetricCard
+            market={market}
+            label={labels.dayChange}
+            value={`${formatPrice(price.change, market)} / ${formatPercent(price.change_percent, market, "points")}`}
+            note={price.previous_close != null ? `${labels.previous} ${formatPrice(price.previous_close, market)}` : missingLabel(market)}
+            tone={changeTone}
+          />
+          <MetricCard
+            market={market}
+            label={labels.volume}
+            value={compactCount(price.volume, market)}
+            note={`${labels.avgVolume}: ${compactCount(price.avg_volume_50d, market)}`}
+          />
+          <MetricCard
+            market={market}
+            label={labels.identity}
+            value={plainValue(data.exchange, market)}
+            note={plainValue(data.sector ?? data.industry_group, market)}
+          />
+          <MetricCard
+            market={market}
+            label={labels.float}
+            value={compactShares(data.float_shares, market)}
+            note={`Shares: ${compactShares(data.shares_outstanding, market)}`}
+          />
+        </div>
+
+        <div className="mt-4 space-y-3">
+          <MetricSection
+            title={labels.priceLiquidity}
+            subtitle={`${labels.latestClose}: ${formatDate(price.trade_date, market)}`}
+          >
+            <MetricRow label={labels.close} value={formatPrice(price.close, market)} />
+            <MetricRow label={labels.previousClose} value={formatPrice(price.previous_close, market)} />
+            <MetricRow label={labels.change} value={formatPrice(price.change, market)} />
+            <MetricRow label={labels.changePercent} value={formatPercent(price.change_percent, market, "points")} />
+            <MetricRow label={labels.volume} value={compactCount(price.volume, market)} />
+            <MetricRow label={labels.avgVolume} value={compactCount(price.avg_volume_50d, market)} />
+          </MetricSection>
+
+          <MetricSection
+            title={labels.quarterly}
+            subtitle={
+              quarterly?.fiscal_year && quarterly?.fiscal_quarter
+                ? `FY${quarterly.fiscal_year} Q${quarterly.fiscal_quarter} · ${formatDate(quarterly.report_date, market)}`
+                : missingLabel(market)
+            }
+            defaultOpen={false}
+          >
+            <MetricRow label={labels.revenue} value={compactMoney(quarterly?.revenue, market)} />
+            <MetricRow label={labels.revenueGrowth} value={formatPercent(quarterly?.revenue_yoy_growth, market)} />
+            <MetricRow label={labels.netIncome} value={compactMoney(quarterly?.net_income, market)} />
+            <MetricRow label={labels.eps} value={plainValue(quarterly?.eps, market)} />
+            <MetricRow label={labels.dilutedEps} value={plainValue(quarterly?.eps_diluted, market)} />
+            <MetricRow label={labels.epsGrowth} value={formatPercent(quarterly?.eps_yoy_growth, market)} />
+          </MetricSection>
+
+          <MetricSection
+            title={labels.annualIncome}
+            subtitle={annual?.fiscal_year ? `FY${annual.fiscal_year} · ${formatDate(annual.report_date, market)}` : missingLabel(market)}
+            defaultOpen={false}
+          >
+            <MetricRow label={labels.revenue} value={compactMoney(annual?.revenue, market)} />
+            <MetricRow label={labels.grossProfit} value={compactMoney(annual?.gross_profit, market)} />
+            <MetricRow label={labels.netIncome} value={compactMoney(annual?.net_income, market)} />
+            <MetricRow label={labels.operatingCashFlow} value={compactMoney(annual?.operating_cash_flow, market)} />
+            <MetricRow label={labels.eps} value={plainValue(annual?.eps, market)} />
+            <MetricRow label={labels.epsGrowth} value={formatPercent(annual?.eps_yoy_growth, market)} />
+          </MetricSection>
+
+          <MetricSection title={labels.balance} defaultOpen={false}>
+            <MetricRow label={labels.totalAssets} value={compactMoney(annual?.total_assets, market)} />
+            <MetricRow label={labels.currentAssets} value={compactMoney(annual?.current_assets, market)} />
+            <MetricRow label={labels.currentLiabilities} value={compactMoney(annual?.current_liabilities, market)} />
+            <MetricRow label={labels.longTermDebt} value={compactMoney(annual?.long_term_debt, market)} />
+            <MetricRow label={labels.roa} value={formatPercent(annual?.roa, market)} />
+            <MetricRow label={labels.currentRatio} value={formatRatio(annual?.current_ratio, market)} />
+            <MetricRow label={labels.grossMargin} value={formatPercent(annual?.gross_margin, market)} />
+            <MetricRow label={labels.assetTurnover} value={formatRatio(annual?.asset_turnover, market)} />
+            <MetricRow label={labels.leverageRatio} value={formatRatio(annual?.leverage_ratio, market)} />
+          </MetricSection>
+
+          <MetricSection title={labels.technical} defaultOpen={false}>
+            <MetricRow label={labels.technicalComposite} value={plainValue(data.technical_composite, market)} />
+            <MetricRow label={labels.rsRating} value={plainValue(data.rs_rating, market)} />
+            <MetricRow label={labels.adRating} value={plainValue(data.ad_rating, market)} />
+            <MetricRow label={labels.bbSqueeze} value={data.bb_squeeze == null ? missingLabel(market) : data.bb_squeeze ? labels.yes : labels.no} />
+            <MetricRow label={labels.rsLineNewHigh} value={data.rs_line_new_high == null ? missingLabel(market) : data.rs_line_new_high ? labels.yes : labels.no} />
+            <MetricRow label={labels.stopLoss} value={formatPrice(data.stop_loss_7pct, market)} />
+          </MetricSection>
+        </div>
+      </div>
 
       {/* Scores grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">

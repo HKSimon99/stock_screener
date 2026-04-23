@@ -22,8 +22,9 @@ interface SearchClientProps {
 
 function coverageTone(state: SearchResult["coverage_state"]): string {
   if (state === "ranked") return "text-[oklch(0.92_0.04_150)]";
-  if (state === "fundamentals_ready") return "text-[oklch(0.94_0.04_88)]";
-  if (state === "price_ready") return "text-[oklch(0.9_0.03_192)]";
+  if (state === "needs_scoring") return "text-[oklch(0.94_0.04_88)]";
+  if (state === "needs_fundamentals") return "text-[oklch(0.9_0.03_192)]";
+  if (state === "stale") return "text-[oklch(0.93_0.05_55)]";
   return "text-faint";
 }
 
@@ -79,7 +80,7 @@ export function SearchClient({
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-quiet">
           Search by ticker, company, Korean name, or exchange. The result list shows whether a symbol
-          is only searchable, price-ready, fundamentals-ready, or fully ranked.
+          needs price data, needs fundamentals, needs scoring, is stale, or is fully ranked.
         </p>
 
         <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">

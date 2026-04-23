@@ -3,7 +3,7 @@ import { SiteChrome } from "@/components/site-chrome";
 const sections = [
   {
     title: "Coverage before confidence",
-    body: "The platform distinguishes searchable symbols from price-ready, fundamentals-ready, and ranked names. A stock can be searchable even when it is not yet eligible for ranking.",
+    body: "The platform distinguishes symbols that need price data, fundamentals, scoring, or freshness repair from names that are truly ranked.",
   },
   {
     title: "Named strategies are overlays",

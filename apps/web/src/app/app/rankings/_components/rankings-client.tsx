@@ -28,15 +28,19 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
   const market = (searchParams.get("market") as "US" | "KR") ?? initialFilters.market;
   const assetType = (searchParams.get("asset_type") as "stock" | "etf") ?? initialFilters.assetType;
   const conviction = searchParams.get("conviction") ?? initialFilters.conviction;
+  const parsedLimit = searchParams.get("limit")
+    ? parseInt(searchParams.get("limit") ?? "", 10)
+    : initialFilters.limit;
+  const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 200;
 
   const { data, error, isFetching } = useQuery({
-    queryKey: ["rankings", market, assetType, conviction, initialFilters.limit],
+    queryKey: ["rankings", market, assetType, conviction, limit],
     queryFn: () =>
       fetchRankings({
         market,
         asset_type: assetType,
         conviction: conviction || undefined,
-        limit: initialFilters.limit,
+        limit,
       }),
     initialData: initialData ?? undefined,
     staleTime: 0,
@@ -61,7 +65,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
         </h1>
         {data && (
           <div className="mt-2 text-xs text-faint">
-            {data.total} instruments · scored {data.score_date}
+            Showing {data.items.length} of {data.total} instruments · scored {data.score_date}
             {isFetching && " · refreshing…"}
           </div>
         )}

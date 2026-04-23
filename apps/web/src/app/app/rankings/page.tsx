@@ -15,7 +15,8 @@ export default async function AppRankingsPage({ searchParams }: PageProps) {
   const market = sp.market === "KR" ? "KR" : "US";
   const assetType = sp.asset_type === "etf" ? "etf" : "stock";
   const conviction = sp.conviction ?? "";
-  const limit = sp.limit ? parseInt(sp.limit, 10) : 50;
+  const parsedLimit = sp.limit ? parseInt(sp.limit, 10) : 200;
+  const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 200;
 
   let initialData: RankingsResponse | null = null;
   try {

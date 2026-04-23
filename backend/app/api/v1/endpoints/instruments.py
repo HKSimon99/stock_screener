@@ -23,19 +23,20 @@ import asyncio
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, desc, union_all
+from sqlalchemy import select, func, desc, or_, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_read_db
 from app.models.consensus_score import ConsensusScore
+from app.models.fundamental import FundamentalAnnual, FundamentalQuarterly
 from app.models.instrument import Instrument
 from app.models.price import Price
 from app.models.strategy_score import StrategyScore
 from app.schemas.v1 import (
     ChartLinePoint, ChartPatternAnchor, ChartPatternOverlay, ChartPriceBar,
-    CANSLIMDetail, InstrumentDetailResponse,
+    AnnualMetrics, CANSLIMDetail, InstrumentDetailResponse,
     InstrumentChartResponse,
-    ScoreHistoryPoint, WeinsteinStageHistoryPoint,
+    PriceMetrics, QuarterlyMetrics, ScoreHistoryPoint, WeinsteinStageHistoryPoint,
     MinerviniDetail, PiotroskiDetail, TechnicalDetail, WeinsteinDetail,
 )
 from app.services.universe import build_coverage_map
@@ -129,6 +130,132 @@ async def _load_score_rows(
     if score_row is None:
         return None, None
     return score_row[0], score_row[1]
+
+
+async def _load_price_metrics(
+    instrument_id: int,
+    reference_date: date,
+    db: AsyncSession,
+) -> PriceMetrics:
+    price_q = await db.execute(
+        select(Price)
+        .where(
+            Price.instrument_id == instrument_id,
+            Price.trade_date <= reference_date,
+            Price.close.is_not(None),
+        )
+        .order_by(desc(Price.trade_date))
+        .limit(2)
+    )
+    rows = price_q.scalars().all()
+    latest = rows[0] if rows else None
+    previous = rows[1] if len(rows) > 1 else None
+    if latest is None:
+        return PriceMetrics()
+
+    close = _f(latest.close)
+    previous_close = _f(previous.close) if previous else None
+    change = (
+        close - previous_close
+        if close is not None and previous_close is not None
+        else None
+    )
+    change_percent = (
+        (change / previous_close) * 100
+        if change is not None and previous_close not in (None, 0)
+        else None
+    )
+
+    return PriceMetrics(
+        trade_date=latest.trade_date,
+        close=close,
+        previous_close=previous_close,
+        change=change,
+        change_percent=change_percent,
+        volume=_i(latest.volume),
+        avg_volume_50d=_i(latest.avg_volume_50d),
+    )
+
+
+async def _load_quarterly_metrics(
+    instrument_id: int,
+    reference_date: date,
+    db: AsyncSession,
+) -> Optional[QuarterlyMetrics]:
+    quarterly_q = await db.execute(
+        select(FundamentalQuarterly)
+        .where(
+            FundamentalQuarterly.instrument_id == instrument_id,
+            or_(
+                FundamentalQuarterly.report_date <= reference_date,
+                FundamentalQuarterly.report_date.is_(None),
+            ),
+        )
+        .order_by(
+            desc(FundamentalQuarterly.fiscal_year),
+            desc(FundamentalQuarterly.fiscal_quarter),
+        )
+        .limit(1)
+    )
+    row = quarterly_q.scalars().first()
+    if row is None:
+        return None
+    return QuarterlyMetrics(
+        fiscal_year=row.fiscal_year,
+        fiscal_quarter=row.fiscal_quarter,
+        report_date=row.report_date,
+        revenue=_i(row.revenue),
+        net_income=_i(row.net_income),
+        eps=_f(row.eps),
+        eps_diluted=_f(row.eps_diluted),
+        revenue_yoy_growth=_f(row.revenue_yoy_growth),
+        eps_yoy_growth=_f(row.eps_yoy_growth),
+        data_source=row.data_source,
+    )
+
+
+async def _load_annual_metrics(
+    instrument_id: int,
+    reference_date: date,
+    db: AsyncSession,
+) -> Optional[AnnualMetrics]:
+    annual_q = await db.execute(
+        select(FundamentalAnnual)
+        .where(
+            FundamentalAnnual.instrument_id == instrument_id,
+            or_(
+                FundamentalAnnual.report_date <= reference_date,
+                FundamentalAnnual.report_date.is_(None),
+            ),
+        )
+        .order_by(desc(FundamentalAnnual.fiscal_year))
+        .limit(1)
+    )
+    row = annual_q.scalars().first()
+    if row is None:
+        return None
+    return AnnualMetrics(
+        fiscal_year=row.fiscal_year,
+        report_date=row.report_date,
+        revenue=_i(row.revenue),
+        gross_profit=_i(row.gross_profit),
+        net_income=_i(row.net_income),
+        eps=_f(row.eps),
+        eps_diluted=_f(row.eps_diluted),
+        eps_yoy_growth=_f(row.eps_yoy_growth),
+        total_assets=_i(row.total_assets),
+        current_assets=_i(row.current_assets),
+        current_liabilities=_i(row.current_liabilities),
+        long_term_debt=_i(row.long_term_debt),
+        shares_outstanding_annual=_i(row.shares_outstanding_annual),
+        operating_cash_flow=_i(row.operating_cash_flow),
+        roa=_f(row.roa),
+        current_ratio=_f(row.current_ratio),
+        gross_margin=_f(row.gross_margin),
+        asset_turnover=_f(row.asset_turnover),
+        leverage_ratio=_f(row.leverage_ratio),
+        data_source=row.data_source,
+    )
 
 
 def _rolling_sma(values: list[float], window: int) -> list[Optional[float]]:
@@ -571,6 +698,9 @@ async def get_instrument(
         reference_date = coverage.freshness.get("price_as_of") or date.today()
 
     ss, cs = await _load_score_rows(instrument.id, reference_date, db)
+    price_metrics = await _load_price_metrics(instrument.id, reference_date, db)
+    quarterly_metrics = await _load_quarterly_metrics(instrument.id, reference_date, db)
+    annual_metrics = await _load_annual_metrics(instrument.id, reference_date, db)
 
     score_history_rows: list[tuple[date, Optional[float], Optional[float], Optional[float]]] = []
     if cs is not None:
@@ -705,4 +835,7 @@ async def get_instrument(
             patterns         = ss.patterns                 if ss and ss.patterns else [],
             detail           = ss.technical_detail         if ss else None,
         ),
+        price_metrics = price_metrics,
+        quarterly_metrics = quarterly_metrics,
+        annual_metrics = annual_metrics,
     )

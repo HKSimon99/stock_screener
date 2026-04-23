@@ -52,6 +52,7 @@ class RankingEntry(BaseModel):
     instrument_id:       int
     ticker:              str
     name:                str
+    name_kr:             Optional[str] = None
     market:              str
     exchange:            Optional[str] = None
     asset_type:          Optional[str] = None
@@ -118,6 +119,52 @@ class TechnicalDetail(BaseModel):
     rs_line_new_high: Optional[bool] = None
     patterns:        list[dict]      = Field(default_factory=list)
     detail:          Optional[dict]  = None
+
+
+class PriceMetrics(BaseModel):
+    trade_date: Optional[date] = None
+    close: Optional[float] = None
+    previous_close: Optional[float] = None
+    change: Optional[float] = None
+    change_percent: Optional[float] = None
+    volume: Optional[int] = None
+    avg_volume_50d: Optional[int] = None
+
+
+class QuarterlyMetrics(BaseModel):
+    fiscal_year: Optional[int] = None
+    fiscal_quarter: Optional[int] = None
+    report_date: Optional[date] = None
+    revenue: Optional[int] = None
+    net_income: Optional[int] = None
+    eps: Optional[float] = None
+    eps_diluted: Optional[float] = None
+    revenue_yoy_growth: Optional[float] = None
+    eps_yoy_growth: Optional[float] = None
+    data_source: Optional[str] = None
+
+
+class AnnualMetrics(BaseModel):
+    fiscal_year: Optional[int] = None
+    report_date: Optional[date] = None
+    revenue: Optional[int] = None
+    gross_profit: Optional[int] = None
+    net_income: Optional[int] = None
+    eps: Optional[float] = None
+    eps_diluted: Optional[float] = None
+    eps_yoy_growth: Optional[float] = None
+    total_assets: Optional[int] = None
+    current_assets: Optional[int] = None
+    current_liabilities: Optional[int] = None
+    long_term_debt: Optional[int] = None
+    shares_outstanding_annual: Optional[int] = None
+    operating_cash_flow: Optional[int] = None
+    roa: Optional[float] = None
+    current_ratio: Optional[float] = None
+    gross_margin: Optional[float] = None
+    asset_turnover: Optional[float] = None
+    leverage_ratio: Optional[float] = None
+    data_source: Optional[str] = None
 
 
 class ScoreHistoryPoint(BaseModel):
@@ -216,6 +263,9 @@ class InstrumentDetailResponse(BaseModel):
     minervini:  MinerviniDetail   = Field(default_factory=MinerviniDetail)
     weinstein:  WeinsteinDetail   = Field(default_factory=WeinsteinDetail)
     technical:  TechnicalDetail   = Field(default_factory=TechnicalDetail)
+    price_metrics: PriceMetrics = Field(default_factory=PriceMetrics)
+    quarterly_metrics: Optional[QuarterlyMetrics] = None
+    annual_metrics: Optional[AnnualMetrics] = None
 
     score_breakdown: Optional[dict] = None
     factor_breakdown: Optional[dict] = None
@@ -346,6 +396,29 @@ class SearchResponse(BaseModel):
     query: str
     total: int
     items: list[SearchResultEntry]
+
+
+class BrowseResultEntry(BaseModel):
+    instrument_id: int
+    ticker: str
+    name: str
+    name_kr: Optional[str] = None
+    market: str
+    exchange: str
+    asset_type: str
+    listing_status: str
+    sector: Optional[str] = None
+    industry_group: Optional[str] = None
+    coverage_state: str
+    ranking_eligibility: RankingEligibility = Field(default_factory=RankingEligibility)
+    freshness: FreshnessSummary = Field(default_factory=FreshnessSummary)
+    delay_minutes: Optional[int] = None
+    rank_model_version: Optional[str] = None
+
+
+class BrowseResponse(BaseModel):
+    pagination: PaginationMeta
+    items: list[BrowseResultEntry]
 
 
 class CoverageBucket(BaseModel):

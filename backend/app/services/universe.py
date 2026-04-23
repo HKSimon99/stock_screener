@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
+import zoneinfo
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import and_, case, desc, func, literal, not_, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,12 +21,29 @@ DEFAULT_DELAY_MINUTES = {
     "KR": 0,
 }
 UPSERT_BATCH_SIZE = 500
+PRICE_STALE_TRADING_DAYS = 3
+QUARTERLY_FUNDAMENTAL_STALE_DAYS = 200
+ANNUAL_FUNDAMENTAL_STALE_DAYS = 500
+PUBLIC_COVERAGE_STATES = {
+    "ranked",
+    "needs_price",
+    "needs_fundamentals",
+    "needs_scoring",
+    "stale",
+}
+LEGACY_COVERAGE_TO_PUBLIC = {
+    "searchable": "needs_price",
+    "price_ready": "needs_fundamentals",
+    "fundamentals_ready": "needs_scoring",
+    "ranked": "ranked",
+}
 
 
 @dataclass(slots=True)
 class InstrumentCoverage:
     instrument_id: int
     coverage_state: str
+    internal_coverage_state: str
     ranking_eligibility: dict
     freshness: dict
     delay_minutes: Optional[int]
@@ -54,6 +72,8 @@ def _to_instrument_coverage(
     coverage_state: str,
     ranking_eligible: bool,
     ranking_reasons: list[str],
+    market: str,
+    asset_type: str,
     price_as_of: Optional[date],
     quarterly_as_of: Optional[date],
     annual_as_of: Optional[date],
@@ -62,12 +82,23 @@ def _to_instrument_coverage(
     rank_model_version: str,
     price_bar_count: int,
 ) -> InstrumentCoverage:
+    public_coverage_state, public_reasons = public_coverage_state_for(
+        market=market,
+        asset_type=asset_type,
+        internal_coverage_state=coverage_state,
+        price_as_of=price_as_of,
+        quarterly_as_of=quarterly_as_of,
+        annual_as_of=annual_as_of,
+        ranked_as_of=ranked_as_of,
+    )
+    merged_reasons = list(dict.fromkeys([*ranking_reasons, *public_reasons]))
     return InstrumentCoverage(
         instrument_id=instrument_id,
-        coverage_state=coverage_state,
+        coverage_state=public_coverage_state,
+        internal_coverage_state=coverage_state,
         ranking_eligibility={
             "eligible": ranking_eligible,
-            "reasons": ranking_reasons,
+            "reasons": merged_reasons,
         },
         freshness=_to_freshness(
             price_as_of=price_as_of,
@@ -79,6 +110,148 @@ def _to_instrument_coverage(
         rank_model_version=rank_model_version,
         price_bar_count=price_bar_count,
     )
+
+
+def _market_today(market: str, now: Optional[datetime] = None) -> date:
+    timezone_name = "Asia/Seoul" if market == "KR" else "America/New_York"
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    try:
+        return current.astimezone(zoneinfo.ZoneInfo(timezone_name)).date()
+    except zoneinfo.ZoneInfoNotFoundError:
+        return current.date()
+
+
+def _previous_trading_day(value: date) -> date:
+    candidate = value - timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate -= timedelta(days=1)
+    return candidate
+
+
+def _subtract_trading_days(value: date, days: int) -> date:
+    candidate = value
+    for _ in range(days):
+        candidate = _previous_trading_day(candidate)
+    return candidate
+
+
+def latest_expected_price_date(market: str, now: Optional[datetime] = None) -> date:
+    today = _market_today(market, now=now)
+    while today.weekday() >= 5:
+        today -= timedelta(days=1)
+    return today
+
+
+def _price_stale_cutoff(market: str, now: Optional[datetime] = None) -> date:
+    return _subtract_trading_days(
+        latest_expected_price_date(market, now=now),
+        PRICE_STALE_TRADING_DAYS,
+    )
+
+
+def public_coverage_state_for(
+    *,
+    market: str,
+    asset_type: str,
+    internal_coverage_state: Optional[str],
+    price_as_of: Optional[date],
+    quarterly_as_of: Optional[date],
+    annual_as_of: Optional[date],
+    ranked_as_of: Optional[date],
+    now: Optional[datetime] = None,
+) -> tuple[str, list[str]]:
+    reasons: list[str] = []
+    if price_as_of is None:
+        return "needs_price", ["no_price_history"]
+
+    if asset_type == "stock" and annual_as_of is None and quarterly_as_of is None:
+        return "needs_fundamentals", ["no_fundamentals"]
+
+    price_cutoff = _price_stale_cutoff(market, now=now)
+    price_is_stale = price_as_of < price_cutoff
+    quarterly_is_stale = (
+        quarterly_as_of is not None
+        and quarterly_as_of < _market_today(market, now=now) - timedelta(days=QUARTERLY_FUNDAMENTAL_STALE_DAYS)
+    )
+    annual_is_stale = (
+        annual_as_of is not None
+        and annual_as_of < _market_today(market, now=now) - timedelta(days=ANNUAL_FUNDAMENTAL_STALE_DAYS)
+    )
+    if price_is_stale:
+        reasons.append("stale_price_data")
+    if quarterly_is_stale or annual_is_stale:
+        reasons.append("stale_fundamentals")
+    if reasons:
+        return "stale", reasons
+
+    if ranked_as_of is None:
+        return "needs_scoring", ["score_not_generated"]
+
+    if internal_coverage_state in PUBLIC_COVERAGE_STATES:
+        return internal_coverage_state, []
+    return LEGACY_COVERAGE_TO_PUBLIC.get(internal_coverage_state or "", "ranked"), []
+
+
+def public_coverage_state_sql_expressions() -> dict[str, object]:
+    us_price_cutoff = _price_stale_cutoff("US")
+    kr_price_cutoff = _price_stale_cutoff("KR")
+    today = datetime.now(timezone.utc).date()
+    quarterly_cutoff = today - timedelta(days=QUARTERLY_FUNDAMENTAL_STALE_DAYS)
+    annual_cutoff = today - timedelta(days=ANNUAL_FUNDAMENTAL_STALE_DAYS)
+
+    price_missing_expr = InstrumentCoverageSummary.price_as_of.is_(None)
+    fundamentals_missing_expr = and_(
+        Instrument.asset_type == "stock",
+        InstrumentCoverageSummary.price_as_of.is_not(None),
+        InstrumentCoverageSummary.quarterly_as_of.is_(None),
+        InstrumentCoverageSummary.annual_as_of.is_(None),
+    )
+    price_stale_expr = or_(
+        and_(
+            Instrument.market == "US",
+            InstrumentCoverageSummary.price_as_of < us_price_cutoff,
+        ),
+        and_(
+            Instrument.market == "KR",
+            InstrumentCoverageSummary.price_as_of < kr_price_cutoff,
+        ),
+    )
+    fundamentals_stale_expr = or_(
+        and_(
+            InstrumentCoverageSummary.quarterly_as_of.is_not(None),
+            InstrumentCoverageSummary.quarterly_as_of < quarterly_cutoff,
+        ),
+        and_(
+            InstrumentCoverageSummary.annual_as_of.is_not(None),
+            InstrumentCoverageSummary.annual_as_of < annual_cutoff,
+        ),
+    )
+    stale_expr = and_(
+        not_(price_missing_expr),
+        not_(fundamentals_missing_expr),
+        or_(price_stale_expr, fundamentals_stale_expr),
+    )
+    needs_scoring_expr = and_(
+        InstrumentCoverageSummary.ranked_as_of.is_(None),
+        not_(price_missing_expr),
+        not_(fundamentals_missing_expr),
+        not_(stale_expr),
+    )
+    ranked_expr = and_(
+        InstrumentCoverageSummary.ranked_as_of.is_not(None),
+        not_(price_missing_expr),
+        not_(fundamentals_missing_expr),
+        not_(stale_expr),
+    )
+    return {
+        "needs_price": price_missing_expr,
+        "needs_fundamentals": fundamentals_missing_expr,
+        "needs_scoring": needs_scoring_expr,
+        "stale": stale_expr,
+        "ranked": ranked_expr,
+    }
 
 
 def _coverage_state(
@@ -238,6 +411,8 @@ def _build_live_coverage(
         ),
         ranking_eligible=len(reasons) == 0,
         ranking_reasons=reasons,
+        market=instrument.market,
+        asset_type=instrument.asset_type,
         price_as_of=price_as_of,
         quarterly_as_of=quarterly_as_of,
         annual_as_of=annual_as_of,
@@ -283,7 +458,7 @@ async def refresh_instrument_coverage_summary(
         rows.append(
             {
                 "instrument_id": coverage.instrument_id,
-                "coverage_state": coverage.coverage_state,
+                "coverage_state": coverage.internal_coverage_state,
                 "price_bar_count": coverage.price_bar_count,
                 "price_as_of": coverage.freshness["price_as_of"],
                 "quarterly_as_of": coverage.freshness["quarterly_as_of"],
@@ -367,6 +542,8 @@ async def _load_summary_coverage_map(
             coverage_state=row.coverage_state,
             ranking_eligible=bool(row.ranking_eligible),
             ranking_reasons=list(row.ranking_reasons or []),
+            market=instrument.market,
+            asset_type=instrument.asset_type,
             price_as_of=row.price_as_of,
             quarterly_as_of=row.quarterly_as_of,
             annual_as_of=row.annual_as_of,
@@ -517,6 +694,85 @@ async def search_instruments(
     return results[:limit]
 
 
+async def browse_instruments(
+    db: AsyncSession,
+    *,
+    market: Optional[str] = None,
+    asset_type: Optional[str] = None,
+    coverage_state: Optional[str] = None,
+    exclude_ranked: bool = True,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[tuple[Instrument, Optional[InstrumentCoverageSummary], int]], int]:
+    """
+    Read-only universe browser used by the frontend's Explore More section.
+
+    This intentionally reads only persisted instrument and coverage-summary rows.
+    It does not refresh coverage, call providers, enqueue Celery, or create
+    instruments, so a browse failure cannot mutate production state.
+    """
+    total_col = func.count().over().label("total_count")
+    coverage_expressions = public_coverage_state_sql_expressions()
+    price_missing_expr = coverage_expressions["needs_price"]
+    fundamentals_missing_expr = coverage_expressions["needs_fundamentals"]
+    stale_expr = coverage_expressions["stale"]
+    needs_scoring_expr = coverage_expressions["needs_scoring"]
+    ranked_expr = coverage_expressions["ranked"]
+    coverage_order = case(
+        (needs_scoring_expr, 0),
+        (stale_expr, 1),
+        (fundamentals_missing_expr, 2),
+        (price_missing_expr, 3),
+        else_=4,
+    )
+
+    stmt = (
+        select(Instrument, InstrumentCoverageSummary, total_col)
+        .select_from(Instrument)
+        .outerjoin(
+            InstrumentCoverageSummary,
+            InstrumentCoverageSummary.instrument_id == Instrument.id,
+        )
+        .where(Instrument.is_active == True)
+    )
+    if market:
+        stmt = stmt.where(Instrument.market == market)
+    if asset_type:
+        stmt = stmt.where(Instrument.asset_type == asset_type)
+    if coverage_state:
+        public_state = LEGACY_COVERAGE_TO_PUBLIC.get(coverage_state, coverage_state)
+        if public_state == "ranked":
+            stmt = stmt.where(ranked_expr)
+        elif public_state == "needs_price":
+            stmt = stmt.where(price_missing_expr)
+        elif public_state == "needs_fundamentals":
+            stmt = stmt.where(fundamentals_missing_expr)
+        elif public_state == "needs_scoring":
+            stmt = stmt.where(needs_scoring_expr)
+        elif public_state == "stale":
+            stmt = stmt.where(stale_expr)
+        else:
+            stmt = stmt.where(literal(False))
+    if exclude_ranked:
+        stmt = stmt.where(not_(ranked_expr))
+
+    stmt = (
+        stmt.order_by(
+            coverage_order,
+            desc(InstrumentCoverageSummary.price_bar_count),
+            desc(InstrumentCoverageSummary.ranked_as_of),
+            Instrument.market.asc(),
+            Instrument.asset_type.asc(),
+            Instrument.ticker.asc(),
+        )
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = list((await db.execute(stmt)).all())
+    total = int(rows[0][2] or 0) if rows else 0
+    return rows, total
+
+
 async def summarize_universe_coverage(db: AsyncSession) -> dict:
     active_total = int(
         (
@@ -559,11 +815,12 @@ async def summarize_universe_coverage(db: AsyncSession) -> dict:
             )
             bucket["searchable"] += 1
             coverage = coverage_map[instrument.id]
-            if coverage.coverage_state in {"price_ready", "fundamentals_ready", "ranked"}:
+            internal_state = coverage.internal_coverage_state
+            if internal_state in {"price_ready", "fundamentals_ready", "ranked"}:
                 bucket["price_ready"] += 1
-            if coverage.coverage_state in {"fundamentals_ready", "ranked"}:
+            if internal_state in {"fundamentals_ready", "ranked"}:
                 bucket["fundamentals_ready"] += 1
-            if coverage.coverage_state == "ranked":
+            if internal_state == "ranked":
                 bucket["ranked"] += 1
 
         return {

@@ -39,10 +39,11 @@ export type RegimeState =
 
 export type AlertSeverity = "CRITICAL" | "WARNING" | "INFO";
 export type CoverageState =
-  | "searchable"
-  | "price_ready"
-  | "fundamentals_ready"
-  | "ranked";
+  | "ranked"
+  | "needs_price"
+  | "needs_fundamentals"
+  | "needs_scoring"
+  | "stale";
 
 export type RankingSortField =
   | "final_score"
@@ -77,6 +78,7 @@ export interface RankingItem {
   instrument_id: number;
   ticker: string;
   name?: string;
+  name_kr?: string;
   market: "US" | "KR";
   exchange?: string;
   asset_type?: "stock" | "etf";
@@ -104,6 +106,38 @@ export interface RankingsResponse {
   pagination: PaginationMeta;
   freshness: string;
   items: RankingItem[];
+}
+
+export interface RankingsQueryParams {
+  market: "US" | "KR";
+  asset_type?: "stock" | "etf";
+  conviction?: string | string[];
+  score_date?: string;
+  limit?: number;
+  offset?: number;
+  min_final_score?: number;
+  max_final_score?: number;
+  min_consensus_composite?: number;
+  min_technical_composite?: number;
+  min_strategy_pass_count?: number;
+  min_canslim?: number;
+  min_piotroski?: number;
+  min_minervini?: number;
+  min_weinstein?: number;
+  min_rs_rating?: number;
+  sector?: string | string[];
+  exchange?: string | string[];
+  coverage_state?: CoverageState | CoverageState[];
+  weinstein_stage?: string | string[];
+  ad_rating?: string | string[];
+  rs_line_new_high?: boolean;
+  price_ready?: boolean;
+  fundamentals_ready?: boolean;
+  price_as_of_gte?: string;
+  price_as_of_lte?: string;
+  quarterly_as_of_gte?: string;
+  annual_as_of_gte?: string;
+  ranked_as_of_gte?: string;
 }
 
 export interface StrategyDetail {
@@ -163,6 +197,52 @@ export interface WeinsteinStageHistoryPoint {
   score?: number;
 }
 
+export interface PriceMetrics {
+  trade_date?: string;
+  close?: number;
+  previous_close?: number;
+  change?: number;
+  change_percent?: number;
+  volume?: number;
+  avg_volume_50d?: number;
+}
+
+export interface QuarterlyMetrics {
+  fiscal_year?: number;
+  fiscal_quarter?: number;
+  report_date?: string;
+  revenue?: number;
+  net_income?: number;
+  eps?: number;
+  eps_diluted?: number;
+  revenue_yoy_growth?: number;
+  eps_yoy_growth?: number;
+  data_source?: string;
+}
+
+export interface AnnualMetrics {
+  fiscal_year?: number;
+  report_date?: string;
+  revenue?: number;
+  gross_profit?: number;
+  net_income?: number;
+  eps?: number;
+  eps_diluted?: number;
+  eps_yoy_growth?: number;
+  total_assets?: number;
+  current_assets?: number;
+  current_liabilities?: number;
+  long_term_debt?: number;
+  shares_outstanding_annual?: number;
+  operating_cash_flow?: number;
+  roa?: number;
+  current_ratio?: number;
+  gross_margin?: number;
+  asset_turnover?: number;
+  leverage_ratio?: number;
+  data_source?: string;
+}
+
 export interface InstrumentDetail extends RankingItem, StrategyDetail {
   name_kr?: string;
   listing_status?: string;
@@ -185,6 +265,9 @@ export interface InstrumentDetail extends RankingItem, StrategyDetail {
   ad_rating?: string;
   bb_squeeze?: boolean;
   rs_line_new_high?: boolean;
+  price_metrics?: PriceMetrics;
+  quarterly_metrics?: QuarterlyMetrics;
+  annual_metrics?: AnnualMetrics;
   technical_composite: number;
   stop_loss_7pct?: number;
 }
@@ -303,6 +386,7 @@ export interface StrategyRankingItem {
   instrument_id: number;
   ticker: string;
   name: string;
+  name_kr?: string | null;
   market: "US" | "KR";
   score?: number;
   detail?: Record<string, unknown>;
@@ -335,6 +419,39 @@ export interface SearchResponse {
   query: string;
   total: number;
   items: SearchResult[];
+}
+
+export interface BrowseResult {
+  instrument_id: number;
+  ticker: string;
+  name: string;
+  name_kr?: string;
+  market: "US" | "KR";
+  exchange: string;
+  asset_type: "stock" | "etf";
+  listing_status: string;
+  sector?: string;
+  industry_group?: string;
+  coverage_state: CoverageState;
+  ranking_eligibility: RankingEligibility;
+  freshness: FreshnessSummary;
+  delay_minutes?: number;
+  rank_model_version?: string;
+}
+
+export interface BrowseResponse {
+  pagination: PaginationMeta;
+  total: number;
+  items: BrowseResult[];
+}
+
+export interface BrowseQueryParams {
+  market?: "US" | "KR";
+  asset_type?: "stock" | "etf";
+  coverage_state?: CoverageState;
+  exclude_ranked?: boolean;
+  limit?: number;
+  offset?: number;
 }
 
 export interface UniverseCoverageBucket {
@@ -381,6 +498,7 @@ interface RawRankingItem {
   instrument_id: number;
   ticker: string;
   name: string;
+  name_kr?: string | null;
   market: "US" | "KR";
   exchange?: string | null;
   asset_type?: "stock" | "etf" | null;
@@ -444,6 +562,52 @@ interface RawTechnicalDetail {
   detail?: Record<string, unknown> | null;
 }
 
+interface RawPriceMetrics {
+  trade_date?: string | null;
+  close?: number | null;
+  previous_close?: number | null;
+  change?: number | null;
+  change_percent?: number | null;
+  volume?: number | null;
+  avg_volume_50d?: number | null;
+}
+
+interface RawQuarterlyMetrics {
+  fiscal_year?: number | null;
+  fiscal_quarter?: number | null;
+  report_date?: string | null;
+  revenue?: number | null;
+  net_income?: number | null;
+  eps?: number | null;
+  eps_diluted?: number | null;
+  revenue_yoy_growth?: number | null;
+  eps_yoy_growth?: number | null;
+  data_source?: string | null;
+}
+
+interface RawAnnualMetrics {
+  fiscal_year?: number | null;
+  report_date?: string | null;
+  revenue?: number | null;
+  gross_profit?: number | null;
+  net_income?: number | null;
+  eps?: number | null;
+  eps_diluted?: number | null;
+  eps_yoy_growth?: number | null;
+  total_assets?: number | null;
+  current_assets?: number | null;
+  current_liabilities?: number | null;
+  long_term_debt?: number | null;
+  shares_outstanding_annual?: number | null;
+  operating_cash_flow?: number | null;
+  roa?: number | null;
+  current_ratio?: number | null;
+  gross_margin?: number | null;
+  asset_turnover?: number | null;
+  leverage_ratio?: number | null;
+  data_source?: string | null;
+}
+
 interface RawInstrumentDetail {
   instrument_id: number;
   ticker: string;
@@ -474,6 +638,9 @@ interface RawInstrumentDetail {
   minervini: RawMinerviniDetail;
   weinstein: RawWeinsteinDetail;
   technical: RawTechnicalDetail;
+  price_metrics?: RawPriceMetrics | null;
+  quarterly_metrics?: RawQuarterlyMetrics | null;
+  annual_metrics?: RawAnnualMetrics | null;
   score_breakdown?: Record<string, unknown> | null;
   factor_breakdown?: Record<string, unknown> | null;
   score_history?: ScoreHistoryPoint[] | null;
@@ -551,6 +718,29 @@ interface RawSearchResponse {
   items: RawSearchResult[];
 }
 
+interface RawBrowseResult {
+  instrument_id: number;
+  ticker: string;
+  name: string;
+  name_kr?: string | null;
+  market: "US" | "KR";
+  exchange: string;
+  asset_type: "stock" | "etf";
+  listing_status: string;
+  sector?: string | null;
+  industry_group?: string | null;
+  coverage_state: CoverageState;
+  ranking_eligibility: RankingEligibility;
+  freshness?: FreshnessSummary | null;
+  delay_minutes?: number | null;
+  rank_model_version?: string | null;
+}
+
+interface RawBrowseResponse {
+  pagination: PaginationMeta;
+  items: RawBrowseResult[];
+}
+
 interface RawUniverseCoverageResponse {
   as_of: string;
   items: UniverseCoverageBucket[];
@@ -591,6 +781,10 @@ function toNumber(value: number | null | undefined, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function optionalNumber(value: number | null | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function toBoolean(value: unknown): boolean {
   return value === true;
 }
@@ -612,6 +806,65 @@ function humanizePattern(pattern: string | undefined): string {
     .split("_")
     .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
     .join(" ");
+}
+
+function normalizePriceMetrics(raw: RawPriceMetrics | null | undefined): PriceMetrics {
+  if (!raw) return {};
+  return {
+    trade_date: raw.trade_date ?? undefined,
+    close: optionalNumber(raw.close),
+    previous_close: optionalNumber(raw.previous_close),
+    change: optionalNumber(raw.change),
+    change_percent: optionalNumber(raw.change_percent),
+    volume: optionalNumber(raw.volume),
+    avg_volume_50d: optionalNumber(raw.avg_volume_50d),
+  };
+}
+
+function normalizeQuarterlyMetrics(
+  raw: RawQuarterlyMetrics | null | undefined
+): QuarterlyMetrics | undefined {
+  if (!raw) return undefined;
+  return {
+    fiscal_year: optionalNumber(raw.fiscal_year),
+    fiscal_quarter: optionalNumber(raw.fiscal_quarter),
+    report_date: raw.report_date ?? undefined,
+    revenue: optionalNumber(raw.revenue),
+    net_income: optionalNumber(raw.net_income),
+    eps: optionalNumber(raw.eps),
+    eps_diluted: optionalNumber(raw.eps_diluted),
+    revenue_yoy_growth: optionalNumber(raw.revenue_yoy_growth),
+    eps_yoy_growth: optionalNumber(raw.eps_yoy_growth),
+    data_source: raw.data_source ?? undefined,
+  };
+}
+
+function normalizeAnnualMetrics(
+  raw: RawAnnualMetrics | null | undefined
+): AnnualMetrics | undefined {
+  if (!raw) return undefined;
+  return {
+    fiscal_year: optionalNumber(raw.fiscal_year),
+    report_date: raw.report_date ?? undefined,
+    revenue: optionalNumber(raw.revenue),
+    gross_profit: optionalNumber(raw.gross_profit),
+    net_income: optionalNumber(raw.net_income),
+    eps: optionalNumber(raw.eps),
+    eps_diluted: optionalNumber(raw.eps_diluted),
+    eps_yoy_growth: optionalNumber(raw.eps_yoy_growth),
+    total_assets: optionalNumber(raw.total_assets),
+    current_assets: optionalNumber(raw.current_assets),
+    current_liabilities: optionalNumber(raw.current_liabilities),
+    long_term_debt: optionalNumber(raw.long_term_debt),
+    shares_outstanding_annual: optionalNumber(raw.shares_outstanding_annual),
+    operating_cash_flow: optionalNumber(raw.operating_cash_flow),
+    roa: optionalNumber(raw.roa),
+    current_ratio: optionalNumber(raw.current_ratio),
+    gross_margin: optionalNumber(raw.gross_margin),
+    asset_turnover: optionalNumber(raw.asset_turnover),
+    leverage_ratio: optionalNumber(raw.leverage_ratio),
+    data_source: raw.data_source ?? undefined,
+  };
 }
 
 export function formatSnapshotDate(value: string): string {
@@ -639,6 +892,7 @@ function normalizeRankingItem(item: RawRankingItem): RankingItem {
     instrument_id: item.instrument_id,
     ticker: item.ticker,
     name: item.name,
+    name_kr: item.name_kr ?? undefined,
     market: item.market,
     exchange: item.exchange ?? undefined,
     asset_type: item.asset_type ?? undefined,
@@ -732,6 +986,9 @@ function normalizeInstrument(raw: RawInstrumentDetail): InstrumentDetail {
     ad_rating: raw.technical.ad_rating ?? undefined,
     bb_squeeze: raw.technical.bb_squeeze ?? undefined,
     rs_line_new_high: raw.technical.rs_line_new_high ?? undefined,
+    price_metrics: normalizePriceMetrics(raw.price_metrics),
+    quarterly_metrics: normalizeQuarterlyMetrics(raw.quarterly_metrics),
+    annual_metrics: normalizeAnnualMetrics(raw.annual_metrics),
     canslim_detail: raw.canslim.raw ?? undefined,
     canslim_breakdown: [
       { key: "C", label: "Current EPS", score: toNumber(raw.canslim.c) },
@@ -923,6 +1180,31 @@ function normalizeSearchResponse(raw: RawSearchResponse): SearchResponse {
   };
 }
 
+function normalizeBrowseResponse(raw: RawBrowseResponse): BrowseResponse {
+  return {
+    pagination: raw.pagination,
+    total: raw.pagination.total,
+    items: raw.items.map((item) => ({
+      instrument_id: item.instrument_id,
+      ticker: item.ticker,
+      name: item.name,
+      name_kr: item.name_kr ?? undefined,
+      market: item.market,
+      exchange: item.exchange,
+      asset_type: item.asset_type,
+      listing_status: item.listing_status,
+      sector: item.sector ?? undefined,
+      industry_group: item.industry_group ?? undefined,
+      coverage_state: item.coverage_state,
+      ranking_eligibility: item.ranking_eligibility,
+      freshness: item.freshness ?? {},
+      delay_minutes:
+        typeof item.delay_minutes === "number" ? item.delay_minutes : undefined,
+      rank_model_version: item.rank_model_version ?? undefined,
+    })),
+  };
+}
+
 export async function apiFetch<T>(
   path: string,
   options?: APIRequestOptions
@@ -956,19 +1238,58 @@ export async function apiFetch<T>(
   return res.json() as Promise<T>;
 }
 
-export async function fetchRankings(params: {
-  market: "US" | "KR";
-  asset_type?: "stock" | "etf";
-  conviction?: string;
-  limit?: number;
-  offset?: number;
-}): Promise<RankingsResponse> {
+export async function fetchRankings(
+  params: RankingsQueryParams
+): Promise<RankingsResponse> {
   const qs = new URLSearchParams();
+  const appendList = (key: string, value?: string | string[]) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item) qs.append(key, item);
+      });
+    } else if (value) {
+      qs.set(key, value);
+    }
+  };
+  const setNumber = (key: string, value?: number) => {
+    if (value != null) qs.set(key, String(value));
+  };
+  const setBoolean = (key: string, value?: boolean) => {
+    if (value != null) qs.set(key, String(value));
+  };
+  const setString = (key: string, value?: string) => {
+    if (value) qs.set(key, value);
+  };
+
   qs.set("market", params.market);
   if (params.asset_type) qs.set("asset_type", params.asset_type);
-  if (params.conviction) qs.set("conviction", params.conviction);
-  if (params.limit != null) qs.set("limit", String(params.limit));
-  if (params.offset != null) qs.set("offset", String(params.offset));
+  appendList("conviction", params.conviction);
+  setString("score_date", params.score_date);
+  setNumber("limit", params.limit);
+  setNumber("offset", params.offset);
+  setNumber("min_final_score", params.min_final_score);
+  setNumber("max_final_score", params.max_final_score);
+  setNumber("min_consensus_composite", params.min_consensus_composite);
+  setNumber("min_technical_composite", params.min_technical_composite);
+  setNumber("min_strategy_pass_count", params.min_strategy_pass_count);
+  setNumber("min_canslim", params.min_canslim);
+  setNumber("min_piotroski", params.min_piotroski);
+  setNumber("min_minervini", params.min_minervini);
+  setNumber("min_weinstein", params.min_weinstein);
+  setNumber("min_rs_rating", params.min_rs_rating);
+  appendList("sector", params.sector);
+  appendList("exchange", params.exchange);
+  appendList("coverage_state", params.coverage_state);
+  appendList("weinstein_stage", params.weinstein_stage);
+  appendList("ad_rating", params.ad_rating);
+  setBoolean("rs_line_new_high", params.rs_line_new_high);
+  setBoolean("price_ready", params.price_ready);
+  setBoolean("fundamentals_ready", params.fundamentals_ready);
+  setString("price_as_of_gte", params.price_as_of_gte);
+  setString("price_as_of_lte", params.price_as_of_lte);
+  setString("quarterly_as_of_gte", params.quarterly_as_of_gte);
+  setString("annual_as_of_gte", params.annual_as_of_gte);
+  setString("ranked_as_of_gte", params.ranked_as_of_gte);
 
   const raw = await apiFetch<RawRankingsResponse>(`/rankings?${qs.toString()}`);
   return normalizeRankingsResponse(raw);
@@ -1051,6 +1372,23 @@ export async function fetchInstrumentSearch(params: {
 
 export async function fetchUniverseCoverage(): Promise<UniverseCoverageResponse> {
   return apiFetch<RawUniverseCoverageResponse>("/universe/coverage");
+}
+
+export async function fetchUniverseBrowse(
+  params: BrowseQueryParams = {}
+): Promise<BrowseResponse> {
+  const qs = new URLSearchParams();
+  if (params.market) qs.set("market", params.market);
+  if (params.asset_type) qs.set("asset_type", params.asset_type);
+  if (params.coverage_state) qs.set("coverage_state", params.coverage_state);
+  if (params.exclude_ranked != null) {
+    qs.set("exclude_ranked", String(params.exclude_ranked));
+  }
+  if (params.limit != null) qs.set("limit", String(params.limit));
+  if (params.offset != null) qs.set("offset", String(params.offset));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  const raw = await apiFetch<RawBrowseResponse>(`/universe/browse${suffix}`);
+  return normalizeBrowseResponse(raw);
 }
 
 export async function fetchMarketRegime(

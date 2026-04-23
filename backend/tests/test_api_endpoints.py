@@ -4,10 +4,12 @@ import pytest
 
 from app.models.alert import Alert
 from app.models.consensus_score import ConsensusScore
+from app.models.coverage_summary import InstrumentCoverageSummary
 from app.models.instrument import Instrument
 from app.models.market_regime import MarketRegime
 from app.models.snapshot import ScoringSnapshot
 from app.models.strategy_score import StrategyScore
+from app.services.universe import latest_expected_price_date
 
 
 @pytest.mark.asyncio
@@ -100,6 +102,266 @@ async def test_rankings_endpoint_returns_weinstein_stage_and_regime(client, db_s
     stage_by_ticker = {item["ticker"]: item["weinstein_stage"] for item in payload["items"]}
     assert stage_by_ticker["NVDA"] == "2_mid"
     assert stage_by_ticker["AAPL"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_rankings_endpoint_supports_advanced_get_filters(client, db_session):
+    snapshot_date = latest_expected_price_date("US")
+    price_as_of = snapshot_date
+    annual_as_of = snapshot_date
+    quarterly_as_of = snapshot_date
+    instruments = [
+        Instrument(
+            ticker="NVDA",
+            name="Nvidia",
+            market="US",
+            exchange="NASDAQ",
+            asset_type="stock",
+            sector="Technology",
+            is_active=True,
+        ),
+        Instrument(
+            ticker="AAPL",
+            name="Apple",
+            market="US",
+            exchange="NASDAQ",
+            asset_type="stock",
+            sector="Technology",
+            is_active=True,
+        ),
+        Instrument(
+            ticker="JPM",
+            name="JPMorgan",
+            market="US",
+            exchange="NYSE",
+            asset_type="stock",
+            sector="Financials",
+            is_active=True,
+        ),
+    ]
+    db_session.add_all(instruments)
+    await db_session.flush()
+
+    db_session.add_all(
+        [
+            ConsensusScore(
+                instrument_id=instruments[0].id,
+                score_date=snapshot_date,
+                conviction_level="GOLD",
+                final_score=88.0,
+                consensus_composite=86.0,
+                technical_composite=84.0,
+                strategy_pass_count=4,
+                canslim_score=82.0,
+                piotroski_score=78.0,
+                minervini_score=90.0,
+                weinstein_score=81.0,
+                regime_warning=False,
+            ),
+            ConsensusScore(
+                instrument_id=instruments[1].id,
+                score_date=snapshot_date,
+                conviction_level="SILVER",
+                final_score=72.0,
+                consensus_composite=70.0,
+                technical_composite=65.0,
+                strategy_pass_count=2,
+                canslim_score=64.0,
+                piotroski_score=76.0,
+                minervini_score=68.0,
+                weinstein_score=58.0,
+                regime_warning=False,
+            ),
+            ConsensusScore(
+                instrument_id=instruments[2].id,
+                score_date=snapshot_date,
+                conviction_level="GOLD",
+                final_score=83.0,
+                consensus_composite=81.0,
+                technical_composite=79.0,
+                strategy_pass_count=4,
+                canslim_score=70.0,
+                piotroski_score=82.0,
+                minervini_score=76.0,
+                weinstein_score=80.0,
+                regime_warning=False,
+            ),
+            StrategyScore(
+                instrument_id=instruments[0].id,
+                score_date=snapshot_date,
+                weinstein_stage="2_mid",
+                rs_rating=92.0,
+                ad_rating="A",
+                rs_line_new_high=True,
+            ),
+            StrategyScore(
+                instrument_id=instruments[1].id,
+                score_date=snapshot_date,
+                weinstein_stage="1",
+                rs_rating=65.0,
+                ad_rating="B",
+                rs_line_new_high=False,
+            ),
+            StrategyScore(
+                instrument_id=instruments[2].id,
+                score_date=snapshot_date,
+                weinstein_stage="2_early",
+                rs_rating=88.0,
+                ad_rating="A",
+                rs_line_new_high=True,
+            ),
+            InstrumentCoverageSummary(
+                instrument_id=instruments[0].id,
+                coverage_state="ranked",
+                price_bar_count=365,
+                price_as_of=price_as_of,
+                quarterly_as_of=quarterly_as_of,
+                annual_as_of=annual_as_of,
+                ranked_as_of=snapshot_date,
+                ranking_eligible=True,
+            ),
+            InstrumentCoverageSummary(
+                instrument_id=instruments[1].id,
+                coverage_state="ranked",
+                price_bar_count=365,
+                price_as_of=price_as_of,
+                quarterly_as_of=None,
+                annual_as_of=None,
+                ranked_as_of=snapshot_date,
+                ranking_eligible=True,
+            ),
+            InstrumentCoverageSummary(
+                instrument_id=instruments[2].id,
+                coverage_state="ranked",
+                price_bar_count=365,
+                price_as_of=price_as_of,
+                quarterly_as_of=quarterly_as_of,
+                annual_as_of=annual_as_of,
+                ranked_as_of=snapshot_date,
+                ranking_eligible=True,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/v1/rankings",
+        params=[
+            ("market", "US"),
+            ("asset_type", "stock"),
+            ("score_date", snapshot_date.isoformat()),
+            ("conviction", "GOLD"),
+            ("min_final_score", "80"),
+            ("min_consensus_composite", "80"),
+            ("min_technical_composite", "80"),
+            ("min_strategy_pass_count", "4"),
+            ("min_canslim", "80"),
+            ("min_piotroski", "75"),
+            ("min_minervini", "85"),
+            ("min_weinstein", "80"),
+            ("min_rs_rating", "90"),
+            ("sector", "Technology"),
+            ("exchange", "NASDAQ"),
+            ("coverage_state", "ranked"),
+            ("weinstein_stage", "2_mid"),
+            ("ad_rating", "a"),
+            ("rs_line_new_high", "true"),
+            ("price_ready", "true"),
+            ("fundamentals_ready", "true"),
+            ("price_as_of_gte", price_as_of.isoformat()),
+            ("quarterly_as_of_gte", quarterly_as_of.isoformat()),
+            ("annual_as_of_gte", annual_as_of.isoformat()),
+            ("ranked_as_of_gte", snapshot_date.isoformat()),
+        ],
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["pagination"]["total"] == 1
+    assert [item["ticker"] for item in payload["items"]] == ["NVDA"]
+    assert payload["items"][0]["coverage_state"] == "ranked"
+
+
+@pytest.mark.asyncio
+async def test_rankings_endpoint_readiness_filters_exclude_missing_fields(client, db_session):
+    snapshot_date = date(2026, 4, 13)
+    ready = Instrument(
+        ticker="READY",
+        name="Ready Co",
+        market="US",
+        exchange="NASDAQ",
+        asset_type="stock",
+        sector="Technology",
+        is_active=True,
+    )
+    missing_fundamentals = Instrument(
+        ticker="MISS",
+        name="Missing Fundamentals",
+        market="US",
+        exchange="NASDAQ",
+        asset_type="stock",
+        sector="Technology",
+        is_active=True,
+    )
+    db_session.add_all([ready, missing_fundamentals])
+    await db_session.flush()
+
+    db_session.add_all(
+        [
+            ConsensusScore(
+                instrument_id=ready.id,
+                score_date=snapshot_date,
+                conviction_level="GOLD",
+                final_score=82.0,
+                consensus_composite=80.0,
+                technical_composite=81.0,
+                strategy_pass_count=4,
+                regime_warning=False,
+            ),
+            ConsensusScore(
+                instrument_id=missing_fundamentals.id,
+                score_date=snapshot_date,
+                conviction_level="GOLD",
+                final_score=81.0,
+                consensus_composite=79.0,
+                technical_composite=80.0,
+                strategy_pass_count=4,
+                regime_warning=False,
+            ),
+            InstrumentCoverageSummary(
+                instrument_id=ready.id,
+                coverage_state="ranked",
+                price_bar_count=365,
+                price_as_of=snapshot_date,
+                annual_as_of=snapshot_date,
+                ranked_as_of=snapshot_date,
+                ranking_eligible=True,
+            ),
+            InstrumentCoverageSummary(
+                instrument_id=missing_fundamentals.id,
+                coverage_state="ranked",
+                price_bar_count=365,
+                price_as_of=snapshot_date,
+                annual_as_of=None,
+                quarterly_as_of=None,
+                ranked_as_of=snapshot_date,
+                ranking_eligible=True,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    ready_response = await client.get(
+        f"/api/v1/rankings?market=US&score_date={snapshot_date.isoformat()}&fundamentals_ready=true"
+    )
+    missing_response = await client.get(
+        f"/api/v1/rankings?market=US&score_date={snapshot_date.isoformat()}&fundamentals_ready=false"
+    )
+
+    assert ready_response.status_code == 200
+    assert missing_response.status_code == 200
+    assert [item["ticker"] for item in ready_response.json()["items"]] == ["READY"]
+    assert [item["ticker"] for item in missing_response.json()["items"]] == ["MISS"]
 
 
 @pytest.mark.asyncio

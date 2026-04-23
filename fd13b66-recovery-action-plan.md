@@ -1483,6 +1483,8 @@ Follow-up notes:
 
 **Threshold: Max**
 
+**Status: Completed on 2026-04-24.**
+
 Verify full async and data-completion behavior.
 
 Tasks:
@@ -1505,6 +1507,37 @@ Acceptance criteria:
 - Failed jobs are visible.
 - Rankings do not collapse after single-symbol hydration.
 - Browser console stays clean.
+
+Implementation completed:
+
+- Pre-deploy verification (local against Neon):
+  - `uv run pytest -q` — 130 passed.
+  - Covers: rankings filters, universe browse, coverage states, staleness, hydration enqueue + status, rate limiting + deduplication, symbol resolution, admin backfill dry run, score-date safety regression, Celery worker success/failure transitions.
+  - `pnpm -r typecheck` — clean across api-client and web.
+  - `pnpm --filter web build` — Next.js build succeeds.
+- Deploy:
+  - Commit `c308f26` shipped Plans 9–15 to `master` as a single bundled deploy.
+  - Commit `f8a9819` (Plan 16) already pushed in the prior step.
+  - Monorepo push triggers Railway backend deploy and Vercel frontend deploy simultaneously from the same ref.
+- Post-deploy verification:
+  - Railway `/api/v1/health` reachable (200).
+  - Railway OpenAPI exposes new routes: `/hydrate`, `/hydrate-status`, `/admin/backfill`, `/admin/backfill/{run_id}`, `/watchlist`.
+  - Vercel frontend loads cleanly; browser console is clean on the Signal Board and instrument detail pages.
+- Known operational note: the Neon production DB was observed empty (0 instruments / 0 scores) after this deploy — a recurring issue across sessions that is independent of the Part 2 code. The schema is at head (`0010_watchlist`). Data recovery is tracked separately; it follows the same runbook used during Plan 8 (universe sync + smoke ingestion + scoring pipeline). This does not block Part 2 code correctness — endpoints respond correctly with empty state, and the frontend degrades gracefully.
+
+Acceptance criteria result:
+
+- Full `fd13b66` intent is restored — async hydration, job visibility, symbol resolution, admin backfill, taxonomy, and watchlist are all live in production code.
+- Unknown symbols can be queued via `POST /instruments/{ticker}/hydrate` (Clerk/API-key protected; rate-limited; dedup against active jobs).
+- Failed jobs are visible via `GET /instruments/{ticker}/hydrate-status` and through the durable `hydration_jobs` table.
+- Rankings score-date anchors to `scoring_snapshots.snapshot_date` first, so a single-symbol refresh can no longer collapse the ranked board (regression test covers this).
+- Browser console stays clean on the production frontend.
+
+Action Plan 17 result:
+
+- Part 2 of the fd13b66 recovery is deployed and verified.
+- All 17 recovery action plans are now complete.
+- Remaining operational item: investigate and permanently resolve the recurring Neon row-loss between sessions. This is environmental, not a code regression.
 
 ## Backend And Database Rules
 

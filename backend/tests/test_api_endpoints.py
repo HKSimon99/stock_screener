@@ -105,6 +105,105 @@ async def test_rankings_endpoint_returns_weinstein_stage_and_regime(client, db_s
 
 
 @pytest.mark.asyncio
+async def test_rankings_endpoint_defaults_to_latest_snapshot_date_over_newer_single_symbol_scores(
+    client,
+    db_session,
+):
+    stable_date = date(2026, 4, 13)
+    newer_single_symbol_date = date(2026, 4, 14)
+    instruments = [
+        Instrument(
+            ticker="AMD",
+            name="AMD",
+            market="US",
+            exchange="NASDAQ",
+            asset_type="stock",
+            is_active=True,
+        ),
+        Instrument(
+            ticker="CSCO",
+            name="Cisco",
+            market="US",
+            exchange="NASDAQ",
+            asset_type="stock",
+            is_active=True,
+        ),
+    ]
+    db_session.add_all(instruments)
+    await db_session.flush()
+
+    db_session.add_all(
+        [
+            ConsensusScore(
+                instrument_id=instruments[0].id,
+                score_date=stable_date,
+                conviction_level="GOLD",
+                final_score=76.5,
+                consensus_composite=66.2,
+                technical_composite=71.0,
+                strategy_pass_count=5,
+                canslim_score=74.1,
+                piotroski_score=78.0,
+                minervini_score=100.0,
+                weinstein_score=85.0,
+                dual_mom_score=70.0,
+                regime_warning=False,
+            ),
+            ConsensusScore(
+                instrument_id=instruments[1].id,
+                score_date=stable_date,
+                conviction_level="SILVER",
+                final_score=72.0,
+                consensus_composite=58.0,
+                technical_composite=69.0,
+                strategy_pass_count=3,
+                canslim_score=45.7,
+                piotroski_score=90.0,
+                minervini_score=100.0,
+                weinstein_score=85.0,
+                dual_mom_score=70.0,
+                regime_warning=True,
+            ),
+            ConsensusScore(
+                instrument_id=instruments[0].id,
+                score_date=newer_single_symbol_date,
+                conviction_level="PLATINUM",
+                final_score=81.0,
+                consensus_composite=73.0,
+                technical_composite=78.0,
+                strategy_pass_count=5,
+                canslim_score=80.0,
+                piotroski_score=79.0,
+                minervini_score=98.0,
+                weinstein_score=87.0,
+                dual_mom_score=74.0,
+                regime_warning=False,
+            ),
+            ScoringSnapshot(
+                snapshot_date=stable_date,
+                market="US",
+                asset_type="stock",
+                regime_state="CONFIRMED_UPTREND",
+                rankings_json=[
+                    {"ticker": "AMD"},
+                    {"ticker": "CSCO"},
+                ],
+                metadata_={"instruments_count": 2, "config_hash": "stable"},
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await client.get("/api/v1/rankings?market=US&asset_type=stock")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["score_date"] == stable_date.isoformat()
+    assert [item["ticker"] for item in payload["items"]] == ["AMD", "CSCO"]
+    assert payload["pagination"]["total"] == 2
+
+
+@pytest.mark.asyncio
 async def test_rankings_endpoint_supports_advanced_get_filters(client, db_session):
     snapshot_date = latest_expected_price_date("US")
     price_as_of = snapshot_date
@@ -280,6 +379,73 @@ async def test_rankings_endpoint_supports_advanced_get_filters(client, db_sessio
     assert payload["pagination"]["total"] == 1
     assert [item["ticker"] for item in payload["items"]] == ["NVDA"]
     assert payload["items"][0]["coverage_state"] == "ranked"
+
+
+@pytest.mark.asyncio
+async def test_rankings_endpoint_matches_normalized_exchange_and_sector_filters(client, db_session):
+    snapshot_date = date(2026, 4, 13)
+    instrument = Instrument(
+        ticker="AETH",
+        name="Bitwise Ethereum ETF",
+        market="US",
+        exchange="NYSEAMER",
+        asset_type="stock",
+        sector="반도체",
+        is_active=True,
+    )
+    db_session.add(instrument)
+    await db_session.flush()
+
+    db_session.add(
+        ConsensusScore(
+            instrument_id=instrument.id,
+            score_date=snapshot_date,
+            conviction_level="GOLD",
+            final_score=85.0,
+            consensus_composite=82.0,
+            technical_composite=81.0,
+            strategy_pass_count=4,
+            regime_warning=False,
+        )
+    )
+    db_session.add(
+        StrategyScore(
+            instrument_id=instrument.id,
+            score_date=snapshot_date,
+            rs_rating=91.0,
+            weinstein_stage="2_mid",
+            ad_rating="A",
+        )
+    )
+    db_session.add(
+        InstrumentCoverageSummary(
+            instrument_id=instrument.id,
+            coverage_state="ranked",
+            price_bar_count=365,
+            price_as_of=snapshot_date,
+            quarterly_as_of=snapshot_date,
+            annual_as_of=snapshot_date,
+            ranked_as_of=snapshot_date,
+            ranking_eligible=True,
+        )
+    )
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/v1/rankings",
+        params=[
+            ("market", "US"),
+            ("asset_type", "stock"),
+            ("score_date", snapshot_date.isoformat()),
+            ("exchange", "NYSE American"),
+            ("sector", "Semiconductors"),
+        ],
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["ticker"] for item in payload["items"]] == ["AETH"]
+    assert payload["items"][0]["exchange"] == "NYSE American"
 
 
 @pytest.mark.asyncio
@@ -470,8 +636,8 @@ async def test_market_regime_endpoint_includes_current_and_history(client, db_se
 
 
 @pytest.mark.asyncio
-async def test_ingest_endpoint_uses_single_symbol_scoring_without_snapshots(client, db_session, monkeypatch):
-    from app.tasks import ingestion_tasks, scoring_tasks
+async def test_ingest_endpoint_runs_data_ingestion_and_defers_scoring(client, db_session, monkeypatch):
+    from app.tasks import ingestion_tasks
 
     instrument = Instrument(
         ticker="MSFT",
@@ -485,7 +651,7 @@ async def test_ingest_endpoint_uses_single_symbol_scoring_without_snapshots(clie
     await db_session.commit()
     await db_session.refresh(instrument)
 
-    captured: dict[str, object] = {}
+    captured: dict[str, object] = {"scoring_called": False}
 
     async def fake_us_price_ingestion(*, tickers=None, days=365):
         captured["price_tickers"] = tickers
@@ -498,15 +664,8 @@ async def test_ingest_endpoint_uses_single_symbol_scoring_without_snapshots(clie
         captured["fundamentals_years"] = years
         return {"ok": True}
 
-    async def fake_full_scoring_pipeline(*, instrument_ids=None, market=None, generate_snapshots=True, pipeline_mode=None, score_date=None):
-        captured["instrument_ids"] = instrument_ids
-        captured["scoring_market"] = market
-        captured["generate_snapshots"] = generate_snapshots
-        return {"ok": True}
-
     monkeypatch.setattr(ingestion_tasks, "run_us_price_ingestion", fake_us_price_ingestion)
     monkeypatch.setattr(ingestion_tasks, "run_market_fundamentals_ingestion", fake_fundamentals_ingestion)
-    monkeypatch.setattr(scoring_tasks, "run_full_scoring_pipeline", fake_full_scoring_pipeline)
 
     response = await client.post("/api/v1/instruments/MSFT/ingest?market=US")
 
@@ -515,9 +674,8 @@ async def test_ingest_endpoint_uses_single_symbol_scoring_without_snapshots(clie
     assert payload["instrument_id"] == instrument.id
     assert captured["price_tickers"] == ["MSFT"]
     assert captured["fundamentals_market"] == "US"
-    assert captured["instrument_ids"] == [instrument.id]
-    assert captured["scoring_market"] == "US"
-    assert captured["generate_snapshots"] is False
+    assert payload["scoring_deferred"] is True
+    assert payload["next_step"] == "batch_scoring_required"
 
 
 @pytest.mark.asyncio

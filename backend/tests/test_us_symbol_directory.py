@@ -30,7 +30,7 @@ def test_build_instrument_payload_keeps_supported_exact_symbol():
     assert payload["ticker"] == "TSSI"
 
 
-def test_build_instrument_payload_uses_schema_safe_exchange_codes():
+def test_build_instrument_payload_normalizes_exchange_codes():
     payload = _build_instrument_payload(
         {
             "ACT Symbol": "AETH",
@@ -43,5 +43,4 @@ def test_build_instrument_payload_uses_schema_safe_exchange_codes():
     )
 
     assert payload is not None
-    assert payload["exchange"] == "NYSEAMER"
-    assert len(payload["exchange"]) <= 10
+    assert payload["exchange"] == "NYSE American"

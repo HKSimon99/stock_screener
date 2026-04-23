@@ -22,6 +22,8 @@ bearer_token = HTTPBearer(auto_error=False)
 
 RATE_LIMIT_REQUESTS = 60
 RATE_LIMIT_WINDOW_SEC = 60
+HYDRATION_RATE_LIMIT_REQUESTS = 5
+HYDRATION_RATE_LIMIT_WINDOW_SEC = 900
 JWKS_CACHE_TTL_SEC = 300.0
 _JWKS_CACHE: tuple[float, dict[str, dict[str, Any]]] | None = None
 
@@ -67,6 +69,15 @@ class ClerkAuthUser:
     claims: dict[str, Any]
 
 
+@dataclass(slots=True)
+class AuthenticatedActor:
+    actor_type: str
+    actor_id: str
+    requester_source: str
+    user: ClerkAuthUser | None = None
+    api_key: str | None = None
+
+
 def _rate_limit_key(connection: HTTPConnection, api_key: str | None) -> str:
     if api_key:
         return f"apikey:{api_key}"
@@ -74,12 +85,17 @@ def _rate_limit_key(connection: HTTPConnection, api_key: str | None) -> str:
     return f"public:{host}"
 
 
-def _rate_limit_in_memory(rate_key: str) -> None:
+def _rate_limit_in_memory(
+    rate_key: str,
+    *,
+    limit: int = RATE_LIMIT_REQUESTS,
+    window_sec: int = RATE_LIMIT_WINDOW_SEC,
+) -> None:
     """Sliding-window rate limit using the in-memory fallback store."""
     now = time.time()
     history = _RATE_LIMIT_STORE[rate_key]
-    history = [t for t in history if now - t < RATE_LIMIT_WINDOW_SEC]
-    if len(history) >= RATE_LIMIT_REQUESTS:
+    history = [t for t in history if now - t < window_sec]
+    if len(history) >= limit:
         _RATE_LIMIT_STORE[rate_key] = history
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -89,7 +105,12 @@ def _rate_limit_in_memory(rate_key: str) -> None:
     _RATE_LIMIT_STORE[rate_key] = history
 
 
-async def _rate_limit_redis(rate_key: str) -> None:
+async def _rate_limit_redis(
+    rate_key: str,
+    *,
+    limit: int = RATE_LIMIT_REQUESTS,
+    window_sec: int = RATE_LIMIT_WINDOW_SEC,
+) -> None:
     """
     Fixed-window rate limit via Redis INCR + EXPIRE.
 
@@ -105,26 +126,35 @@ async def _rate_limit_redis(rate_key: str) -> None:
     """
     client = _get_redis()
     if client is None:
-        _rate_limit_in_memory(rate_key)
+        _rate_limit_in_memory(rate_key, limit=limit, window_sec=window_sec)
         return
 
     redis_key = f"rate:{rate_key}"
     try:
         pipe = client.pipeline()
         pipe.incr(redis_key)
-        pipe.expire(redis_key, RATE_LIMIT_WINDOW_SEC, nx=True)
+        pipe.expire(redis_key, window_sec, nx=True)
         results = await pipe.execute()
         count: int = results[0]
     except Exception as exc:  # pragma: no cover
         logger.warning("Redis rate limiter error (%s) — falling back to in-memory", exc)
-        _rate_limit_in_memory(rate_key)
+        _rate_limit_in_memory(rate_key, limit=limit, window_sec=window_sec)
         return
 
-    if count > RATE_LIMIT_REQUESTS:
+    if count > limit:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Rate limit exceeded",
         )
+
+
+async def apply_rate_limit(
+    rate_key: str,
+    *,
+    limit: int = RATE_LIMIT_REQUESTS,
+    window_sec: int = RATE_LIMIT_WINDOW_SEC,
+) -> None:
+    await _rate_limit_redis(rate_key, limit=limit, window_sec=window_sec)
 
 
 async def get_api_key(
@@ -153,7 +183,7 @@ async def get_api_key(
         )
 
     rate_key = _rate_limit_key(connection, api_key_header)
-    await _rate_limit_redis(rate_key)
+    await _rate_limit_redis(rate_key, limit=RATE_LIMIT_REQUESTS, window_sec=RATE_LIMIT_WINDOW_SEC)
 
     return api_key_header
 
@@ -309,4 +339,47 @@ async def get_clerk_user(
         issuer=claims.get("iss") if isinstance(claims.get("iss"), str) else None,
         authorized_party=claims.get("azp") if isinstance(claims.get("azp"), str) else None,
         claims=claims,
+    )
+
+
+async def get_optional_clerk_user(
+    connection: HTTPConnection,
+    credentials: HTTPAuthorizationCredentials | None = Security(bearer_token),
+) -> ClerkAuthUser | None:
+    if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials:
+        return None
+    return await get_clerk_user(connection, credentials)
+
+
+async def get_optional_api_key(
+    connection: HTTPConnection,
+    api_key_header_value: str | None = Security(api_key_header),
+) -> str | None:
+    if not api_key_header_value:
+        return None
+    return await get_api_key(connection, api_key_header_value)
+
+
+async def get_authenticated_actor(
+    auth_user: ClerkAuthUser | None = Security(get_optional_clerk_user),
+    api_key: str | None = Security(get_optional_api_key),
+) -> AuthenticatedActor:
+    if auth_user is not None:
+        return AuthenticatedActor(
+            actor_type="user",
+            actor_id=auth_user.user_id,
+            requester_source="user",
+            user=auth_user,
+        )
+    if api_key is not None:
+        return AuthenticatedActor(
+            actor_type="api_key",
+            actor_id=api_key,
+            requester_source="api_key",
+            api_key=api_key,
+        )
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Missing bearer token or X-API-Key header",
+        headers={"WWW-Authenticate": "Bearer"},
     )

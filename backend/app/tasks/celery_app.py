@@ -22,6 +22,8 @@ celery_app = Celery(
     backend=settings.celery_result_backend,
     include=[
         "app.tasks.ingestion_tasks",
+        "app.tasks.backfill_tasks",
+        "app.tasks.hydration_tasks",
         "app.tasks.scoring_tasks",
         "app.tasks.snapshot_tasks",
         "app.tasks.alert_tasks",

@@ -15,6 +15,7 @@ from app.schemas.v1 import (
     SearchResultEntry,
     UniverseCoverageResponse,
 )
+from app.services.taxonomy import normalize_exchange, normalize_sector
 from app.services.universe import (
     browse_instruments,
     build_coverage_map,
@@ -53,7 +54,7 @@ async def search_symbols(
                 name=instrument.name,
                 name_kr=instrument.name_kr,
                 market=instrument.market,
-                exchange=instrument.exchange,
+                exchange=normalize_exchange(instrument.exchange) or "",
                 asset_type=instrument.asset_type,
                 listing_status=instrument.listing_status,
                 coverage_state=coverage_map[instrument.id].coverage_state,
@@ -120,10 +121,10 @@ async def browse_universe(
                 name=instrument.name,
                 name_kr=instrument.name_kr,
                 market=instrument.market,
-                exchange=instrument.exchange,
+                exchange=normalize_exchange(instrument.exchange) or "",
                 asset_type=instrument.asset_type,
                 listing_status=instrument.listing_status,
-                sector=instrument.sector,
+                sector=normalize_sector(instrument.sector),
                 industry_group=instrument.industry_group,
                 coverage_state=coverage_state_value,
                 ranking_eligibility=RankingEligibility(

@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models.consensus_score import ConsensusScore
 from app.models.coverage_summary import InstrumentCoverageSummary
@@ -663,6 +663,21 @@ async def test_search_endpoint_prioritizes_exact_and_prefix_matches(client, db_s
     assert response.status_code == 200
     payload = response.json()
     assert [item["ticker"] for item in payload["items"][:3]] == ["NV", "NVDA", "ABNV"]
+
+
+@pytest.mark.asyncio
+async def test_search_endpoint_unknown_symbol_does_not_create_instrument(client, db_session):
+    before_count = await db_session.scalar(select(func.count(Instrument.id)))
+
+    response = await client.get("/api/v1/search?q=TSSI")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["query"] == "TSSI"
+    assert payload["total"] == 0
+
+    after_count = await db_session.scalar(select(func.count(Instrument.id)))
+    assert after_count == before_count
 
 
 @pytest.mark.asyncio

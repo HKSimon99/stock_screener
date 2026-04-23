@@ -59,7 +59,22 @@ async def _lifespan(app: FastAPI):  # noqa: ARG001
     except Exception as exc:
         checks["consensus_scores"] = f"WARN: could not query ({exc})"
 
-    # 3. CORS origins include a non-localhost origin in production
+    # 3. Alembic migration state visible. This catches accidental schema resets
+    # before the app starts serving with a partially restored database.
+    try:
+        schema = (settings.postgres_schema or "public").replace('"', '""')
+        async with AsyncSessionLocal() as session:
+            row = await session.execute(
+                text(f'SELECT version_num FROM "{schema}".alembic_version LIMIT 1')
+            )
+            version = row.scalar_one_or_none()
+        checks["alembic_version"] = (
+            f"OK ({version})" if version else "WARN: no alembic version recorded"
+        )
+    except Exception as exc:
+        checks["alembic_version"] = f"WARN: could not query ({exc})"
+
+    # 4. CORS origins include a non-localhost origin in production
     non_local = [
         o for o in settings.cors_origins_list
         if "localhost" not in o and "127.0.0.1" not in o
@@ -71,7 +86,7 @@ async def _lifespan(app: FastAPI):  # noqa: ARG001
     else:
         checks["cors_origins"] = f"OK ({len(settings.cors_origins_list)} origin(s) configured)"
 
-    # 4. SECRET_KEY is not the insecure default
+    # 5. SECRET_KEY is not the insecure default
     checks["secret_key"] = (
         "WARN: SECRET_KEY is still 'changeme' — change before production use"
         if settings.secret_key == "changeme"

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
 from app.models.instrument import Instrument
 from app.models.price import Price
+from app.services.taxonomy import normalize_exchange, normalize_sector
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -71,10 +72,10 @@ def _build_instrument_payload(row: dict[str, str], source_name: str) -> dict | N
             "ticker": normalized_ticker,
             "name": security_name[:200],
             "market": "US",
-            "exchange": "NASDAQ",
+            "exchange": normalize_exchange("NASDAQ"),
             "asset_type": "etf" if etf_flag == "Y" else "stock",
             "listing_status": "LISTED",
-            "sector": None,
+            "sector": normalize_sector(None),
             "industry_group": None,
             "is_active": not test_issue,
             "is_test_issue": test_issue,
@@ -102,10 +103,10 @@ def _build_instrument_payload(row: dict[str, str], source_name: str) -> dict | N
         "ticker": normalized_ticker,
         "name": security_name[:200],
         "market": "US",
-        "exchange": EXCHANGE_CODE_MAP.get(exchange_code, exchange_code or "OTHER"),
+        "exchange": normalize_exchange(EXCHANGE_CODE_MAP.get(exchange_code, exchange_code or "OTHER")),
         "asset_type": "etf" if etf_flag == "Y" else "stock",
         "listing_status": "LISTED",
-        "sector": None,
+        "sector": normalize_sector(None),
         "industry_group": None,
         "is_active": not test_issue,
         "is_test_issue": test_issue,

@@ -3,7 +3,9 @@ from datetime import date, timedelta
 import pytest
 
 from app.models.consensus_score import ConsensusScore
+from app.models.fundamental import FundamentalAnnual
 from app.models.instrument import Instrument
+from app.models.institutional import InstitutionalOwnership
 from app.models.price import Price
 from app.models.strategy_score import StrategyScore
 
@@ -75,6 +77,90 @@ async def test_instrument_endpoint_returns_history_and_metadata(client, db_sessi
     ]
     assert [point["final_score"] for point in payload["score_history"]] == final_scores
     assert [point["stage"] for point in payload["weinstein_stage_history"]] == stages
+
+
+@pytest.mark.asyncio
+async def test_instrument_endpoint_normalizes_taxonomy_and_exposes_market_and_ownership_metrics(client, db_session):
+    instrument = Instrument(
+        ticker="AETH",
+        name="Bitwise Ethereum ETF",
+        market="US",
+        exchange="NYSEAMER",
+        asset_type="stock",
+        sector="반도체",
+        shares_outstanding=1_000_000,
+        float_shares=800_000,
+        is_active=True,
+    )
+    db_session.add(instrument)
+    await db_session.flush()
+
+    db_session.add(
+        Price(
+            instrument_id=instrument.id,
+            trade_date=date(2026, 4, 13),
+            open=19.5,
+            high=21.0,
+            low=19.0,
+            close=20.0,
+            volume=150_000,
+            avg_volume_50d=120_000,
+        )
+    )
+    db_session.add(
+        FundamentalAnnual(
+            instrument_id=instrument.id,
+            fiscal_year=2025,
+            report_date=date(2026, 2, 15),
+            revenue=10_000_000,
+            gross_profit=4_500_000,
+            net_income=1_800_000,
+            eps=1.9,
+            eps_diluted=2.0,
+            shares_outstanding_annual=950_000,
+            operating_cash_flow=2_100_000,
+            total_assets=12_000_000,
+            current_assets=4_000_000,
+            current_liabilities=1_500_000,
+            long_term_debt=2_000_000,
+            roa=0.15,
+            current_ratio=2.66,
+            gross_margin=0.45,
+            asset_turnover=0.83,
+            leverage_ratio=0.17,
+            data_source="EDGAR",
+        )
+    )
+    db_session.add(
+        InstitutionalOwnership(
+            instrument_id=instrument.id,
+            report_date=date(2026, 4, 1),
+            num_institutional_owners=125,
+            institutional_pct=0.62,
+            top_fund_quality_score=81.5,
+            qoq_owner_change=9,
+            foreign_ownership_pct=0.18,
+            foreign_net_buy_30d=12_000,
+            institutional_net_buy_30d=30_500,
+            individual_net_buy_30d=-42_500,
+            is_buyback_active=True,
+            data_source="13F",
+        )
+    )
+    await db_session.commit()
+
+    response = await client.get("/api/v1/instruments/AETH?market=US")
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert payload["exchange"] == "NYSE American"
+    assert payload["sector"] == "Semiconductors"
+    assert payload["market_metrics"]["market_cap"] == pytest.approx(20_000_000.0)
+    assert payload["market_metrics"]["float_market_cap"] == pytest.approx(16_000_000.0)
+    assert payload["market_metrics"]["trailing_pe_ratio"] == pytest.approx(10.0)
+    assert payload["ownership_metrics"]["institutional_pct"] == pytest.approx(0.62)
+    assert payload["ownership_metrics"]["num_institutional_owners"] == 125
+    assert payload["ownership_metrics"]["is_buyback_active"] is True
 
 
 @pytest.mark.asyncio

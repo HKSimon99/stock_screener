@@ -22,23 +22,40 @@ import zoneinfo
 import asyncio
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func, desc, or_, union_all
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_read_db
+from app.api.auth import (
+    AuthenticatedActor,
+    HYDRATION_RATE_LIMIT_REQUESTS,
+    HYDRATION_RATE_LIMIT_WINDOW_SEC,
+    apply_rate_limit,
+    get_authenticated_actor,
+)
+from app.api.deps import get_db, get_read_db
 from app.models.consensus_score import ConsensusScore
 from app.models.fundamental import FundamentalAnnual, FundamentalQuarterly
 from app.models.instrument import Instrument
+from app.models.institutional import InstitutionalOwnership
 from app.models.price import Price
 from app.models.strategy_score import StrategyScore
 from app.schemas.v1 import (
     ChartLinePoint, ChartPatternAnchor, ChartPatternOverlay, ChartPriceBar,
     AnnualMetrics, CANSLIMDetail, InstrumentDetailResponse,
+    HydrationJobCreateResponse,
+    HydrationJobResponse,
     InstrumentChartResponse,
+    MarketMetrics,
+    OwnershipMetrics,
     PriceMetrics, QuarterlyMetrics, ScoreHistoryPoint, WeinsteinStageHistoryPoint,
     MinerviniDetail, PiotroskiDetail, TechnicalDetail, WeinsteinDetail,
 )
+from app.services.hydration_jobs import create_hydration_job, get_latest_hydration_job
+from app.services.hydration_jobs import reconcile_hydration_job_health, set_hydration_job_status
+from app.services.symbol_resolution import resolve_instrument_for_hydration
+from app.services.taxonomy import normalize_exchange, normalize_sector
 from app.services.universe import build_coverage_map
 
 router = APIRouter()
@@ -51,6 +68,26 @@ def _f(val) -> Optional[float]:
 
 def _i(val) -> Optional[int]:
     return int(val) if val is not None else None
+
+
+def _serialize_hydration_job(job) -> HydrationJobResponse:
+    return HydrationJobResponse(
+        id=job.id,
+        ticker=job.ticker,
+        market=job.market,
+        instrument_id=job.instrument_id,
+        status=job.status,
+        requester_source=job.requester_source,
+        requester_user_id=None,
+        celery_task_id=None,
+        queued_at=job.queued_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        failed_at=job.failed_at,
+        updated_at=job.updated_at,
+        error_message=job.error_message,
+        source_metadata=dict(job.source_metadata or {}),
+    )
 
 
 async def _resolve_instrument(
@@ -79,6 +116,38 @@ async def _resolve_instrument(
         )
     instrument = instruments[0]
     return instrument
+
+
+async def _resolve_hydration_instrument(
+    ticker: str,
+    market: Optional[str],
+    db: AsyncSession,
+) -> tuple[Instrument, bool, Optional[str]]:
+    try:
+        instrument = await _resolve_instrument(ticker=ticker, market=market, db=db)
+        return instrument, False, None
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        if market is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Instrument '{ticker}' is not in the local database. "
+                    "Specify ?market=US or ?market=KR to resolve and hydrate it explicitly."
+                ),
+            ) from exc
+
+    resolved = await resolve_instrument_for_hydration(db, ticker=ticker, market=market)
+    if resolved is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Instrument '{ticker}' is not in the database and could not be resolved "
+                f"from the {market} provider symbol directory."
+            ),
+        )
+    return resolved.instrument, resolved.resolved_from_provider, resolved.resolution_source
 
 
 async def _resolve_reference_date(
@@ -255,6 +324,92 @@ async def _load_annual_metrics(
         asset_turnover=_f(row.asset_turnover),
         leverage_ratio=_f(row.leverage_ratio),
         data_source=row.data_source,
+    )
+
+
+async def _load_ownership_metrics(
+    instrument_id: int,
+    reference_date: date,
+    db: AsyncSession,
+) -> Optional[OwnershipMetrics]:
+    ownership_q = await db.execute(
+        select(InstitutionalOwnership)
+        .where(
+            InstitutionalOwnership.instrument_id == instrument_id,
+            InstitutionalOwnership.report_date <= reference_date,
+        )
+        .order_by(desc(InstitutionalOwnership.report_date))
+        .limit(1)
+    )
+    row = ownership_q.scalars().first()
+    if row is None:
+        return None
+    return OwnershipMetrics(
+        report_date=row.report_date,
+        data_source=row.data_source,
+        num_institutional_owners=_i(row.num_institutional_owners),
+        institutional_pct=_f(row.institutional_pct),
+        top_fund_quality_score=_f(row.top_fund_quality_score),
+        qoq_owner_change=_i(row.qoq_owner_change),
+        foreign_ownership_pct=_f(row.foreign_ownership_pct),
+        foreign_net_buy_30d=_f(row.foreign_net_buy_30d),
+        institutional_net_buy_30d=_f(row.institutional_net_buy_30d),
+        individual_net_buy_30d=_f(row.individual_net_buy_30d),
+        is_buyback_active=bool(row.is_buyback_active),
+    )
+
+
+def _load_market_metrics(
+    *,
+    instrument: Instrument,
+    price_metrics: PriceMetrics,
+    annual_metrics: Optional[AnnualMetrics],
+) -> Optional[MarketMetrics]:
+    close = price_metrics.close
+    if close is None or close <= 0:
+        return None
+
+    share_count = _f(instrument.shares_outstanding)
+    share_count_source = "instrument.shares_outstanding"
+    if share_count is None or share_count <= 0:
+        share_count = (
+            float(annual_metrics.shares_outstanding_annual)
+            if annual_metrics and annual_metrics.shares_outstanding_annual
+            else None
+        )
+        share_count_source = "annual_metrics.shares_outstanding_annual"
+
+    market_cap = close * share_count if share_count and share_count > 0 else None
+    float_market_cap = (
+        close * float(instrument.float_shares)
+        if instrument.float_shares is not None and instrument.float_shares > 0
+        else None
+    )
+
+    trailing_eps = None
+    trailing_eps_source = None
+    if annual_metrics:
+        if annual_metrics.eps_diluted is not None and annual_metrics.eps_diluted > 0:
+            trailing_eps = annual_metrics.eps_diluted
+            trailing_eps_source = "annual_metrics.eps_diluted"
+        elif annual_metrics.eps is not None and annual_metrics.eps > 0:
+            trailing_eps = annual_metrics.eps
+            trailing_eps_source = "annual_metrics.eps"
+
+    trailing_pe_ratio = (
+        close / trailing_eps
+        if trailing_eps is not None and trailing_eps > 0
+        else None
+    )
+
+    return MarketMetrics(
+        price_as_of=price_metrics.trade_date,
+        share_count_source=share_count_source if market_cap is not None else None,
+        trailing_eps_source=trailing_eps_source,
+        market_cap=market_cap,
+        float_market_cap=float_market_cap,
+        trailing_pe_ratio=trailing_pe_ratio,
+        dividend_yield=None,
     )
 
 
@@ -459,13 +614,15 @@ async def ingest_instrument(
     db: AsyncSession = Depends(get_read_db),
 ) -> dict:
     """
-    Synchronously ingest prices, fundamentals, and run scoring for this instrument.
-    Useful for ad-hoc requests when data is 'searchable' but not yet 'price_ready' or 'ranked'.
+    Synchronously ingest prices and fundamentals for this instrument.
+
+    Single-symbol consensus scoring is intentionally deferred to the next batch
+    scoring run so a one-off refresh cannot advance the global rankings date on
+    its own.
     """
     instrument = await _resolve_instrument(ticker=ticker, market=market, db=db)
     
     from app.tasks.ingestion_tasks import run_us_price_ingestion, run_kr_price_ingestion, run_market_fundamentals_ingestion
-    from app.tasks.scoring_tasks import run_full_scoring_pipeline
 
     if instrument.market == "US":
         price_task = run_us_price_ingestion(tickers=[instrument.ticker], days=365)
@@ -477,13 +634,130 @@ async def ingest_instrument(
     # Run price and fundamental ingestion concurrently
     await asyncio.gather(price_task, fundamentals_task)
 
-    await run_full_scoring_pipeline(
-        instrument_ids=[instrument.id],
-        market=instrument.market,
-        generate_snapshots=False,
+    return {
+        "message": (
+            f"Successfully ingested {instrument.ticker}. "
+            "Scoring is deferred until the next batch scoring run."
+        ),
+        "instrument_id": instrument.id,
+        "scoring_deferred": True,
+        "next_step": "batch_scoring_required",
+    }
+
+
+@router.post(
+    "/{ticker}/hydrate",
+    response_model=HydrationJobCreateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Queue explicit hydration for an instrument",
+)
+async def hydrate_instrument(
+    ticker: str,
+    market: Optional[str] = Query(None, pattern="^(US|KR)$"),
+    db: AsyncSession = Depends(get_db),
+    actor: AuthenticatedActor = Depends(get_authenticated_actor),
+) -> HydrationJobCreateResponse:
+    instrument, resolved_from_provider, resolution_source = await _resolve_hydration_instrument(
+        ticker=ticker,
+        market=market,
+        db=db,
     )
-    
-    return {"message": f"Successfully ingested {instrument.ticker}", "instrument_id": instrument.id}
+
+    await apply_rate_limit(
+        f"hydrate:{actor.actor_type}:{actor.actor_id}",
+        limit=HYDRATION_RATE_LIMIT_REQUESTS,
+        window_sec=HYDRATION_RATE_LIMIT_WINDOW_SEC,
+    )
+
+    try:
+        job, created = await create_hydration_job(
+            db,
+            ticker=instrument.ticker,
+            market=instrument.market,
+            requester_source=actor.requester_source,
+            requester_user_id=actor.user.user_id if actor.user is not None else None,
+            instrument_id=instrument.id,
+            source_metadata={
+                "trigger": "explicit_hydration_api",
+                "resolved_from_provider": resolved_from_provider,
+                "resolution_source": resolution_source,
+            },
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        job = await get_latest_hydration_job(db, ticker=instrument.ticker, market=instrument.market)
+        if job is None:
+            raise
+        created = False
+
+    if created:
+        try:
+            from app.tasks.hydration_tasks import run_instrument_hydration_task  # noqa: PLC0415
+
+            task = run_instrument_hydration_task.delay(job_id=job.id)
+            await set_hydration_job_status(
+                db,
+                job_id=job.id,
+                status="queued",
+                celery_task_id=task.id,
+                source_metadata={"dispatch_channel": "celery"},
+            )
+            await db.commit()
+            await db.refresh(job)
+        except Exception as exc:
+            await db.rollback()
+            await set_hydration_job_status(
+                db,
+                job_id=job.id,
+                status="failed",
+                error_message=f"Failed to dispatch hydration worker task: {exc}",
+                source_metadata={"failure_reason": "dispatch_error"},
+            )
+            await db.commit()
+            raise HTTPException(
+                status_code=503,
+                detail=f"Failed to queue hydration task: {exc}",
+            ) from exc
+
+    message = (
+        (
+            f"Resolved {instrument.ticker} from the provider directory and queued hydration."
+            if created and resolved_from_provider
+            else f"Queued hydration for {instrument.ticker}."
+        )
+        if created
+        else f"Hydration already queued or running for {instrument.ticker}."
+    )
+    return HydrationJobCreateResponse(
+        job=_serialize_hydration_job(job),
+        created=created,
+        message=message,
+    )
+
+
+@router.get(
+    "/{ticker}/hydrate-status",
+    response_model=HydrationJobResponse,
+    summary="Latest hydration status for an instrument",
+)
+async def get_instrument_hydration_status(
+    ticker: str,
+    market: Optional[str] = Query(None, pattern="^(US|KR)$"),
+    db: AsyncSession = Depends(get_db),
+    actor: AuthenticatedActor = Depends(get_authenticated_actor),
+) -> HydrationJobResponse:
+    _ = actor
+    instrument = await _resolve_instrument(ticker=ticker, market=market, db=db)
+    job = await get_latest_hydration_job(db, ticker=instrument.ticker, market=instrument.market)
+    if job is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No hydration job found for '{instrument.ticker}' in {instrument.market}.",
+        )
+    job = await reconcile_hydration_job_health(db, job=job)
+    await db.commit()
+    return _serialize_hydration_job(job)
 
 
 @router.get(
@@ -701,6 +975,12 @@ async def get_instrument(
     price_metrics = await _load_price_metrics(instrument.id, reference_date, db)
     quarterly_metrics = await _load_quarterly_metrics(instrument.id, reference_date, db)
     annual_metrics = await _load_annual_metrics(instrument.id, reference_date, db)
+    ownership_metrics = await _load_ownership_metrics(instrument.id, reference_date, db)
+    market_metrics = _load_market_metrics(
+        instrument=instrument,
+        price_metrics=price_metrics,
+        annual_metrics=annual_metrics,
+    )
 
     score_history_rows: list[tuple[date, Optional[float], Optional[float], Optional[float]]] = []
     if cs is not None:
@@ -761,9 +1041,9 @@ async def get_instrument(
         market               = instrument.market,
         asset_type           = instrument.asset_type,
         score_date           = reference_date,
-        exchange             = instrument.exchange,
+        exchange             = normalize_exchange(instrument.exchange),
         listing_status       = instrument.listing_status,
-        sector               = instrument.sector,
+        sector               = normalize_sector(instrument.sector),
         industry_group       = instrument.industry_group,
         shares_outstanding   = _i(instrument.shares_outstanding),
         float_shares         = _i(instrument.float_shares),
@@ -838,4 +1118,6 @@ async def get_instrument(
         price_metrics = price_metrics,
         quarterly_metrics = quarterly_metrics,
         annual_metrics = annual_metrics,
+        market_metrics = market_metrics,
+        ownership_metrics = ownership_metrics,
     )

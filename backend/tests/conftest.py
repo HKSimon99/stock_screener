@@ -6,7 +6,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 from app.main import app
-from app.api.auth import get_clerk_user
+from app.api.auth import ClerkAuthUser, get_clerk_user, get_optional_clerk_user
 from app.core.config import settings
 from app.core.database import Base, get_db, get_read_db
 
@@ -123,11 +123,18 @@ async def client(db_session):
         yield db_session
 
     async def override_get_clerk_user():
-        return {"user_id": "user_test_123"}
+        return ClerkAuthUser(
+            user_id="user_test_123",
+            session_id="sess_test_123",
+            issuer="https://clerk.test",
+            authorized_party="http://test",
+            claims={"sub": "user_test_123", "sid": "sess_test_123"},
+        )
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_read_db] = override_get_read_db
     app.dependency_overrides[get_clerk_user] = override_get_clerk_user
+    app.dependency_overrides[get_optional_clerk_user] = override_get_clerk_user
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()

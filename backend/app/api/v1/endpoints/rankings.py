@@ -45,6 +45,7 @@ from app.models.consensus_score import ConsensusScore
 from app.models.coverage_summary import InstrumentCoverageSummary
 from app.models.instrument import Instrument
 from app.models.market_regime import MarketRegime
+from app.models.snapshot import ScoringSnapshot
 from app.models.strategy_score import StrategyScore
 from app.schemas.v1 import (
     PaginationMeta,
@@ -53,6 +54,12 @@ from app.schemas.v1 import (
     StrategyScores,
 )
 from app.services.request_cache import TtlCache
+from app.services.taxonomy import (
+    exchange_filter_condition,
+    normalize_exchange,
+    normalize_sector,
+    sector_filter_condition,
+)
 from app.services.universe import (
     LEGACY_COVERAGE_TO_PUBLIC,
     RANK_MODEL_VERSION,
@@ -93,7 +100,7 @@ def _make_etag(
 
 
 router = APIRouter()
-_LATEST_CONSENSUS_DATE_CACHE = TtlCache[Optional[date]](ttl_seconds=60)
+_LATEST_SCORE_DATE_CACHE = TtlCache[Optional[date]](ttl_seconds=60)
 _REGIME_CACHE = TtlCache[Optional[str]](ttl_seconds=60)
 
 
@@ -159,7 +166,7 @@ def _entry_from_row(
         name=row[2] or "",
         name_kr=row[3],
         market=row[4],
-        exchange=row[5],
+        exchange=normalize_exchange(row[5]),
         asset_type=row[6],
         conviction_level=row[7] or "UNRANKED",
         final_score=_f(row[8]) or 0.0,
@@ -200,18 +207,37 @@ def _make_filters_key(filters: dict[str, object]) -> str:
     return "&".join(parts)
 
 
-async def _latest_consensus_date(market: Optional[str], db: AsyncSession) -> Optional[date]:
-    cache_key = market or "*"
-    cached = _LATEST_CONSENSUS_DATE_CACHE.get(cache_key)
+async def _latest_rankings_score_date(
+    market: Optional[str],
+    asset_type: str,
+    db: AsyncSession,
+) -> Optional[date]:
+    cache_key = f"{market or '*'}:{asset_type}"
+    cached = _LATEST_SCORE_DATE_CACHE.get(cache_key)
     if cached is not None:
         return cached
-    q = select(func.max(ConsensusScore.score_date))
+
+    snapshot_q = select(func.max(ScoringSnapshot.snapshot_date)).where(
+        ScoringSnapshot.asset_type == asset_type
+    )
     if market:
-        q = q.join(Instrument, ConsensusScore.instrument_id == Instrument.id).where(
+        snapshot_q = snapshot_q.where(ScoringSnapshot.market == market)
+    snapshot_result = await db.execute(snapshot_q)
+    snapshot_date = snapshot_result.scalar_one_or_none()
+    if snapshot_date is not None:
+        return _LATEST_SCORE_DATE_CACHE.set(cache_key, snapshot_date)
+
+    q = (
+        select(func.max(ConsensusScore.score_date))
+        .join(Instrument, ConsensusScore.instrument_id == Instrument.id)
+        .where(Instrument.asset_type == asset_type)
+    )
+    if market:
+        q = q.where(
             Instrument.market == market
         )
     result = await db.execute(q)
-    return _LATEST_CONSENSUS_DATE_CACHE.set(cache_key, result.scalar_one_or_none())
+    return _LATEST_SCORE_DATE_CACHE.set(cache_key, result.scalar_one_or_none())
 
 
 async def _get_regime(market: str, score_date: date, db: AsyncSession) -> Optional[str]:
@@ -279,7 +305,7 @@ async def get_rankings(
     """
     # ── Resolve score_date ──────────────────────────────────────────────────
     if score_date is None:
-        score_date = await _latest_consensus_date(market, db)
+        score_date = await _latest_rankings_score_date(market, asset_type, db)
     if score_date is None:
         raise HTTPException(
             404, detail="No consensus scores found. Run the scoring pipeline first."
@@ -343,10 +369,12 @@ async def get_rankings(
         )
     sector_values = _normalise_list(sector)
     if sector_values:
-        stmt = stmt.where(Instrument.sector.in_(sector_values))
+        sector_condition = sector_filter_condition(Instrument.sector, sector_values)
+        stmt = stmt.where(sector_condition if sector_condition is not None else false())
     exchange_values = _normalise_list(exchange)
     if exchange_values:
-        stmt = stmt.where(Instrument.exchange.in_(exchange_values))
+        exchange_condition = exchange_filter_condition(Instrument.exchange, exchange_values)
+        stmt = stmt.where(exchange_condition if exchange_condition is not None else false())
     coverage_values = _normalise_list(coverage_state)
     if coverage_values:
         public_values = {
@@ -459,8 +487,8 @@ async def get_rankings(
             "min_minervini": min_minervini,
             "min_weinstein": min_weinstein,
             "min_rs_rating": min_rs_rating,
-            "sector": sector_values,
-            "exchange": exchange_values,
+            "sector": [normalize_sector(value) or value for value in sector_values],
+            "exchange": [normalize_exchange(value) or value for value in exchange_values],
             "coverage_state": coverage_values,
             "weinstein_stage": weinstein_stage_values,
             "ad_rating": ad_rating_values,

@@ -18,15 +18,28 @@ from sqlalchemy import select, desc, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_api_key
-from app.api.deps import get_read_db
+from app.api.deps import get_db, get_read_db
 from app.models.alert import Alert
+from app.models.backfill_run import AdminBackfillRun
 from app.models.market_regime import MarketRegime
 from app.models.snapshot import ScoringSnapshot
 from app.schemas.v1 import (
+    AdminBackfillPreview,
+    AdminBackfillRequest,
+    AdminBackfillResponse,
+    AdminBackfillRunResponse,
     AlertEntry, AlertsResponse,
     MarketRegimeResponse, RegimeEntry,
     SnapshotMeta, SnapshotResponse,
     ScoringTriggerRequest, ScoringTriggerResponse,
+)
+from app.services.backfill_runs import (
+    DEFAULT_ADMIN_BACKFILL_CHUNK_SIZE,
+    create_admin_backfill_run,
+    get_admin_backfill_run,
+    materialize_backfill_scope,
+    preview_admin_backfill_scope,
+    set_admin_backfill_run_status,
 )
 
 router = APIRouter()
@@ -258,3 +271,162 @@ async def trigger_scoring(
         )
     except Exception as exc:
         raise HTTPException(500, detail=f"Failed to queue task: {exc}")
+
+
+# =============================================================================
+# Admin Backfill
+# =============================================================================
+
+
+def _serialize_admin_backfill_run(run: AdminBackfillRun) -> AdminBackfillRunResponse:
+    return AdminBackfillRunResponse(
+        id=run.id,
+        market=run.market,
+        requested_tickers=list(run.requested_tickers or []),
+        selected_tickers=list(run.selected_tickers or []),
+        limit_requested=run.limit_requested,
+        chunk_size=run.chunk_size,
+        price_only=bool(run.price_only),
+        score_requested=bool(run.score_requested),
+        status=run.status,
+        requester_source=run.requester_source,
+        requester_user_id=run.requester_user_id,
+        celery_task_id=run.celery_task_id,
+        requested_count=run.requested_count,
+        selected_count=run.selected_count,
+        processed_count=run.processed_count,
+        failed_count=run.failed_count,
+        queued_at=run.queued_at,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+        failed_at=run.failed_at,
+        updated_at=run.updated_at,
+        error_message=run.error_message,
+        result_metadata=dict(run.result_metadata or {}),
+    )
+
+
+def _serialize_admin_backfill_preview(preview) -> AdminBackfillPreview:
+    return AdminBackfillPreview(
+        market=preview.market,
+        selection_mode=preview.selection_mode,
+        requested_count=preview.requested_count,
+        selected_count=preview.selected_count,
+        unresolved_count=preview.unresolved_count,
+        existing_count=preview.existing_count,
+        resolved_from_provider_count=preview.resolved_from_provider_count,
+        limit_requested=preview.limit_requested,
+        chunk_size=preview.chunk_size,
+        chunk_count=preview.chunk_count,
+        price_only=preview.price_only,
+        score_requested=preview.score_requested,
+        sample_selected_tickers=preview.sample_selected_tickers(),
+        sample_unresolved_tickers=preview.sample_unresolved_tickers(),
+    )
+
+
+@router.post(
+    "/admin/backfill",
+    response_model=AdminBackfillResponse,
+    summary="Preview or queue an admin backfill run",
+)
+async def trigger_admin_backfill(
+    body: AdminBackfillRequest,
+    api_key: str = Depends(get_api_key),
+    db: AsyncSession = Depends(get_db),
+) -> AdminBackfillResponse:
+    _ = api_key
+    if body.price_only and body.score:
+        raise HTTPException(
+            400,
+            detail="price_only=true cannot be combined with score=true",
+        )
+
+    preview = await preview_admin_backfill_scope(
+        db,
+        market=body.market,
+        tickers=body.tickers,
+        limit=body.limit,
+        price_only=body.price_only,
+        score_requested=body.score,
+        chunk_size=DEFAULT_ADMIN_BACKFILL_CHUNK_SIZE,
+    )
+    preview_payload = _serialize_admin_backfill_preview(preview)
+
+    if body.dry_run:
+        return AdminBackfillResponse(
+            dry_run=True,
+            preview=preview_payload,
+            run=None,
+            message=f"Dry run ready for {preview.selected_count} selected instruments in {body.market}.",
+        )
+
+    if preview.selected_count == 0:
+        raise HTTPException(
+            400,
+            detail="No instruments matched the requested backfill scope.",
+        )
+
+    await materialize_backfill_scope(db, preview=preview)
+    run = await create_admin_backfill_run(
+        db,
+        preview=preview,
+        requester_source="api_key",
+        requester_user_id=None,
+        result_metadata={
+            "selection_mode": preview.selection_mode,
+            "resolved_from_provider_count": preview.resolved_from_provider_count,
+            "unresolved_count": preview.unresolved_count,
+            "sample_unresolved_tickers": preview.sample_unresolved_tickers(),
+        },
+    )
+    await db.commit()
+
+    try:
+        from app.tasks.backfill_tasks import run_admin_backfill_task
+
+        task = run_admin_backfill_task.delay(run_id=run.id)
+        await set_admin_backfill_run_status(
+            db,
+            run_id=run.id,
+            status="queued",
+            celery_task_id=task.id,
+            result_metadata={"dispatch_channel": "celery"},
+        )
+        await db.commit()
+        await db.refresh(run)
+    except Exception as exc:
+        await db.rollback()
+        await set_admin_backfill_run_status(
+            db,
+            run_id=run.id,
+            status="failed",
+            error_message=f"Failed to dispatch admin backfill task: {exc}",
+            result_metadata={"failure_reason": "dispatch_error"},
+        )
+        await db.commit()
+        raise HTTPException(503, detail=f"Failed to queue admin backfill task: {exc}") from exc
+
+    return AdminBackfillResponse(
+        dry_run=False,
+        preview=preview_payload,
+        run=_serialize_admin_backfill_run(run),
+        message=f"Admin backfill queued as run {run.id}.",
+    )
+
+
+@router.get(
+    "/admin/backfill/{run_id}",
+    response_model=AdminBackfillRunResponse,
+    summary="Get admin backfill run status",
+)
+async def get_admin_backfill_status(
+    run_id: int,
+    api_key: str = Depends(get_api_key),
+    db: AsyncSession = Depends(get_db),
+) -> AdminBackfillRunResponse:
+    _ = api_key
+    run = await get_admin_backfill_run(db, run_id)
+    if run is None:
+        raise HTTPException(404, detail=f"Admin backfill run {run_id} not found.")
+    return _serialize_admin_backfill_run(run)

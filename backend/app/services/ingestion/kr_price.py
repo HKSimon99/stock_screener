@@ -20,6 +20,7 @@ except ImportError:
 from app.core.database import AsyncSessionLocal
 from app.models.instrument import Instrument
 from app.models.price import Price
+from app.services.taxonomy import normalize_exchange, normalize_sector
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -144,10 +145,10 @@ async def fetch_kr_tickers() -> list[dict]:
                 "name": name,
                 "name_kr": name,
                 "market": "KR",
-                "exchange": market_raw,
+                "exchange": normalize_exchange(market_raw),
                 "asset_type": "stock",
                 "listing_status": "LISTED",
-                "sector": dept if dept else None,
+                "sector": normalize_sector(dept),
                 "industry_group": None,
                 "is_active": True,
                 "is_test_issue": False,
@@ -172,10 +173,10 @@ async def fetch_kr_tickers() -> list[dict]:
                 "name": name,
                 "name_kr": name,
                 "market": "KR",
-                "exchange": "ETF",
+                "exchange": normalize_exchange("ETF"),
                 "asset_type": "etf",
                 "listing_status": "LISTED",
-                "sector": str(row["Category"]) if "Category" in row else None,
+                "sector": normalize_sector(str(row["Category"]) if "Category" in row else None),
                 "industry_group": None,
                 "is_active": True,
                 "is_test_issue": False,

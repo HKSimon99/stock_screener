@@ -6,7 +6,6 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.config import settings
 from app.core.database import Base
 from app.models.consensus_score import ConsensusScore
 from app.models.fundamental import FundamentalAnnual, FundamentalQuarterly
@@ -21,10 +20,7 @@ from app.services.strategies.dual_momentum import engine as dual_momentum_engine
 from app.services.strategies.minervini import engine as minervini_engine
 from app.services.strategies.piotroski import engine as piotroski_engine
 from app.services.strategies.weinstein import engine as weinstein_engine
-
-# Use the real app schema — models now have explicit schema="consensus_app" so
-# search_path / schema_translate_map are no longer needed.
-TEST_SCHEMA = settings.postgres_schema  # "consensus_app"
+from tests.conftest import TEST_ASYNCPG_CONNECT_ARGS, TEST_ASYNC_DATABASE_URL
 
 
 def _truncate_all_tables_sql() -> str | None:
@@ -40,9 +36,9 @@ def _truncate_all_tables_sql() -> str | None:
 @pytest.fixture
 async def strategy_db_session():
     async_engine = create_async_engine(
-        settings.database_url,
+        TEST_ASYNC_DATABASE_URL,
         echo=False,
-        connect_args=settings.asyncpg_connect_args,
+        connect_args=TEST_ASYNCPG_CONNECT_ARGS,
     )
     test_session_local = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -61,9 +57,9 @@ async def strategy_db_session():
 
 def _patch_async_session(monkeypatch, module):
     test_engine = create_async_engine(
-        settings.database_url,
+        TEST_ASYNC_DATABASE_URL,
         echo=False,
-        connect_args=settings.asyncpg_connect_args,
+        connect_args=TEST_ASYNCPG_CONNECT_ARGS,
     )
     test_session_local = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     monkeypatch.setattr(module, "AsyncSessionLocal", test_session_local)

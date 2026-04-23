@@ -16,6 +16,7 @@ from db_promotion_common import (
     host_label,
     is_pooled_neon_url,
     normalize_postgres_url,
+    parsed_url,
     print_db_summary,
     promotion_readiness_issues,
 )
@@ -56,6 +57,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Allow restore into a non-empty target branch. By default the script refuses.",
     )
     parser.add_argument(
+        "--allow-remote-target-reset",
+        action="store_true",
+        help="Allow destructive schema reset on a non-local target. Requires --confirm-target-reset.",
+    )
+    parser.add_argument(
+        "--confirm-target-reset",
+        default="",
+        help="Exact confirmation text required for non-local target resets.",
+    )
+    parser.add_argument(
         "--keep-dump",
         action="store_true",
         help="Keep the dump file after a successful promotion.",
@@ -93,6 +104,42 @@ def validate_endpoints(source_url: str, target_url: str) -> None:
         )
 
 
+def reset_confirmation_text(target_url: str, schema: str) -> str:
+    host = parsed_url(target_url).host or "<unknown-host>"
+    return f"RESET {schema} ON {host}"
+
+
+def validate_target_reset_confirmation(
+    target_url: str,
+    *,
+    schema: str,
+    allow_remote_target_reset: bool,
+    confirm_target_reset: str,
+) -> None:
+    if os.getenv("APP_ENV", "").strip().lower() == "production":
+        raise SystemExit(
+            "Refusing destructive schema reset because APP_ENV=production. "
+            "Run promotion only from a non-production operator environment."
+        )
+
+    if host_label(target_url) == "local":
+        return
+
+    required_confirmation = reset_confirmation_text(target_url, schema)
+    if not allow_remote_target_reset:
+        raise SystemExit(
+            "Refusing destructive schema reset on a non-local target. "
+            "Re-run with --allow-remote-target-reset only if this is an intentional fresh-branch restore.\n"
+            f"Required confirmation text: {required_confirmation}"
+        )
+
+    if confirm_target_reset != required_confirmation:
+        raise SystemExit(
+            "Refusing destructive schema reset: confirmation text did not match.\n"
+            f"Required confirmation text: {required_confirmation}"
+        )
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
@@ -101,6 +148,12 @@ def main() -> int:
         parser.error("--target-url is required (or set PROMOTION_TARGET_DATABASE_URL)")
 
     validate_endpoints(args.source_url, args.target_url)
+    validate_target_reset_confirmation(
+        args.target_url,
+        schema=args.schema,
+        allow_remote_target_reset=args.allow_remote_target_reset,
+        confirm_target_reset=args.confirm_target_reset,
+    )
 
     pg_dump = require_binary("pg_dump")
     pg_restore = require_binary("pg_restore")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Final
 
 import psycopg2
@@ -18,6 +19,9 @@ def _connect(url: str):
 
 
 def reset_target_schema(url: str, *, schema: str) -> None:
+    if os.getenv("APP_ENV", "").strip().lower() == "production":
+        raise RuntimeError("reset_target_schema refused: APP_ENV=production")
+
     with _connect(url) as conn:
         with conn.cursor() as cur:
             cur.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(schema)))

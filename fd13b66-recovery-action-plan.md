@@ -908,6 +908,8 @@ Action Plan 8 result:
 
 **Threshold: High**
 
+**Status: Completed on 2026-04-24.**
+
 Create durable user-facing job status.
 
 Tasks:
@@ -935,9 +937,62 @@ Acceptance criteria:
 - UI does not depend only on Celery result backend.
 - Migration works locally and against Neon-compatible Postgres.
 
+Implementation completed:
+
+- Added `consensus_app.hydration_jobs` through Alembic revision `0008_hydration_jobs`.
+- Added durable job fields for:
+  - job id
+  - ticker
+  - market
+  - optional instrument id
+  - status
+  - requester source
+  - requester user id
+  - Celery task id placeholder
+  - queued, started, completed, failed, and updated timestamps
+  - error message
+  - JSONB source metadata
+- Added indexes for:
+  - market/ticker lookup
+  - status/queued-at polling
+  - instrument lookup
+  - requester/queued-at history
+  - active queued/running symbol deduplication
+- Added `HydrationJob` ORM model and model import registration.
+- Added hydration-job service helpers for:
+  - symbol normalization
+  - active job lookup
+  - latest job lookup
+  - instrument id resolution
+  - idempotent job creation
+  - status transitions
+- Added API response schemas for future hydration endpoints.
+
+Verification completed:
+
+- `uv run pytest tests/test_hydration_jobs.py -v`
+  - Result: 3 passed.
+- Neon migration:
+  - `uv run alembic current` before migration: `0007_read_path_indexes`
+  - `uv run alembic upgrade head`: succeeded.
+  - Neon Alembic version after migration: `0008_hydration_jobs`.
+  - Direct Neon schema check confirmed 15 hydration-job columns and all planned indexes.
+- Full backend suite:
+  - `uv run pytest -v`
+  - Result: 104 passed.
+  - Residual warnings are existing dependency/resource warnings, not hydration-job failures.
+
+Action Plan 9 result:
+
+- Durable DB-backed hydration job status foundation is ready.
+- No endpoint or Celery worker behavior has been changed yet.
+- Next recommended step is Action Plan 10: Explicit Hydration API.
+
 ### Action Plan 10: Explicit Hydration API
 
 **Threshold: High**
+
+**Status: Completed on 2026-04-24.**
 
 Add user-triggered refresh without breaking existing ingest behavior.
 
@@ -958,9 +1013,52 @@ Acceptance criteria:
 - Rate-limited users receive clear errors.
 - Existing frontend/API-client ingest behavior is not broken.
 
+Implementation completed:
+
+- Added `POST /api/v1/instruments/{ticker}/hydrate`.
+- Added `GET /api/v1/instruments/{ticker}/hydrate-status`.
+- Added a shared authenticated-actor dependency that accepts either:
+  - Clerk bearer token, or
+  - `X-API-Key` using the existing API-key validation path.
+- Kept hydration queueing non-anonymous even in development.
+- Added a hydration-specific conservative rate limit:
+  - 5 requests per 15 minutes per authenticated actor.
+- Wired explicit hydration queueing to the durable `hydration_jobs` table from Action Plan 9.
+- Added active-job deduplication so a queued/running symbol returns the existing job instead of creating another row.
+- Kept `POST /api/v1/instruments/{ticker}/ingest` unchanged and backwards compatible.
+- Added shared API-client helpers for future frontend/mobile hydration polling:
+  - `queueInstrumentHydration(...)`
+  - `fetchInstrumentHydrationStatus(...)`
+
+Behavior notes:
+
+- Action Plan 10 only queues and reads hydration jobs.
+- No Celery worker execution is triggered yet.
+- Queue responses intentionally return the persisted job state while hiding requester user ids and Celery task ids from the public API surface.
+
+Verification completed:
+
+- Focused hydration tests:
+  - `uv run pytest tests/test_hydration_jobs.py tests/test_hydration_endpoints.py -v`
+  - Result: 9 passed.
+- Full backend suite:
+  - `uv run pytest -v`
+  - Result: 116 passed.
+- Workspace typecheck:
+  - `pnpm -r typecheck`
+  - Result: passed for `packages/api-client` and `apps/web`.
+
+Action Plan 10 result:
+
+- Explicit hydration queue/status API is ready.
+- Auth, dedupe, and rate limiting are enforced at the API layer.
+- Next recommended step is Action Plan 11: Celery Worker Integration.
+
 ### Action Plan 11: Celery Worker Integration
 
 **Threshold: Max**
+
+**Status: Completed on 2026-04-24.**
 
 Wire hydration jobs to reliable async execution.
 
@@ -983,9 +1081,64 @@ Acceptance criteria:
 - API remains responsive while jobs run.
 - Railway deployment assumptions are explicit.
 
+Implementation completed:
+
+- Added `app.tasks.hydration_tasks` and registered it in the Celery app include list.
+- Added Celery task:
+  - `app.tasks.hydration.run_instrument_hydration`
+- Wired `POST /api/v1/instruments/{ticker}/hydrate` to dispatch a Celery task after the durable job row is committed.
+- Persisted hydration-job status transitions in Postgres:
+  - `queued` when the API creates the durable job row
+  - `queued` + `celery_task_id` after successful broker dispatch
+  - `running` when the worker starts the task
+  - `completed` when worker-side refresh work finishes
+  - `failed` when broker dispatch fails or worker execution raises
+- Added graceful broker-dispatch failure handling:
+  - the API marks the durable job failed
+  - the endpoint returns `503` with a clear queueing error
+- Added hydration status reconciliation to prevent endless polling:
+  - stale queued jobs time out into failed status
+  - stale running jobs time out into failed status
+- Kept long-running provider work out of the API request path.
+
+Behavior notes:
+
+- The worker currently refreshes:
+  - price data
+  - fundamentals
+- The worker intentionally does **not** run single-symbol scoring yet.
+- Completed hydration jobs record:
+  - `scoring_deferred=true`
+  - `next_step=batch_scoring_required`
+- This boundary is intentional so Action Plan 11 does not reintroduce the rankings score-date collapse that Action Plan 12 is meant to solve.
+
+Railway/deployment assumptions made explicit:
+
+- The API service only enqueues Celery jobs.
+- The worker service must be running for queued hydration jobs to start.
+- If the broker is reachable but no worker starts the job, the hydration-status endpoint eventually marks the job failed via timeout reconciliation so frontend polling can stop.
+- No beat scheduling was added for hydration jobs in this action plan.
+
+Verification completed:
+
+- Focused hydration queue/worker tests:
+  - `uv run pytest tests/test_hydration_jobs.py tests/test_hydration_endpoints.py tests/test_hydration_worker_task.py -v`
+  - Result: 13 passed.
+- Full backend suite:
+  - `uv run pytest -v`
+  - Result: 120 passed.
+
+Action Plan 11 result:
+
+- Hydration jobs now execute asynchronously through Celery with durable DB status.
+- Broker-dispatch failures and stale queued jobs surface as failed jobs instead of leaving the UI polling forever.
+- Next recommended step is Action Plan 12: Score-Date Safety.
+
 ### Action Plan 12: Score-Date Safety
 
 **Threshold: Max**
+
+**Status: Completed on 2026-04-24.**
 
 Prevent single-symbol refresh from breaking rankings.
 
@@ -1002,9 +1155,45 @@ Acceptance criteria:
 - Main rankings remain score-date consistent.
 - Partial/explore states explain when a symbol is waiting for batch scoring.
 
+Implementation completed:
+
+- Rankings default score-date resolution now prefers the latest `scoring_snapshots.snapshot_date`
+  for the requested market and asset type before falling back to raw `max(consensus_scores.score_date)`.
+- This keeps the default rankings view pinned to the latest stable batch ranking date, even if a
+  stray newer single-symbol `consensus_scores` row exists.
+- Legacy `POST /api/v1/instruments/{ticker}/ingest` no longer runs single-symbol consensus scoring.
+- The ingest endpoint now refreshes price and fundamentals only, then returns:
+  - `scoring_deferred=true`
+  - `next_step=batch_scoring_required`
+- This prevents the legacy sync ingest path from minting a new global rankings date by itself.
+- Added regression coverage for the exact collapse scenario:
+  - stable batch snapshot on day N
+  - newer single-symbol consensus score on day N+1
+  - default rankings still resolve to day N and keep the full ranked list
+
+Verification completed:
+
+- Focused regression tests:
+  - `uv run pytest tests/test_api_endpoints.py -k "snapshot_date_over_newer_single_symbol_scores or defers_scoring" -v`
+  - Result: 2 passed.
+- Full backend suite:
+  - `uv run pytest -v`
+  - Result: 121 passed.
+- Workspace typecheck:
+  - `pnpm -r typecheck`
+  - Result: passed.
+
+Action Plan 12 result:
+
+- Default rankings are now anchored to stable batch snapshot dates instead of being hijacked by a lone newer score row.
+- The remaining legacy one-symbol ingest path can no longer create the score-date collapse by itself.
+- Next recommended step is Action Plan 13: Symbol Resolution.
+
 ### Action Plan 13: Symbol Resolution
 
 **Threshold: High**
+
+**Status: Completed on 2026-04-24.**
 
 Add explicit, safe resolution for valid unknown symbols.
 
@@ -1024,9 +1213,54 @@ Acceptance criteria:
 - `TSSI`-like symbols are covered by tests.
 - Provider lookup latency does not block normal search/detail browsing.
 
+Implementation completed:
+
+- Added explicit symbol-resolution service in `backend/app/services/symbol_resolution.py`.
+- Resolution is exact-symbol only and normalizes provider-safe variants such as `.` -> `-`.
+- Hydration flow now resolves unknown symbols only inside `POST /api/v1/instruments/{ticker}/hydrate`.
+- Resolution order is:
+  - local active instrument lookup first
+  - provider directory lookup second
+  - upsert into `instruments` only if the symbol is found in the provider directory
+- Supported explicit provider-directory resolution:
+  - US via the NASDAQ Trader directory loaders already used for universe sync
+  - KR via the FinanceDataReader-backed KRX listing loaders already used for universe sync
+- GET paths remain read-only:
+  - `GET /search`
+  - `GET /instruments/{ticker}`
+  - `GET /instruments/{ticker}/chart`
+- Hydration queue metadata now records whether the symbol was resolved from a provider directory and which source resolved it.
+- Unknown unresolved symbols now fail with a clearer 404:
+  - not in local DB
+  - not found in the requested market's provider directory
+- Unknown symbols without `market` do not trigger cross-market writes; explicit market selection is required for hydrate-time resolution.
+
+Verification completed:
+
+- Focused hydration-resolution tests:
+  - `uv run pytest tests/test_hydration_endpoints.py -k "resolves_unknown_us_symbol or clear_404 or creates_job_and_dedupes or requires_auth or accepts_api_key" -v`
+  - Result: 5 passed.
+- Read-only search verification:
+  - `uv run pytest tests/test_search_and_coverage.py -k "unknown_symbol_does_not_create_instrument or search_endpoint_returns_coverage_state_and_reasons" -v`
+  - Result: 2 passed.
+- Full backend suite:
+  - `uv run pytest -v`
+  - Result: 124 passed.
+- Workspace typecheck:
+  - `pnpm -r typecheck`
+  - Result: passed.
+
+Action Plan 13 result:
+
+- Exact unknown symbols such as `TSSI` can now be resolved safely during explicit hydration without mutating any GET route.
+- Unresolved symbols fail clearly instead of silently creating junk rows.
+- Next recommended step is Action Plan 14: Admin Backfill.
+
 ### Action Plan 14: Admin Backfill
 
 **Threshold: Max**
+
+**Status: Completed on 2026-04-24.**
 
 Add controlled batch population for liquid US/KR coverage.
 
@@ -1046,6 +1280,62 @@ Tasks:
 - Add beat scheduling only after manual jobs are boringly reliable.
 - Target first full run: liquid US + KR universe, overnight acceptable.
 
+Implementation completed:
+
+- Added durable admin backfill run storage with:
+  - ORM model: `backend/app/models/backfill_run.py`
+  - Alembic migration: `backend/alembic/versions/0009_admin_backfill_runs.py`
+- Added shared admin backfill orchestration in `backend/app/services/backfill_runs.py`.
+- Added manual-first admin endpoints in `backend/app/api/v1/endpoints/meta.py`:
+  - `POST /api/v1/admin/backfill`
+  - `GET /api/v1/admin/backfill/{run_id}`
+- Supported request inputs:
+  - `market`
+  - `tickers`
+  - `limit`
+  - `chunk_size`
+  - `dry_run`
+  - `price_only`
+  - `score`
+- Added explicit validation so `price_only=true` and `score=true` is rejected.
+- Implemented dry-run preview mode that:
+  - resolves the intended ticker scope
+  - previews selected symbols without DB writes
+  - keeps provider-directory lookup non-mutating
+- Added Celery worker execution in `backend/app/tasks/backfill_tasks.py`.
+- Registered backfill tasks in `backend/app/tasks/celery_app.py`.
+- Processing behavior is chunked and durable:
+  - price ingestion runs in chunks
+  - fundamentals ingestion runs only when `price_only=false`
+  - scoring runs only when `score=true`
+  - scoring calls `run_full_scoring_pipeline(..., generate_snapshots=False)` to preserve ranking-date stability
+- Explicit ticker backfill can use the safe provider-directory resolution path already introduced for hydrate-time symbol resolution.
+- Manual-first remains locked:
+  - no beat schedule was added
+  - no automatic overnight trigger was introduced
+
+Verification completed:
+
+- Focused admin backfill tests:
+  - `uv run pytest tests/test_admin_backfill.py tests/test_backfill_tasks.py -v`
+  - Result: 4 passed.
+- Full strategy runner regression after fixture alignment:
+  - `uv run pytest tests/test_strategy_runners.py -v`
+  - Result: 7 passed.
+- Full backend suite:
+  - `uv run pytest -v`
+  - Result: 128 passed.
+- Workspace typecheck:
+  - `pnpm -r typecheck`
+  - Result: passed.
+- `git diff --check`
+  - Result: clean except existing CRLF warnings.
+
+Implementation note:
+
+- Full-suite verification exposed that `tests/test_strategy_runners.py` was still opening the configured app database instead of the isolated local test database.
+- That fixture has now been aligned with the shared test DB used by the rest of the backend suite, so Action Plan 14 no longer depends on external migration state in Neon to pass locally.
+
 Acceptance criteria:
 
 - Dry run previews scope safely.
@@ -1053,9 +1343,17 @@ Acceptance criteria:
 - Jobs produce clear logs/status.
 - Batch scoring preserves ranking consistency.
 
+Action Plan 14 result:
+
+- Admin-triggered backfill now exists as a safe, manual-first workflow with durable run status, dry-run preview, chunked execution, and score-date-safe batch scoring behavior.
+- The backend now has a controlled path to populate more US/KR coverage without blocking the API or reintroducing the single-symbol rankings regression.
+- Next recommended step is Action Plan 15: Provider Taxonomy And Missing Metrics.
+
 ### Action Plan 15: Provider Taxonomy And Missing Metrics
 
 **Threshold: High**
+
+**Status: Completed on 2026-04-24.**
 
 Improve sector/exchange normalization and fill missing investor metrics.
 
@@ -1068,15 +1366,70 @@ Tasks:
 - Add API fields only when data provenance is clear.
 - Keep missing metrics labeled rather than faked.
 
+Implementation completed:
+
+- Added shared taxonomy normalization in `backend/app/services/taxonomy.py`.
+- Canonical exchange normalization now supports common provider/raw aliases such as:
+  - `NYSEAMER` -> `NYSE American`
+  - `NYSEARCA` -> `NYSE Arca`
+  - `CBOEBZX` -> `Cboe BZX`
+- Canonical sector normalization now cleans and maps common KR/US provider labels into stable public-facing buckets where the mapping is defensible, including:
+  - `반도체` -> `Semiconductors`
+  - `조선` -> `Shipbuilding & Marine`
+  - additional stable mappings for banks, insurance, chemicals, software/IT, batteries, and related categories
+- Rankings filters in `backend/app/api/v1/endpoints/rankings.py` now understand normalized exchange/sector values instead of requiring raw provider strings.
+- Search and browse responses in `backend/app/api/v1/endpoints/search.py` now return normalized exchange/sector values.
+- Instrument detail in `backend/app/api/v1/endpoints/instruments.py` now returns normalized exchange/sector values.
+- Added sourced ownership metrics to instrument detail:
+  - institutional ownership %
+  - institutional owner count
+  - top fund quality score
+  - QoQ owner change
+  - foreign ownership %
+  - foreign / institutional / individual 30D net buy values
+  - buyback-active flag
+  - source and report date
+- Added defensible market metrics to instrument detail:
+  - market cap
+  - float market cap
+  - trailing P/E
+  - share-count source
+  - trailing EPS source
+- Dividend yield remains explicitly missing (`null`) because no reliable current provider field is wired yet; it is not fabricated.
+- Updated provider ingestion output paths so newly synced US/KR instruments use the normalized taxonomy where possible.
+- Extended the shared API client and the web instrument detail page so the new sourced ownership and valuation metrics render in the frontend.
+
+Verification completed:
+
+- Focused backend tests:
+  - `uv run pytest tests/test_instruments_endpoint.py tests/test_api_endpoints.py tests/test_us_symbol_directory.py -v`
+  - Result: 17 passed.
+- Full backend suite:
+  - `uv run pytest -v`
+  - Result: 130 passed.
+- Workspace typecheck:
+  - `pnpm -r typecheck`
+  - Result: passed.
+- `git diff --check`
+  - Result: clean except existing CRLF warnings.
+
 Acceptance criteria:
 
 - Sector/exchange filters become cleaner and more consistent.
 - Investor metric cards do not show misleading placeholders.
 - KR/US metrics remain localized.
 
+Action Plan 15 result:
+
+- Rankings and discovery paths now speak a cleaner canonical taxonomy instead of leaking provider-specific exchange codes and noisy sector labels.
+- Instrument detail now exposes sourced ownership metrics plus defensible valuation metrics, while still leaving unreliable fields explicitly blank rather than inventing values.
+- Next recommended step is Action Plan 16: Watchlist And Pinning.
+
 ### Action Plan 16: Watchlist And Pinning
 
 **Threshold: Medium**
+
+**Status: Completed on 2026-04-24.**
 
 Reintroduce saved/pinned instruments after core data behavior is stable.
 
@@ -1092,6 +1445,39 @@ Acceptance criteria:
 - Users can save important stocks.
 - Saved stocks do not change ranking calculations.
 - Watchlist works across ranked and partial instruments.
+
+Implementation completed:
+
+- Alembic migration `0010_watchlist`: `consensus_app.watchlist_items` table with `user_id` (Clerk), `instrument_id` (FK to instruments), `market`, `ticker`, `added_at`. Unique constraint on `(user_id, instrument_id)`.
+- ORM model `WatchlistItem` in `backend/app/models/watchlist_item.py`.
+- Schemas `WatchlistItemResponse` and `WatchlistResponse` added to `backend/app/schemas/v1.py`.
+- Three endpoints in `backend/app/api/v1/endpoints/watchlist.py`:
+  - `GET /api/v1/watchlist` — list authenticated user's watchlist (Clerk required)
+  - `POST /api/v1/watchlist/{market}/{ticker}` — add instrument (idempotent)
+  - `DELETE /api/v1/watchlist/{market}/{ticker}` — remove instrument
+- Router registered at `/api/v1/watchlist` with `tags=["watchlist"]`.
+- API client: `WatchlistItem`, `WatchlistResponse` types; `fetchWatchlist()`, `addToWatchlist()`, `removeFromWatchlist()` functions (all Bearer-token auth).
+- `PinnedButton` in `rankings-client.tsx` updated: local store (localStorage) toggle is instant and primary; backend sync fires async best-effort when Clerk token is present.
+- `instrument-detail-client.tsx` pin button updated with the same pattern.
+- `WatchlistCard` component added to rankings page.
+- Watchlist section added at the top of the rankings board (above scored results): shows pinned instruments for the current market. When signed in, shows backend-persisted items; when not signed in, falls back to localStorage `pinnedInstruments`. Displays a "sign in to sync" hint when using localStorage only.
+- Watchlist is read-only from ranking logic. It does not alter `final_score`, `conviction_level`, or any score field. Rankings remain score-backed only.
+- Migration applied to Neon production: `alembic upgrade head` (0009 → 0010).
+
+Verification completed:
+
+- `uv run alembic upgrade head` — Migration applied cleanly.
+- `uv run python -c "from app.models import WatchlistItem; ..."` — All imports resolved.
+- `pnpm --filter @consensus/api-client typecheck` — passed.
+- `pnpm --filter web typecheck` — passed.
+- `uv run pytest tests/test_api_endpoints.py -k "rankings_endpoint" -v` — 7 passed.
+
+Follow-up notes:
+
+- Watchlist endpoints require Clerk authentication (`Authorization: Bearer <token>`). Anonymous users fall back to localStorage-only behavior.
+- Backend watchlist is per-user (Clerk `user_id`). Pins from one device sync to all signed-in sessions.
+- Pin button sync is fire-and-forget. If the API is unavailable, the local state is the source of truth and no error is surfaced to the user.
+- Next recommended step is Action Plan 17: Part 2 Verification And Deploy.
 
 ### Action Plan 17: Part 2 Verification And Deploy
 

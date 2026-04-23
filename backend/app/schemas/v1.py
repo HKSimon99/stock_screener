@@ -167,6 +167,30 @@ class AnnualMetrics(BaseModel):
     data_source: Optional[str] = None
 
 
+class MarketMetrics(BaseModel):
+    price_as_of: Optional[date] = None
+    share_count_source: Optional[str] = None
+    trailing_eps_source: Optional[str] = None
+    market_cap: Optional[float] = None
+    float_market_cap: Optional[float] = None
+    trailing_pe_ratio: Optional[float] = None
+    dividend_yield: Optional[float] = None
+
+
+class OwnershipMetrics(BaseModel):
+    report_date: Optional[date] = None
+    data_source: Optional[str] = None
+    num_institutional_owners: Optional[int] = None
+    institutional_pct: Optional[float] = None
+    top_fund_quality_score: Optional[float] = None
+    qoq_owner_change: Optional[int] = None
+    foreign_ownership_pct: Optional[float] = None
+    foreign_net_buy_30d: Optional[float] = None
+    institutional_net_buy_30d: Optional[float] = None
+    individual_net_buy_30d: Optional[float] = None
+    is_buyback_active: bool = False
+
+
 class ScoreHistoryPoint(BaseModel):
     date:                 date
     final_score:          Optional[float] = None
@@ -266,6 +290,8 @@ class InstrumentDetailResponse(BaseModel):
     price_metrics: PriceMetrics = Field(default_factory=PriceMetrics)
     quarterly_metrics: Optional[QuarterlyMetrics] = None
     annual_metrics: Optional[AnnualMetrics] = None
+    market_metrics: Optional[MarketMetrics] = None
+    ownership_metrics: Optional[OwnershipMetrics] = None
 
     score_breakdown: Optional[dict] = None
     factor_breakdown: Optional[dict] = None
@@ -475,3 +501,115 @@ class ScoringTriggerResponse(BaseModel):
     task_id:    str
     status:     str   # "queued" | "started"
     message:    str
+
+
+# =============================================================================
+# Hydration Jobs
+# =============================================================================
+
+class HydrationJobResponse(BaseModel):
+    id: int
+    ticker: str
+    market: str
+    instrument_id: Optional[int] = None
+    status: str
+    requester_source: str
+    requester_user_id: Optional[str] = None
+    celery_task_id: Optional[str] = None
+    queued_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    failed_at: Optional[datetime] = None
+    updated_at: datetime
+    error_message: Optional[str] = None
+    source_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class HydrationJobCreateResponse(BaseModel):
+    job: HydrationJobResponse
+    created: bool
+    message: str
+
+
+# =============================================================================
+# Admin Backfill
+# =============================================================================
+
+
+class AdminBackfillRequest(BaseModel):
+    market: str = Field(pattern="^(US|KR)$")
+    tickers: Optional[list[str]] = None
+    limit: Optional[int] = Field(default=None, ge=1, le=10000)
+    dry_run: bool = True
+    price_only: bool = False
+    score: bool = False
+
+
+class AdminBackfillPreview(BaseModel):
+    market: str
+    selection_mode: str
+    requested_count: int
+    selected_count: int
+    unresolved_count: int
+    existing_count: int
+    resolved_from_provider_count: int
+    limit_requested: Optional[int] = None
+    chunk_size: int
+    chunk_count: int
+    price_only: bool = False
+    score_requested: bool = False
+    sample_selected_tickers: list[str] = Field(default_factory=list)
+    sample_unresolved_tickers: list[str] = Field(default_factory=list)
+
+
+class AdminBackfillRunResponse(BaseModel):
+    id: int
+    market: str
+    requested_tickers: list[str] = Field(default_factory=list)
+    selected_tickers: list[str] = Field(default_factory=list)
+    limit_requested: Optional[int] = None
+    chunk_size: int
+    price_only: bool = False
+    score_requested: bool = False
+    status: str
+    requester_source: str
+    requester_user_id: Optional[str] = None
+    celery_task_id: Optional[str] = None
+    requested_count: int
+    selected_count: int
+    processed_count: int
+    failed_count: int
+    queued_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    failed_at: Optional[datetime] = None
+    updated_at: datetime
+    error_message: Optional[str] = None
+    result_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdminBackfillResponse(BaseModel):
+    dry_run: bool
+    preview: AdminBackfillPreview
+    run: Optional[AdminBackfillRunResponse] = None
+    message: str
+
+
+# =============================================================================
+# Watchlist
+# =============================================================================
+
+
+class WatchlistItemResponse(BaseModel):
+    id: int
+    instrument_id: int
+    market: str
+    ticker: str
+    name: Optional[str] = None
+    name_kr: Optional[str] = None
+    added_at: datetime
+
+
+class WatchlistResponse(BaseModel):
+    items: list[WatchlistItemResponse]
+    total: int

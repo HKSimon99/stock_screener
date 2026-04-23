@@ -2,11 +2,14 @@
 
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@clerk/nextjs";
 import { Pin, RefreshCw } from "lucide-react";
 import {
   APIError,
+  addToWatchlist,
   fetchInstrument,
   fetchInstrumentChart,
+  removeFromWatchlist,
   type InstrumentChart,
   type InstrumentDetail,
 } from "@/lib/api";
@@ -221,9 +224,26 @@ export function InstrumentDetailClient({
   const [chartInterval, setChartInterval] = useState<ChartInterval>("1d");
   const [chartRangeDays, setChartRangeDays] = useState<ChartRangeDays>(365);
 
+  const { getToken } = useAuth();
   const togglePinned = useUIStore((state) => state.togglePinnedInstrument);
   const isPinned = useUIStore((state) => state.isPinned);
   const pinned = isPinned(ticker, market);
+
+  async function handleTogglePin(name: string, exchange: string) {
+    togglePinned({ ticker, market, name, exchange });
+    try {
+      const token = await getToken();
+      if (token) {
+        if (!pinned) {
+          await addToWatchlist(ticker, market, token);
+        } else {
+          await removeFromWatchlist(ticker, market, token);
+        }
+      }
+    } catch {
+      // best-effort backend sync
+    }
+  }
 
   const {
     data,
@@ -285,6 +305,8 @@ export function InstrumentDetailClient({
   const price = data.price_metrics ?? {};
   const quarterly = data.quarterly_metrics;
   const annual = data.annual_metrics;
+  const marketMetrics = data.market_metrics;
+  const ownership = data.ownership_metrics;
   const changeTone =
     typeof price.change === "number" && price.change > 0
       ? "up"
@@ -294,7 +316,17 @@ export function InstrumentDetailClient({
   const labels = market === "KR"
     ? {
         investorMetrics: "투자 지표",
+        valuation: "밸류에이션",
+        ownershipFlow: "수급 및 보유",
         latestClose: "최근 종가",
+        marketCap: "시가총액",
+        trailingPe: "PER",
+        institutionalOwnership: "기관 보유비중",
+        foreignOwnership: "외국인 보유비중",
+        thirteenFOwners: "기관 보유기관 수",
+        institutionalFlow: "기관 30일 순매수",
+        foreignFlow: "외국인 30일 순매수",
+        buyback: "자사주 매입",
         dayChange: "전일 대비",
         volume: "거래량",
         avgVolume: "50일 평균 거래량",
@@ -347,7 +379,17 @@ export function InstrumentDetailClient({
       }
     : {
         investorMetrics: "Investor Metrics",
+        valuation: "Valuation",
+        ownershipFlow: "Ownership & Flow",
         latestClose: "Latest Close",
+        marketCap: "Market Cap",
+        trailingPe: "Trailing P/E",
+        institutionalOwnership: "Institutional Ownership",
+        foreignOwnership: "Foreign Ownership",
+        thirteenFOwners: "13F Owner Count",
+        institutionalFlow: "Institutional 30D Net Buy",
+        foreignFlow: "Foreign 30D Net Buy",
+        buyback: "Buyback Active",
         dayChange: "Day Change",
         volume: "Volume",
         avgVolume: "50D Avg Volume",
@@ -439,14 +481,7 @@ export function InstrumentDetailClient({
 
           <button
             type="button"
-            onClick={() =>
-              togglePinned({
-                ticker,
-                market,
-                name: data.name ?? ticker,
-                exchange: data.exchange ?? "",
-              })
-            }
+            onClick={() => handleTogglePin(data.name ?? ticker, data.exchange ?? "")}
             className={cn(
               "inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-[0.72rem] uppercase tracking-[0.16em] transition-colors",
               pinned
@@ -517,28 +552,41 @@ export function InstrumentDetailClient({
           />
           <MetricCard
             market={market}
-            label={labels.dayChange}
-            value={`${formatPrice(price.change, market)} / ${formatPercent(price.change_percent, market, "points")}`}
-            note={price.previous_close != null ? `${labels.previous} ${formatPrice(price.previous_close, market)}` : missingLabel(market)}
-            tone={changeTone}
+            label={labels.marketCap}
+            value={compactMoney(marketMetrics?.market_cap, market)}
+            note={marketMetrics?.share_count_source ?? missingLabel(market)}
           />
           <MetricCard
             market={market}
-            label={labels.volume}
-            value={compactCount(price.volume, market)}
-            note={`${labels.avgVolume}: ${compactCount(price.avg_volume_50d, market)}`}
+            label={labels.trailingPe}
+            value={formatRatio(marketMetrics?.trailing_pe_ratio, market)}
+            note={marketMetrics?.trailing_eps_source ?? missingLabel(market)}
           />
           <MetricCard
             market={market}
-            label={labels.identity}
-            value={plainValue(data.exchange, market)}
-            note={plainValue(data.sector ?? data.industry_group, market)}
+            label={market === "KR" ? labels.foreignOwnership : labels.institutionalOwnership}
+            value={
+              market === "KR"
+                ? formatPercent(ownership?.foreign_ownership_pct, market)
+                : formatPercent(ownership?.institutional_pct, market)
+            }
+            note={ownership?.data_source ?? missingLabel(market)}
           />
           <MetricCard
             market={market}
-            label={labels.float}
-            value={compactShares(data.float_shares, market)}
-            note={`Shares: ${compactShares(data.shares_outstanding, market)}`}
+            label={market === "KR" ? labels.institutionalFlow : labels.thirteenFOwners}
+            value={
+              market === "KR"
+                ? compactCount(ownership?.institutional_net_buy_30d, market)
+                : compactCount(ownership?.num_institutional_owners, market)
+            }
+            note={
+              market === "KR"
+                ? `${labels.fundamentalsDate}: ${formatDate(ownership?.report_date, market)}`
+                : ownership?.qoq_owner_change != null
+                  ? `QoQ ${ownership.qoq_owner_change > 0 ? "+" : ""}${ownership.qoq_owner_change}`
+                  : missingLabel(market)
+            }
           />
         </div>
 
@@ -553,6 +601,36 @@ export function InstrumentDetailClient({
             <MetricRow label={labels.changePercent} value={formatPercent(price.change_percent, market, "points")} />
             <MetricRow label={labels.volume} value={compactCount(price.volume, market)} />
             <MetricRow label={labels.avgVolume} value={compactCount(price.avg_volume_50d, market)} />
+          </MetricSection>
+
+          <MetricSection
+            title={labels.valuation}
+            subtitle={marketMetrics?.price_as_of ? formatDate(marketMetrics.price_as_of, market) : missingLabel(market)}
+            defaultOpen={false}
+          >
+            <MetricRow label={labels.marketCap} value={compactMoney(marketMetrics?.market_cap, market)} />
+            <MetricRow label="Float Market Cap" value={compactMoney(marketMetrics?.float_market_cap, market)} />
+            <MetricRow label={labels.trailingPe} value={formatRatio(marketMetrics?.trailing_pe_ratio, market)} />
+            <MetricRow label="Dividend Yield" value={formatPercent(marketMetrics?.dividend_yield, market)} />
+            <MetricRow label="Share Source" value={plainValue(marketMetrics?.share_count_source, market)} />
+            <MetricRow label="EPS Source" value={plainValue(marketMetrics?.trailing_eps_source, market)} />
+          </MetricSection>
+
+          <MetricSection
+            title={labels.ownershipFlow}
+            subtitle={ownership?.report_date ? formatDate(ownership.report_date, market) : missingLabel(market)}
+            defaultOpen={false}
+          >
+            <MetricRow label={labels.institutionalOwnership} value={formatPercent(ownership?.institutional_pct, market)} />
+            <MetricRow label={labels.foreignOwnership} value={formatPercent(ownership?.foreign_ownership_pct, market)} />
+            <MetricRow label={labels.thirteenFOwners} value={compactCount(ownership?.num_institutional_owners, market)} />
+            <MetricRow label={labels.institutionalFlow} value={compactCount(ownership?.institutional_net_buy_30d, market)} />
+            <MetricRow label={labels.foreignFlow} value={compactCount(ownership?.foreign_net_buy_30d, market)} />
+            <MetricRow label="Individual 30D Net Buy" value={compactCount(ownership?.individual_net_buy_30d, market)} />
+            <MetricRow label="Top Fund Quality" value={formatRatio(ownership?.top_fund_quality_score, market)} />
+            <MetricRow label="QoQ Owner Change" value={plainValue(ownership?.qoq_owner_change, market)} />
+            <MetricRow label={labels.buyback} value={ownership?.is_buyback_active == null ? missingLabel(market) : ownership.is_buyback_active ? labels.yes : labels.no} />
+            <MetricRow label="Source" value={plainValue(ownership?.data_source, market)} />
           </MetricSection>
 
           <MetricSection

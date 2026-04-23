@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@clerk/nextjs";
 import {
   AlertTriangle,
   ArrowUpRight,
   BarChart3,
+  Bookmark,
   ChevronDown,
   Filter,
   LineChart,
@@ -20,15 +22,19 @@ import {
 } from "lucide-react";
 import {
   APIError,
+  addToWatchlist,
   buildInstrumentPath,
   fetchRankings,
   fetchUniverseBrowse,
+  fetchWatchlist,
   formatSnapshotDate,
+  removeFromWatchlist,
   type BrowseResult,
   type CoverageState,
   type RankingItem,
   type RankingsQueryParams,
   type RankingsResponse,
+  type WatchlistItem,
 } from "@/lib/api";
 import { ConvictionBadge } from "@/components/conviction-badge";
 import { useUIStore } from "@/lib/store";
@@ -393,21 +399,31 @@ function PinnedButton({
   exchange?: string;
   light?: boolean;
 }) {
+  const { getToken } = useAuth();
   const togglePinned = useUIStore((state) => state.togglePinnedInstrument);
   const isPinned = useUIStore((state) => state.isPinned);
   const pinned = isPinned(ticker, market);
 
+  async function handleToggle() {
+    togglePinned({ ticker, market, name, exchange: exchange ?? "" });
+    try {
+      const token = await getToken();
+      if (token) {
+        if (!pinned) {
+          await addToWatchlist(ticker, market, token);
+        } else {
+          await removeFromWatchlist(ticker, market, token);
+        }
+      }
+    } catch {
+      // backend sync is best-effort; local state already updated
+    }
+  }
+
   return (
     <button
       type="button"
-      onClick={() =>
-        togglePinned({
-          ticker,
-          market,
-          name,
-          exchange: exchange ?? "",
-        })
-      }
+      onClick={handleToggle}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.14em] transition-colors",
         pinned
@@ -508,6 +524,44 @@ function RankedCard({ item }: { item: RankingItem }) {
   );
 }
 
+function WatchlistCard({
+  item,
+  market,
+}: {
+  item: WatchlistItem;
+  market: Market;
+  }) {
+  if (item.market !== market) return null;
+  const primaryName =
+    item.market === "KR"
+      ? item.name_kr || item.name || item.ticker
+      : item.name || item.ticker;
+  const secondaryName =
+    item.market === "KR" && item.name_kr
+      ? `${item.ticker} / ${item.name}`
+      : item.ticker;
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-[1.35rem] border border-[oklch(0.64_0.12_82_/_0.28)] bg-[oklch(0.88_0.08_84_/_0.18)] px-4 py-3">
+      <div className="min-w-0">
+        <Link
+          href={buildInstrumentPath(item.ticker, item.market as "US" | "KR")}
+          className="block truncate font-heading text-2xl uppercase leading-none text-[oklch(0.22_0.018_250)] transition-colors hover:text-[oklch(0.5_0.12_82)]"
+        >
+          {primaryName}
+        </Link>
+        <div className="mt-1 text-xs text-[oklch(0.46_0.02_250)]">{secondaryName}</div>
+      </div>
+      <PinnedButton
+        ticker={item.ticker}
+        market={item.market as Market}
+        name={primaryName}
+        light
+      />
+    </div>
+  );
+}
+
 function BrowseCard({ item, label }: { item: BrowseResult; label: string }) {
   const names = displayName(item);
   const reasons = item.ranking_eligibility.reasons.slice(0, 3);
@@ -604,6 +658,7 @@ function SectionShell({
 export function RankingsClient({ initialFilters, initialData }: RankingsClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { getToken, isSignedIn } = useAuth();
   const [isPending, startTransition] = useTransition();
   const [partialLimit, setPartialLimit] = useState(8);
   const [exploreLimit, setExploreLimit] = useState(8);
@@ -664,6 +719,34 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
     enabled: showExplore,
     staleTime: 60_000,
   });
+
+  const watchlist = useQuery({
+    queryKey: ["watchlist", isSignedIn],
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token) return null;
+      return fetchWatchlist(token);
+    },
+    enabled: !!isSignedIn,
+    staleTime: 60_000,
+  });
+
+  const pinnedInstruments = useUIStore((state) => state.pinnedInstruments);
+  const watchlistItems: WatchlistItem[] = watchlist.data?.items ?? [];
+  // Merge: prefer backend items when signed in, else show local pins as stub items
+  const watchlistDisplay: WatchlistItem[] =
+    isSignedIn && watchlistItems.length > 0
+      ? watchlistItems.filter((item) => item.market === filters.market)
+      : pinnedInstruments
+          .filter((pin) => pin.market === filters.market)
+          .map((pin, idx) => ({
+            id: -idx,
+            instrument_id: -1,
+            market: pin.market,
+            ticker: pin.ticker,
+            name: pin.name,
+            added_at: new Date().toISOString(),
+          }));
 
   const data = rankings.data;
   const rankedItems = data?.items ?? [];
@@ -1013,6 +1096,31 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
       )}
 
       <div className="mt-5 grid gap-5">
+        {watchlistDisplay.length > 0 && (
+          <SectionShell eyebrow="Your watchlist" title="Pinned instruments" tone="light">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {watchlistDisplay.map((item) => (
+                <WatchlistCard
+                  key={`wl-${item.market}-${item.ticker}`}
+                  item={item}
+                  market={filters.market}
+                />
+              ))}
+            </div>
+            {watchlistDisplay.length === 0 && (
+              <p className="text-sm text-[oklch(0.46_0.02_250)]">
+                No pinned instruments for this market yet. Pin a row from the board below.
+              </p>
+            )}
+            {!isSignedIn && (
+              <p className="mt-3 text-xs text-[oklch(0.52_0.02_250)]">
+                <Bookmark className="mr-1 inline size-3" />
+                Sign in to sync your watchlist across devices.
+              </p>
+            )}
+          </SectionShell>
+        )}
+
         <SectionShell
           eyebrow="Ranked results"
           title={`${filters.market} ${filters.assetType === "etf" ? "ETF" : "stock"} leaderboard`}

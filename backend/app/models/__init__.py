@@ -12,3 +12,6 @@ from app.models.alert import Alert                    # noqa: F401
 from app.models.user import UserPushToken             # noqa: F401
 from app.models.snapshot import ScoringSnapshot, DataFreshness  # noqa: F401
 from app.models.coverage_summary import InstrumentCoverageSummary  # noqa: F401
+from app.models.hydration_job import HydrationJob     # noqa: F401
+from app.models.backfill_run import AdminBackfillRun  # noqa: F401
+from app.models.watchlist_item import WatchlistItem   # noqa: F401

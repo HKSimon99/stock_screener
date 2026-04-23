@@ -243,6 +243,30 @@ export interface AnnualMetrics {
   data_source?: string;
 }
 
+export interface MarketMetrics {
+  price_as_of?: string;
+  share_count_source?: string;
+  trailing_eps_source?: string;
+  market_cap?: number;
+  float_market_cap?: number;
+  trailing_pe_ratio?: number;
+  dividend_yield?: number;
+}
+
+export interface OwnershipMetrics {
+  report_date?: string;
+  data_source?: string;
+  num_institutional_owners?: number;
+  institutional_pct?: number;
+  top_fund_quality_score?: number;
+  qoq_owner_change?: number;
+  foreign_ownership_pct?: number;
+  foreign_net_buy_30d?: number;
+  institutional_net_buy_30d?: number;
+  individual_net_buy_30d?: number;
+  is_buyback_active?: boolean;
+}
+
 export interface InstrumentDetail extends RankingItem, StrategyDetail {
   name_kr?: string;
   listing_status?: string;
@@ -268,6 +292,8 @@ export interface InstrumentDetail extends RankingItem, StrategyDetail {
   price_metrics?: PriceMetrics;
   quarterly_metrics?: QuarterlyMetrics;
   annual_metrics?: AnnualMetrics;
+  market_metrics?: MarketMetrics;
+  ownership_metrics?: OwnershipMetrics;
   technical_composite: number;
   stop_loss_7pct?: number;
 }
@@ -468,6 +494,56 @@ export interface UniverseCoverageResponse {
   items: UniverseCoverageBucket[];
 }
 
+export interface HydrationJob {
+  id: number;
+  ticker: string;
+  market: "US" | "KR";
+  instrument_id?: number;
+  status: string;
+  requester_source: string;
+  requester_user_id?: string;
+  celery_task_id?: string;
+  queued_at: string;
+  started_at?: string;
+  completed_at?: string;
+  failed_at?: string;
+  updated_at: string;
+  error_message?: string;
+  source_metadata: Record<string, unknown>;
+}
+
+export interface HydrationJobCreateResponse {
+  job: HydrationJob;
+  created: boolean;
+  message: string;
+}
+
+export interface InstrumentIngestResponse {
+  message: string;
+  instrument_id: number;
+  scoring_deferred?: boolean;
+  next_step?: string;
+}
+
+// =============================================================================
+// Watchlist
+// =============================================================================
+
+export interface WatchlistItem {
+  id: number;
+  instrument_id: number;
+  market: string;
+  ticker: string;
+  name?: string;
+  name_kr?: string;
+  added_at: string;
+}
+
+export interface WatchlistResponse {
+  items: WatchlistItem[];
+  total: number;
+}
+
 export class APIError extends Error {
   status: number;
   detail?: string;
@@ -608,6 +684,30 @@ interface RawAnnualMetrics {
   data_source?: string | null;
 }
 
+interface RawMarketMetrics {
+  price_as_of?: string | null;
+  share_count_source?: string | null;
+  trailing_eps_source?: string | null;
+  market_cap?: number | null;
+  float_market_cap?: number | null;
+  trailing_pe_ratio?: number | null;
+  dividend_yield?: number | null;
+}
+
+interface RawOwnershipMetrics {
+  report_date?: string | null;
+  data_source?: string | null;
+  num_institutional_owners?: number | null;
+  institutional_pct?: number | null;
+  top_fund_quality_score?: number | null;
+  qoq_owner_change?: number | null;
+  foreign_ownership_pct?: number | null;
+  foreign_net_buy_30d?: number | null;
+  institutional_net_buy_30d?: number | null;
+  individual_net_buy_30d?: number | null;
+  is_buyback_active?: boolean | null;
+}
+
 interface RawInstrumentDetail {
   instrument_id: number;
   ticker: string;
@@ -641,6 +741,8 @@ interface RawInstrumentDetail {
   price_metrics?: RawPriceMetrics | null;
   quarterly_metrics?: RawQuarterlyMetrics | null;
   annual_metrics?: RawAnnualMetrics | null;
+  market_metrics?: RawMarketMetrics | null;
+  ownership_metrics?: RawOwnershipMetrics | null;
   score_breakdown?: Record<string, unknown> | null;
   factor_breakdown?: Record<string, unknown> | null;
   score_history?: ScoreHistoryPoint[] | null;
@@ -867,6 +969,41 @@ function normalizeAnnualMetrics(
   };
 }
 
+function normalizeMarketMetrics(
+  raw: RawMarketMetrics | null | undefined
+): MarketMetrics | undefined {
+  if (!raw) return undefined;
+  return {
+    price_as_of: raw.price_as_of ?? undefined,
+    share_count_source: raw.share_count_source ?? undefined,
+    trailing_eps_source: raw.trailing_eps_source ?? undefined,
+    market_cap: optionalNumber(raw.market_cap),
+    float_market_cap: optionalNumber(raw.float_market_cap),
+    trailing_pe_ratio: optionalNumber(raw.trailing_pe_ratio),
+    dividend_yield: optionalNumber(raw.dividend_yield),
+  };
+}
+
+function normalizeOwnershipMetrics(
+  raw: RawOwnershipMetrics | null | undefined
+): OwnershipMetrics | undefined {
+  if (!raw) return undefined;
+  return {
+    report_date: raw.report_date ?? undefined,
+    data_source: raw.data_source ?? undefined,
+    num_institutional_owners: optionalNumber(raw.num_institutional_owners),
+    institutional_pct: optionalNumber(raw.institutional_pct),
+    top_fund_quality_score: optionalNumber(raw.top_fund_quality_score),
+    qoq_owner_change: optionalNumber(raw.qoq_owner_change),
+    foreign_ownership_pct: optionalNumber(raw.foreign_ownership_pct),
+    foreign_net_buy_30d: optionalNumber(raw.foreign_net_buy_30d),
+    institutional_net_buy_30d: optionalNumber(raw.institutional_net_buy_30d),
+    individual_net_buy_30d: optionalNumber(raw.individual_net_buy_30d),
+    is_buyback_active:
+      typeof raw.is_buyback_active === "boolean" ? raw.is_buyback_active : undefined,
+  };
+}
+
 export function formatSnapshotDate(value: string): string {
   try {
     return new Intl.DateTimeFormat("en-US", {
@@ -989,6 +1126,8 @@ function normalizeInstrument(raw: RawInstrumentDetail): InstrumentDetail {
     price_metrics: normalizePriceMetrics(raw.price_metrics),
     quarterly_metrics: normalizeQuarterlyMetrics(raw.quarterly_metrics),
     annual_metrics: normalizeAnnualMetrics(raw.annual_metrics),
+    market_metrics: normalizeMarketMetrics(raw.market_metrics),
+    ownership_metrics: normalizeOwnershipMetrics(raw.ownership_metrics),
     canslim_detail: raw.canslim.raw ?? undefined,
     canslim_breakdown: [
       { key: "C", label: "Current EPS", score: toNumber(raw.canslim.c) },
@@ -1326,10 +1465,37 @@ export async function fetchInstrument(
 export async function ingestInstrument(
   ticker: string,
   market: "US" | "KR"
-): Promise<{ message: string; instrument_id: number }> {
-  return apiFetch<{ message: string; instrument_id: number }>(
+): Promise<InstrumentIngestResponse> {
+  return apiFetch<InstrumentIngestResponse>(
     `/instruments/${encodeURIComponent(ticker)}/ingest?market=${market}`,
     { method: "POST" }
+  );
+}
+
+export async function queueInstrumentHydration(
+  ticker: string,
+  market: "US" | "KR",
+  bearerToken?: string
+): Promise<HydrationJobCreateResponse> {
+  return apiFetch<HydrationJobCreateResponse>(
+    `/instruments/${encodeURIComponent(ticker)}/hydrate?market=${market}`,
+    {
+      method: "POST",
+      bearerToken,
+    }
+  );
+}
+
+export async function fetchInstrumentHydrationStatus(
+  ticker: string,
+  market: "US" | "KR",
+  bearerToken?: string
+): Promise<HydrationJob> {
+  return apiFetch<HydrationJob>(
+    `/instruments/${encodeURIComponent(ticker)}/hydrate-status?market=${market}`,
+    {
+      bearerToken,
+    }
   );
 }
 
@@ -1431,5 +1597,31 @@ export async function fetchStrategyRankings(
 ): Promise<StrategyRankingsResponse> {
   return apiFetch<StrategyRankingsResponse>(
     `/strategies/${encodeURIComponent(strategy)}/rankings?market=${market}`
+  );
+}
+
+export async function fetchWatchlist(bearerToken: string): Promise<WatchlistResponse> {
+  return apiFetch<WatchlistResponse>("/watchlist", { bearerToken });
+}
+
+export async function addToWatchlist(
+  ticker: string,
+  market: "US" | "KR",
+  bearerToken: string
+): Promise<WatchlistItem> {
+  return apiFetch<WatchlistItem>(
+    `/watchlist/${encodeURIComponent(market)}/${encodeURIComponent(ticker)}`,
+    { method: "POST", bearerToken }
+  );
+}
+
+export async function removeFromWatchlist(
+  ticker: string,
+  market: "US" | "KR",
+  bearerToken: string
+): Promise<void> {
+  await apiFetch<void>(
+    `/watchlist/${encodeURIComponent(market)}/${encodeURIComponent(ticker)}`,
+    { method: "DELETE", bearerToken }
   );
 }

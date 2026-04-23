@@ -5,7 +5,7 @@ api_router = APIRouter()
 
 api_router.include_router(health.router, tags=["health"])
 
-from app.api.v1.endpoints import rankings, instruments, strategies, meta, risk, search, users
+from app.api.v1.endpoints import rankings, instruments, strategies, meta, risk, search, users, watchlist
 
 api_router.include_router(users.router,         prefix="/users",         tags=["users"])
 api_router.include_router(rankings.router,      prefix="/rankings",      tags=["rankings"])
@@ -15,3 +15,4 @@ api_router.include_router(strategies.filter_router, prefix="/filters",   tags=["
 api_router.include_router(meta.router,          tags=["meta"]) # /market-regime, /snapshots, /alerts, /scoring
 api_router.include_router(risk.router,          prefix="/risk",          tags=["risk"])
 api_router.include_router(search.router,        tags=["search"])
+api_router.include_router(watchlist.router,     prefix="/watchlist",     tags=["watchlist"])

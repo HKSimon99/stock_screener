@@ -18,9 +18,39 @@ def _connect(url: str):
     return conn
 
 
+def _is_neon_host(url: str) -> bool:
+    """Return True when *url* resolves to a Neon-hosted endpoint."""
+    return "neon.tech" in url or ".neon.host" in url
+
+
 def reset_target_schema(url: str, *, schema: str) -> None:
-    if os.getenv("APP_ENV", "").strip().lower() == "production":
-        raise RuntimeError("reset_target_schema refused: APP_ENV=production")
+    """Drop and recreate *schema* on the target database.
+
+    Two independent guards prevent accidental production data loss:
+
+    1. APP_ENV guard — refuses when the process environment declares production.
+    2. Neon host guard — refuses when the URL looks like a Neon endpoint unless
+       ALLOW_NEON_SCHEMA_RESET=true is set explicitly.  This fires even in
+       development mode because the shared .env ships with production Neon
+       credentials while leaving APP_ENV=development for convenience.
+    """
+    app_env = os.getenv("APP_ENV", "").strip().lower()
+    if app_env == "production":
+        raise RuntimeError(
+            "reset_target_schema refused: APP_ENV=production. "
+            "This operation would destroy all production rows."
+        )
+
+    if _is_neon_host(url):
+        allow = os.getenv("ALLOW_NEON_SCHEMA_RESET", "").strip().lower()
+        if allow != "true":
+            raise RuntimeError(
+                "reset_target_schema refused: target URL is a Neon-hosted database.\n"
+                "The shared .env file points at production Neon even when APP_ENV=development.\n"
+                "If you truly mean to wipe a non-production Neon branch, set:\n"
+                "    export ALLOW_NEON_SCHEMA_RESET=true\n"
+                "and re-run."
+            )
 
     with _connect(url) as conn:
         with conn.cursor() as cur:

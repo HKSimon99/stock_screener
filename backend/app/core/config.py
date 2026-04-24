@@ -214,15 +214,47 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def set_celery_defaults(self) -> "Settings":
-        """Auto-derive Celery URLs from Postgres config if not explicitly set."""
+        """Auto-derive Celery URLs from Postgres config if not explicitly set.
+
+        WARNING: Using the production Neon DB as the Celery broker/backend is
+        safe for local development (where Redis may not be running) but should
+        NEVER be the case on Railway/production.  Kombu's SQLAlchemy transport
+        creates its own tables and connection overhead on the production DB.
+        Set CELERY_BROKER_URL and CELERY_RESULT_BACKEND in Railway's service
+        environment to a Redis URL to avoid this.
+        """
         pg = (
             f"db+postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
-        if not self.celery_broker_url:
+        broker_was_missing = not self.celery_broker_url
+        backend_was_missing = not self.celery_result_backend
+
+        if broker_was_missing:
             self.celery_broker_url = pg
-        if not self.celery_result_backend:
+        if backend_was_missing:
             self.celery_result_backend = pg
+
+        # Emit a loud warning when the fallback targets a Neon host.
+        # This fires on Railway if CELERY_BROKER_URL / CELERY_RESULT_BACKEND
+        # are not set in the service environment.
+        neon_host = "neon.tech" in self.postgres_host or ".neon.host" in self.postgres_host
+        if neon_host and (broker_was_missing or backend_was_missing):
+            import logging as _logging
+            _log = _logging.getLogger(__name__)
+            missing = ", ".join(
+                filter(None, [
+                    "CELERY_BROKER_URL" if broker_was_missing else "",
+                    "CELERY_RESULT_BACKEND" if backend_was_missing else "",
+                ])
+            )
+            _log.critical(
+                "⚠️  Celery is falling back to the production Neon database as "
+                "broker/backend because %s is not set.  "
+                "Set these to a Redis URL in Railway's service environment variables.",
+                missing,
+            )
+
         return self
 
     # US data

@@ -1,3 +1,5 @@
+import os
+import sys
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool, text
 from alembic import context
@@ -10,6 +12,48 @@ from app.core.config import settings
 import app.models  # noqa: F401
 
 config = context.config
+
+
+def _is_neon_host(host: str) -> bool:
+    """Return True when the configured Postgres host looks like a Neon endpoint."""
+    return "neon.tech" in host or ".neon.host" in host
+
+
+def _guard_production_downgrade() -> None:
+    """Refuse 'alembic downgrade …' against a live Neon host unless the operator
+    has explicitly set ALEMBIC_ALLOW_PRODUCTION_DOWNGRADE=true.
+
+    Background: the .env file ships with production Neon credentials so that
+    'uv run alembic upgrade head' works from a developer laptop.  A mistaken
+    'alembic downgrade base' with those credentials would wipe *all* rows from
+    consensus_app while leaving the schema intact — exactly the data-loss
+    pattern observed in production.  This guard makes that impossible without
+    a deliberate override.
+    """
+    if not _is_neon_host(settings.postgres_host):
+        return  # local or non-Neon target — no guard needed
+
+    argv_lower = [a.lower() for a in sys.argv]
+    if "downgrade" not in argv_lower:
+        return  # upgrade / current / history — safe
+
+    allow = os.environ.get("ALEMBIC_ALLOW_PRODUCTION_DOWNGRADE", "").strip().lower()
+    if allow == "true":
+        return  # explicit opt-in
+
+    raise SystemExit(
+        "\n"
+        "⛔  ALEMBIC DOWNGRADE REFUSED — production Neon host detected\n"
+        f"   POSTGRES_HOST = {settings.postgres_host}\n"
+        "\n"
+        "   Running 'alembic downgrade' against the live database would wipe all\n"
+        "   application rows while leaving the schema intact.  This is the known\n"
+        "   production data-loss pattern.\n"
+        "\n"
+        "   If you genuinely need to downgrade a STAGING branch, set:\n"
+        "       export ALEMBIC_ALLOW_PRODUCTION_DOWNGRADE=true\n"
+        "   and re-run the command.\n"
+    )
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -28,6 +72,7 @@ def _configure_context_kwargs() -> dict:
 
 
 def run_migrations_offline() -> None:
+    _guard_production_downgrade()
     url = settings.sync_database_url
     context.configure(
         url=url,
@@ -41,6 +86,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    _guard_production_downgrade()
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = settings.sync_database_url
     connectable = engine_from_config(

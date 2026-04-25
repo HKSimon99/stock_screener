@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { Pin, RefreshCw } from "lucide-react";
+import { Loader2, Pin, RefreshCw } from "lucide-react";
 import {
   APIError,
   addToWatchlist,
   fetchInstrument,
   fetchInstrumentChart,
+  fetchInstrumentHydrationStatus,
+  queueInstrumentHydration,
   removeFromWatchlist,
   type InstrumentChart,
   type InstrumentDetail,
@@ -223,8 +225,12 @@ export function InstrumentDetailClient({
 }: InstrumentDetailClientProps) {
   const [chartInterval, setChartInterval] = useState<ChartInterval>("1d");
   const [chartRangeDays, setChartRangeDays] = useState<ChartRangeDays>(365);
+  const [hydrationQueued, setHydrationQueued] = useState(false);
+  const [isQueuing, setIsQueuing] = useState(false);
+  const [hydrationError, setHydrationError] = useState<string | null>(null);
 
-  const { getToken } = useAuth();
+  const { getToken, isSignedIn } = useAuth();
+  const queryClient = useQueryClient();
   const togglePinned = useUIStore((state) => state.togglePinnedInstrument);
   const isPinned = useUIStore((state) => state.isPinned);
   const pinned = isPinned(ticker, market);
@@ -244,6 +250,47 @@ export function InstrumentDetailClient({
       // best-effort backend sync
     }
   }
+
+  async function handleQueueRefresh() {
+    setIsQueuing(true);
+    setHydrationError(null);
+    try {
+      const token = await getToken();
+      if (!token) {
+        setHydrationError(market === "KR" ? "로그인이 필요합니다." : "Sign in to queue a refresh.");
+        return;
+      }
+      await queueInstrumentHydration(ticker, market, token);
+      setHydrationQueued(true);
+    } catch (e) {
+      const msg = e instanceof APIError ? (e.detail ?? e.message) : "Failed to queue refresh.";
+      setHydrationError(typeof msg === "string" ? msg : "Failed to queue refresh.");
+    } finally {
+      setIsQueuing(false);
+    }
+  }
+
+  const { data: hydrationJob } = useQuery({
+    queryKey: ["hydration-status", ticker, market],
+    queryFn: async () => {
+      const token = await getToken();
+      return fetchInstrumentHydrationStatus(ticker, market, token ?? undefined);
+    },
+    enabled: hydrationQueued,
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      if (!d) return false;
+      return d.status === "queued" || d.status === "running" ? 3_000 : false;
+    },
+    refetchOnMount: false,
+  });
+
+  useEffect(() => {
+    if (hydrationJob?.status === "completed") {
+      void queryClient.invalidateQueries({ queryKey: ["instrument", ticker, market] });
+      void queryClient.invalidateQueries({ queryKey: ["instrument-chart", ticker, market] });
+    }
+  }, [hydrationJob?.status, ticker, market, queryClient]);
 
   const {
     data,
@@ -344,8 +391,12 @@ export function InstrumentDetailClient({
         needsScoring: "기초 데이터는 준비되었지만 순위 모델 점수가 아직 생성되지 않았습니다.",
         stale: "데이터가 오래되었습니다. 최신 순위에 반영되기 전까지 주의해서 봐주세요.",
         unranked: "이 종목은 유니버스에 있지만 아직 전체 순위 모델 점수가 없습니다.",
-        refreshPlaceholder: "새로고침 대기열은 Part 2에서 연결됩니다.",
-        refreshCta: "새로고침 준비 중",
+        refreshCta: "새로고침 대기열에 추가",
+        refreshQueued: "대기 중…",
+        refreshRunning: "새로고침 중…",
+        refreshDone: "새로고침 완료",
+        refreshFailed: "새로고침 실패",
+        refreshSignInHint: "새로고침을 요청하려면 로그인하세요.",
         close: "종가",
         previousClose: "전일 종가",
         change: "변동",
@@ -407,8 +458,12 @@ export function InstrumentDetailClient({
         needsScoring: "Baseline data is available, but the ranking model has not generated scores yet.",
         stale: "This dataset is stale. Treat the view as a snapshot until a fresh batch ranking runs.",
         unranked: "This symbol is in the universe, but the full ranking model has not scored it yet.",
-        refreshPlaceholder: "Manual refresh queue connects in Part 2.",
-        refreshCta: "Refresh queue pending",
+        refreshCta: "Queue Refresh",
+        refreshQueued: "Queued…",
+        refreshRunning: "Refreshing…",
+        refreshDone: "Refresh complete",
+        refreshFailed: "Refresh failed",
+        refreshSignInHint: "Sign in to queue a data refresh.",
         close: "Close",
         previousClose: "Previous Close",
         change: "Change",
@@ -515,16 +570,45 @@ export function InstrumentDetailClient({
             </div>
           )}
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-            <button
-              type="button"
-              disabled
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/5 hover:bg-white/10 px-5 py-2.5 text-xs font-medium uppercase tracking-[0.08em] text-white transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className="size-3.5" />
-              {labels.refreshCta}
-            </button>
+            {(() => {
+              const jobStatus = hydrationJob?.status;
+              const isActive = jobStatus === "queued" || jobStatus === "running";
+              const isDone = jobStatus === "completed";
+              const isFailed = jobStatus === "failed";
+              const buttonLabel = isQueuing
+                ? "…"
+                : isActive
+                  ? jobStatus === "queued"
+                    ? labels.refreshQueued
+                    : labels.refreshRunning
+                  : isDone
+                    ? labels.refreshDone
+                    : labels.refreshCta;
+              const buttonDisabled = isQueuing || isActive || isDone || !isSignedIn;
+              return (
+                <button
+                  type="button"
+                  disabled={buttonDisabled}
+                  onClick={handleQueueRefresh}
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/5 hover:bg-white/10 px-5 py-2.5 text-xs font-medium uppercase tracking-[0.08em] text-white transition-colors disabled:opacity-50"
+                >
+                  {isQueuing || isActive ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-3.5" />
+                  )}
+                  {buttonLabel}
+                </button>
+              );
+            })()}
             <div className="text-xs text-faint">
-              {labels.refreshPlaceholder}
+              {hydrationError
+                ? hydrationError
+                : hydrationJob?.status === "failed"
+                  ? `${labels.refreshFailed}${hydrationJob.error_message ? `: ${hydrationJob.error_message}` : ""}`
+                  : !isSignedIn
+                    ? labels.refreshSignInHint
+                    : null}
             </div>
           </div>
         </div>

@@ -307,8 +307,17 @@ async def get_rankings(
     if score_date is None:
         score_date = await _latest_rankings_score_date(market, asset_type, db)
     if score_date is None:
-        raise HTTPException(
-            404, detail="No consensus scores found. Run the scoring pipeline first."
+        # No scores yet for this market/asset_type — return an empty list
+        # rather than 404.  404 is semantically wrong (the endpoint exists and
+        # the market is valid) and crashes the frontend query cache.
+        resolved_market = market or "US"
+        return RankingsResponse(
+            score_date=None,
+            market=resolved_market,
+            regime_state=None,
+            regime_warning_count=0,
+            pagination=PaginationMeta(total=0, limit=limit, offset=offset, has_more=False),
+            items=[],
         )
 
     # ── Build direct query with window-function count ───────────────────────

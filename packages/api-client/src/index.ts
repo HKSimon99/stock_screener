@@ -98,7 +98,7 @@ export interface RankingItem {
 }
 
 export interface RankingsResponse {
-  score_date: string;
+  score_date?: string | null;   // null/undefined when market has no scores yet
   market: "US" | "KR";
   regime_state?: RegimeState;
   regime_warning_count: number;
@@ -591,7 +591,7 @@ interface RawRankingItem {
 }
 
 interface RawRankingsResponse {
-  score_date: string;
+  score_date?: string | null;   // null when market has no scores yet
   market: "US" | "KR";
   regime_state?: RegimeState | null;
   regime_warning_count: number;
@@ -1051,13 +1051,13 @@ function normalizeRankingItem(item: RawRankingItem): RankingItem {
 
 function normalizeRankingsResponse(raw: RawRankingsResponse): RankingsResponse {
   return {
-    score_date: raw.score_date,
+    score_date: raw.score_date ?? null,
     market: raw.market,
     regime_state: raw.regime_state ?? undefined,
     regime_warning_count: raw.regime_warning_count,
     total: raw.pagination.total,
     pagination: raw.pagination,
-    freshness: `Snapshot ${formatSnapshotDate(raw.score_date)}`,
+    freshness: raw.score_date ? `Snapshot ${formatSnapshotDate(raw.score_date)}` : "No data yet",
     items: raw.items.map(normalizeRankingItem),
   };
 }

@@ -70,7 +70,7 @@ class RankingEntry(BaseModel):
 
 
 class RankingsResponse(BaseModel):
-    score_date:           date
+    score_date:           Optional[date] = None   # None when no scores exist yet for this market
     market:               str
     regime_state:         Optional[str] = None
     regime_warning_count: int = 0

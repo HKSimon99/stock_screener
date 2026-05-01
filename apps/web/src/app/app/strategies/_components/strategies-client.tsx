@@ -4,9 +4,9 @@
  * StrategiesClient — 3-tab strategy breakdown page
  *
  * Tabs:
- *  • CANSLIM   — US-only (growth-stock strategy designed for US markets)
- *  • Piotroski — US + KR (fundamental health score, F-score 0–9)
- *  • Minervini — US + KR (SEPA trend-template, technical + fundamental)
+ *  • CANSLIM      — US-only (growth-stock strategy designed for US markets)
+ *  • Piotroski    — US + KR (fundamental health score, F-score 0–9)
+ *  • Magic Formula — US + KR (ROIC + EY, high-quality value)
  *
  * Each tab fetches strategy-specific rankings via fetchStrategyRankings()
  * and renders items with the shared RankingRow component.
@@ -25,19 +25,19 @@ import { CanslimTab } from "@/app/app/strategies/_components/canslim-filter-buil
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type StrategyTab = "canslim" | "piotroski" | "minervini";
+type StrategyTab = "canslim" | "piotroski" | "magic_formula";
 
 const TAB_LABELS: Record<StrategyTab, string> = {
-  canslim:    "CANSLIM",
-  piotroski:  "Piotroski",
-  minervini:  "Minervini",
+  canslim:       "CANSLIM",
+  piotroski:     "Piotroski",
+  magic_formula: "Magic Formula",
 };
 
 /** Markets available per strategy (CANSLIM is US-only) */
 const STRATEGY_MARKETS: Record<StrategyTab, Array<"US" | "KR">> = {
-  canslim:   ["US"],
-  piotroski: ["US", "KR"],
-  minervini: ["US", "KR"],
+  canslim:       ["US"],
+  piotroski:     ["US", "KR"],
+  magic_formula: ["US", "KR"],
 };
 
 // ── Sub-component: strategy list ──────────────────────────────────────────────

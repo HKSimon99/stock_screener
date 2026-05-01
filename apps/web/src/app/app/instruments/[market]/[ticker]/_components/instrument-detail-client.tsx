@@ -26,6 +26,150 @@ interface InstrumentDetailClientProps {
   initialChartData: InstrumentChart | null;
 }
 
+// ── Strategy criterion label maps (for hover tooltips) ────────────────────────
+
+const CANSLIM_LABELS_KR: Record<string, string> = {
+  C: "최근 분기 EPS 성장 (Current Earnings)",
+  A: "연간 EPS 성장 (Annual Earnings)",
+  N: "신고가·신제품·신경영진 (New Highs)",
+  S: "수급 (Supply / Demand)",
+  L: "선도주 여부·RS 등급 (Leader)",
+  I: "기관 수급 (Institutional)",
+};
+
+const PIOTROSKI_LABELS_EN: Record<string, string> = {
+  f1: "F1 — ROA > 0",
+  f2: "F2 — Operating cash flow > 0",
+  f3: "F3 — ROA improving YoY",
+  f4: "F4 — Cash earnings > accounting earnings",
+  f5: "F5 — Leverage decreasing YoY",
+  f6: "F6 — Current ratio improving YoY",
+  f7: "F7 — No share dilution",
+  f8: "F8 — Gross margin improving YoY",
+  f9: "F9 — Asset turnover improving YoY",
+};
+
+const PIOTROSKI_LABELS_KR: Record<string, string> = {
+  f1: "F1 — ROA 양수 (총자산이익률 > 0)",
+  f2: "F2 — 영업현금흐름 양수",
+  f3: "F3 — ROA 전년 대비 개선",
+  f4: "F4 — 영업현금흐름 > 순이익 (현금이익이 회계이익보다 큼)",
+  f5: "F5 — 부채비율 전년 대비 감소",
+  f6: "F6 — 유동비율 전년 대비 개선",
+  f7: "F7 — 주식 희석 없음",
+  f8: "F8 — 매출총이익률 전년 대비 개선",
+  f9: "F9 — 자산회전율 전년 대비 개선",
+};
+
+const MAGIC_FORMULA_EXCLUDE_REASONS_KR: Record<string, string> = {
+  sector_excluded:                 "금융·유틸리티 섹터는 제외 (그린블라트 원칙)",
+  negative_ebit:                   "영업이익(EBIT) 적자로 제외",
+  missing_market_cap:              "시가총액 데이터 없음",
+  non_positive_ev:                 "기업가치(EV) ≤ 0",
+  missing_balance_sheet:           "재무상태표 데이터 부족",
+  non_positive_invested_capital:   "투하자본 ≤ 0",
+};
+
+const MAGIC_FORMULA_EXCLUDE_REASONS_EN: Record<string, string> = {
+  sector_excluded:                 "Excluded — Financials/Utilities (Greenblatt rule)",
+  negative_ebit:                   "Excluded — negative EBIT",
+  missing_market_cap:              "Excluded — missing market cap",
+  non_positive_ev:                 "Excluded — EV ≤ 0",
+  missing_balance_sheet:           "Excluded — missing balance sheet inputs",
+  non_positive_invested_capital:   "Excluded — invested capital ≤ 0",
+};
+
+function formatPercentTooltip(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function MagicFormulaCard({
+  score,
+  detail,
+  market,
+}: {
+  score: number | undefined;
+  detail: InstrumentDetail["magic_formula_detail"];
+  market: "US" | "KR";
+}) {
+  const isKr = market === "KR";
+  const title = isKr ? "마법공식 (Magic Formula)" : "Magic Formula";
+
+  if (!detail) {
+    return (
+      <div>
+        <div className="mb-2 text-xs text-faint uppercase tracking-widest">{title}</div>
+        <div className="text-xs text-faint">
+          {isKr ? "데이터 없음" : "Not available"}
+        </div>
+      </div>
+    );
+  }
+
+  const excluded = detail.exclude_reason !== null;
+  const reasonMap = isKr ? MAGIC_FORMULA_EXCLUDE_REASONS_KR : MAGIC_FORMULA_EXCLUDE_REASONS_EN;
+  const reasonLabel = excluded
+    ? reasonMap[detail.exclude_reason ?? ""] ?? (detail.exclude_reason ?? "")
+    : null;
+
+  const roicLabel = isKr ? "ROIC (투하자본수익률)" : "ROIC";
+  const eyLabel   = isKr ? "EY (이익수익률)"     : "Earnings Yield";
+  const rankLabel = isKr ? "종합 순위"            : "Combined Rank";
+  const universeLabel = isKr ? "유니버스" : "Universe";
+
+  return (
+    <div>
+      <div className="mb-2 text-xs text-faint uppercase tracking-widest">
+        {title}
+        {typeof score === "number" && !excluded ? `: ${score.toFixed(0)}/100` : ""}
+      </div>
+
+      {excluded ? (
+        <div
+          className="rounded border border-white/10 px-2 py-1 text-[0.7rem] text-faint"
+          title={reasonLabel ?? undefined}
+        >
+          {reasonLabel}
+        </div>
+      ) : (
+        <div className="space-y-1 text-xs text-quiet">
+          <div className="flex justify-between gap-2">
+            <span
+              className="cursor-help text-faint"
+              title={isKr
+                ? "ROIC = 영업이익 / (순운전자본 + 순고정자산). 자본을 얼마나 효율적으로 굴리는지."
+                : "ROIC = EBIT / (NWC + Net Fixed Assets). How efficiently capital generates operating earnings."}
+            >
+              {roicLabel}
+            </span>
+            <span className="font-mono text-white">{formatPercentTooltip(detail.roic)}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span
+              className="cursor-help text-faint"
+              title={isKr
+                ? "EY = 영업이익 / 기업가치. 기업가치 대비 영업이익 수익률."
+                : "EY = EBIT / Enterprise Value. Operating earnings yield on enterprise value."}
+            >
+              {eyLabel}
+            </span>
+            <span className="font-mono text-white">{formatPercentTooltip(detail.ey)}</span>
+          </div>
+          {detail.combined_rank !== null && detail.universe_size !== null && (
+            <div className="flex justify-between gap-2">
+              <span className="text-faint">{rankLabel}</span>
+              <span className="font-mono text-white">
+                #{detail.combined_rank} ({universeLabel} {detail.universe_size})
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function scoreChip(label: string, score?: number, max = 100) {
   const hasScore = typeof score === "number" && Number.isFinite(score);
   const safeScore = hasScore ? score : 0;
@@ -773,18 +917,21 @@ export function InstrumentDetailClient({
       {/* Scores grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {scoreChip("Consensus", isRanked ? data.final_score : undefined)}
-        {scoreChip("CANSLIM", typeof data.canslim_score === "number" && data.canslim_score > 0 ? data.canslim_score : undefined)}
         {scoreChip(
-          "Piotroski",
+          market === "KR" ? "CANSLIM" : "CANSLIM",
+          typeof data.canslim_score === "number" && data.canslim_score > 0 ? data.canslim_score : undefined
+        )}
+        {scoreChip(
+          market === "KR" ? "Piotroski" : "Piotroski",
           typeof data.piotroski_score === "number" && data.piotroski_score > 0
-            ? (data.piotroski_score / 9) * 100
+            ? data.piotroski_score
             : undefined,
           100
         )}
         {scoreChip(
-          "Minervini",
-          typeof data.minervini_score === "number" && data.minervini_score > 0
-            ? (data.minervini_score / 8) * 100
+          market === "KR" ? "Magic Formula" : "Magic Formula",
+          typeof data.magic_formula_score === "number" && data.magic_formula_score > 0
+            ? data.magic_formula_score
             : undefined,
           100
         )}
@@ -793,27 +940,34 @@ export function InstrumentDetailClient({
 
       {/* Strategy passes */}
       <div className="surface-panel rounded-[1.65rem] px-5 py-5">
-        <div className="tiny-label mb-4">Strategy Breakdown</div>
+        <div className="tiny-label mb-4">
+          {market === "KR" ? "전략별 상세" : "Strategy Breakdown"}
+        </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {/* CANSLIM */}
           {data.canslim_breakdown && (
             <div>
               <div className="mb-2 text-xs text-faint uppercase tracking-widest">CANSLIM</div>
               <div className="flex flex-wrap gap-1">
-                {data.canslim_breakdown.map((c) => (
-                  <span
-                    key={c.key}
-                    className={cn(
-                      "rounded border px-2 py-0.5 text-[0.65rem] font-mono uppercase",
-                      c.score > 0
-                        ? "border-[oklch(0.92_0.04_150_/_0.4)] text-[oklch(0.92_0.04_150)]"
-                        : "border-white/10 text-faint"
-                    )}
-                    title={c.label}
-                  >
-                    {c.key}
-                  </span>
-                ))}
+                {data.canslim_breakdown.map((c) => {
+                  const tooltip = market === "KR"
+                    ? `${CANSLIM_LABELS_KR[c.key] ?? c.label} (${c.score.toFixed(1)})`
+                    : `${c.label} (${c.score.toFixed(1)})`;
+                  return (
+                    <span
+                      key={c.key}
+                      className={cn(
+                        "cursor-help rounded border px-2 py-0.5 text-[0.65rem] font-mono uppercase",
+                        c.score > 0
+                          ? "border-[oklch(0.92_0.04_150_/_0.4)] text-[oklch(0.92_0.04_150)]"
+                          : "border-white/10 text-faint"
+                      )}
+                      title={tooltip}
+                    >
+                      {c.key}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -822,64 +976,51 @@ export function InstrumentDetailClient({
           {data.piotroski_detail && (
             <div>
               <div className="mb-2 text-xs text-faint uppercase tracking-widest">
-                Piotroski F-Score: {data.piotroski_detail.f_score}/9
+                {market === "KR" ? "피오트로스키 F-점수" : "Piotroski F-Score"}: {data.piotroski_detail.f_score}/9
               </div>
               <div className="flex flex-wrap gap-1">
                 {(Object.entries(data.piotroski_detail) as [string, boolean | number][])
                   .filter(([k]) => k.startsWith("f") && k !== "f_score")
-                  .map(([k, v]) => (
-                    <span
-                      key={k}
-                      className={cn(
-                        "rounded border px-2 py-0.5 text-[0.65rem] font-mono uppercase",
-                        v
-                          ? "border-[oklch(0.92_0.04_150_/_0.4)] text-[oklch(0.92_0.04_150)]"
-                          : "border-white/10 text-faint"
-                      )}
-                    >
-                      {k.toUpperCase()}
-                    </span>
-                  ))}
+                  .map(([k, v]) => {
+                    const labels = market === "KR" ? PIOTROSKI_LABELS_KR : PIOTROSKI_LABELS_EN;
+                    const passText = market === "KR" ? (v ? "통과" : "미통과") : (v ? "PASS" : "FAIL");
+                    const tooltip = `${labels[k] ?? k.toUpperCase()} — ${passText}`;
+                    return (
+                      <span
+                        key={k}
+                        className={cn(
+                          "cursor-help rounded border px-2 py-0.5 text-[0.65rem] font-mono uppercase",
+                          v
+                            ? "border-[oklch(0.92_0.04_150_/_0.4)] text-[oklch(0.92_0.04_150)]"
+                            : "border-white/10 text-faint"
+                        )}
+                        title={tooltip}
+                      >
+                        {k.toUpperCase()}
+                      </span>
+                    );
+                  })}
               </div>
             </div>
           )}
 
-          {/* Minervini */}
-          {data.minervini_detail && (
-            <div>
-              <div className="mb-2 text-xs text-faint uppercase tracking-widest">
-                Minervini: {data.minervini_detail.count_passing}/8
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {(Object.entries(data.minervini_detail) as [string, boolean | number][])
-                  .filter(([k]) => k.startsWith("t"))
-                  .map(([k, v]) => (
-                    <span
-                      key={k}
-                      className={cn(
-                        "rounded border px-2 py-0.5 text-[0.65rem] font-mono uppercase",
-                        v
-                          ? "border-[oklch(0.92_0.04_150_/_0.4)] text-[oklch(0.92_0.04_150)]"
-                          : "border-white/10 text-faint"
-                      )}
-                    >
-                      {k.toUpperCase()}
-                    </span>
-                  ))}
-              </div>
-            </div>
-          )}
+          {/* Magic Formula */}
+          <MagicFormulaCard
+            score={typeof data.magic_formula_score === "number" ? data.magic_formula_score : undefined}
+            detail={data.magic_formula_detail}
+            market={market}
+          />
 
           {/* Weinstein */}
           {data.weinstein_detail && (
             <div>
               <div className="mb-2 text-xs text-faint uppercase tracking-widest">Weinstein</div>
               <div className="text-sm text-white">
-                Stage {data.weinstein_detail.stage}
+                {market === "KR" ? "단계" : "Stage"} {data.weinstein_detail.stage}
                 {data.weinstein_detail.sub_stage ? ` · ${data.weinstein_detail.sub_stage}` : ""}
               </div>
               <div className="mt-1 text-xs text-faint">
-                MA slope {data.weinstein_detail.ma_slope.toFixed(2)} ·{" "}
+                {market === "KR" ? "이동평균 기울기" : "MA slope"} {data.weinstein_detail.ma_slope.toFixed(2)} ·{" "}
                 {data.weinstein_detail.price_vs_ma > 0 ? "+" : ""}
                 {(data.weinstein_detail.price_vs_ma * 100).toFixed(1)}% vs MA
               </div>

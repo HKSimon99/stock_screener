@@ -211,11 +211,14 @@ async def run_magic_formula_scoring(
                     raws.append({"instrument_id": inst.id, "data_sufficient": False})
                     continue
 
-                # Latest price for market cap
+                # Latest price for market cap (cap by score_date so backfills are deterministic)
                 price_stmt = (
                     select(Price)
-                    .where(Price.instrument_id == inst.id)
-                    .order_by(Price.date.desc())
+                    .where(
+                        Price.instrument_id == inst.id,
+                        Price.trade_date <= score_date,
+                    )
+                    .order_by(Price.trade_date.desc())
                     .limit(1)
                 )
                 latest_price = (await db.execute(price_stmt)).scalars().first()

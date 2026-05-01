@@ -18,10 +18,12 @@ from pydantic import BaseModel, Field
 # =============================================================================
 
 class StrategyScores(BaseModel):
-    canslim:   Optional[float] = None
-    piotroski: Optional[float] = None
-    minervini: Optional[float] = None
-    weinstein: Optional[float] = None
+    canslim:       Optional[float] = None
+    piotroski:     Optional[float] = None
+    magic_formula: Optional[float] = None
+    minervini:     Optional[float] = None  # legacy — surfaces only when present in DB
+    weinstein:     Optional[float] = None
+    dual_mom:      Optional[float] = None
 
 
 class PaginationMeta(BaseModel):
@@ -103,6 +105,21 @@ class MinerviniDetail(BaseModel):
     score:          Optional[float] = None
     criteria_count: Optional[int]   = None   # Of 8 criteria
     criteria:       Optional[dict]  = None   # T1-T8 pass/fail
+
+
+class MagicFormulaDetail(BaseModel):
+    """
+    Greenblatt Magic Formula breakdown.
+
+    score: cross-sectional rank score (0-100, higher = better)
+    roic:  EBIT / (NWC + Net Fixed Assets)              — quality
+    ey:    EBIT / Enterprise Value                       — value
+    detail: raw inputs, ranks, exclusion reason if any
+    """
+    score:  Optional[float] = None
+    roic:   Optional[float] = None
+    ey:     Optional[float] = None
+    detail: Optional[dict]  = None
 
 
 class WeinsteinDetail(BaseModel):
@@ -282,11 +299,12 @@ class InstrumentDetailResponse(BaseModel):
     strategy_pass_count: Optional[int]   = None
     weinstein_stage:     Optional[str]   = None   # For UI gate visibility
 
-    canslim:    CANSLIMDetail     = Field(default_factory=CANSLIMDetail)
-    piotroski:  PiotroskiDetail   = Field(default_factory=PiotroskiDetail)
-    minervini:  MinerviniDetail   = Field(default_factory=MinerviniDetail)
-    weinstein:  WeinsteinDetail   = Field(default_factory=WeinsteinDetail)
-    technical:  TechnicalDetail   = Field(default_factory=TechnicalDetail)
+    canslim:        CANSLIMDetail       = Field(default_factory=CANSLIMDetail)
+    piotroski:      PiotroskiDetail     = Field(default_factory=PiotroskiDetail)
+    magic_formula:  MagicFormulaDetail  = Field(default_factory=MagicFormulaDetail)
+    minervini:      MinerviniDetail     = Field(default_factory=MinerviniDetail)
+    weinstein:      WeinsteinDetail     = Field(default_factory=WeinsteinDetail)
+    technical:      TechnicalDetail     = Field(default_factory=TechnicalDetail)
     price_metrics: PriceMetrics = Field(default_factory=PriceMetrics)
     quarterly_metrics: Optional[QuarterlyMetrics] = None
     annual_metrics: Optional[AnnualMetrics] = None
@@ -332,10 +350,11 @@ class FilterQuery(BaseModel):
     conviction_level: Optional[list[str]] = None     # ["DIAMOND", "GOLD"]
     min_final_score:  Optional[float] = None
     max_final_score:  Optional[float] = None
-    min_canslim:      Optional[float] = None
-    min_piotroski:    Optional[float] = None
-    min_piotroski_f:  Optional[int]   = None         # Raw F-score (0-9)
-    min_minervini:    Optional[float] = None
+    min_canslim:       Optional[float] = None
+    min_piotroski:     Optional[float] = None
+    min_piotroski_f:   Optional[int]   = None         # Raw F-score (0-9)
+    min_magic_formula: Optional[float] = None
+    min_minervini:     Optional[float] = None
     minervini_criteria_min: Optional[int] = None     # Of 8 criteria
     weinstein_stage:  Optional[list[str]] = None     # ["2_early", "2_mid"]
     ad_rating:        Optional[list[str]] = None     # ["A+", "A", "B"]
@@ -345,7 +364,7 @@ class FilterQuery(BaseModel):
     offset:           int = Field(default=0, ge=0)
     sort_by:          str = Field(
         default="final_score",
-        pattern="^(final_score|consensus_composite|technical_composite|canslim_score|piotroski_score|minervini_score|weinstein_score)$"
+        pattern="^(final_score|consensus_composite|technical_composite|canslim_score|piotroski_score|magic_formula_score|minervini_score|weinstein_score)$"
     )
     sort_dir:         str = Field(default="desc", pattern="^(asc|desc)$")
 

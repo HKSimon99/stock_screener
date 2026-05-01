@@ -50,7 +50,7 @@ from app.schemas.v1 import (
     MarketMetrics,
     OwnershipMetrics,
     PriceMetrics, QuarterlyMetrics, ScoreHistoryPoint, WeinsteinStageHistoryPoint,
-    MinerviniDetail, PiotroskiDetail, TechnicalDetail, WeinsteinDetail,
+    MagicFormulaDetail, MinerviniDetail, PiotroskiDetail, TechnicalDetail, WeinsteinDetail,
 )
 from app.services.hydration_jobs import create_hydration_job, get_latest_hydration_job
 from app.services.hydration_jobs import reconcile_hydration_job_health, set_hydration_job_status
@@ -1129,6 +1129,12 @@ async def get_instrument(
             score  = _f(ss.piotroski_score)  if ss else None,
             f_raw  = ss.piotroski_f_raw       if ss else None,
             criteria = ss.piotroski_detail    if ss else None,
+        ),
+        magic_formula = MagicFormulaDetail(
+            score  = _f(ss.magic_formula_score) if ss else None,
+            roic   = _f(ss.magic_formula_roic)  if ss else None,
+            ey     = _f(ss.magic_formula_ey)    if ss else None,
+            detail = ss.magic_formula_detail    if ss else None,
         ),
         minervini = MinerviniDetail(
             score          = _f(ss.minervini_score)          if ss else None,

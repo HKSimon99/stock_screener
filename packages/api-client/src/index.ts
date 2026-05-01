@@ -51,6 +51,7 @@ export type RankingSortField =
   | "technical_composite"
   | "canslim_score"
   | "piotroski_score"
+  | "magic_formula_score"
   | "minervini_score"
   | "weinstein_score";
 
@@ -93,6 +94,7 @@ export interface RankingItem {
   score_date: string;
   canslim_score: number;
   piotroski_score: number;
+  magic_formula_score: number;
   minervini_score: number;
   weinstein_score: number;
 }
@@ -122,6 +124,7 @@ export interface RankingsQueryParams {
   min_strategy_pass_count?: number;
   min_canslim?: number;
   min_piotroski?: number;
+  min_magic_formula?: number;
   min_minervini?: number;
   min_weinstein?: number;
   min_rs_rating?: number;
@@ -158,6 +161,32 @@ export interface StrategyDetail {
     f8: boolean;
     f9: boolean;
     f_score: number;
+  };
+  magic_formula_detail?: {
+    /** Cross-sectional rank score 0-100 (higher = better Greenblatt stock). */
+    score: number;
+    /** EBIT / (Net Working Capital + Net Fixed Assets) — quality factor. */
+    roic: number | null;
+    /** EBIT / Enterprise Value — value factor. */
+    ey: number | null;
+    /** Rank within market on ROIC alone (1 = best). */
+    roic_rank: number | null;
+    /** Rank within market on EY alone (1 = best). */
+    ey_rank: number | null;
+    /** roic_rank + ey_rank (lower = better). */
+    combined_rank: number | null;
+    /** Total eligible instruments in this market on this score_date. */
+    universe_size: number | null;
+    /** If excluded by sector / negative EBIT / non-positive EV / etc. */
+    exclude_reason: string | null;
+    /** Raw inputs surfaced for audit. */
+    ev: number | null;
+    nwc: number | null;
+    invested_capital: number | null;
+    ebit: number | null;
+    market_cap: number | null;
+    total_debt: number | null;
+    cash_and_equivalents: number | null;
   };
   minervini_detail?: {
     t1: boolean;
@@ -388,6 +417,7 @@ export interface AdvancedFilterQuery {
   min_canslim?: number;
   min_piotroski?: number;
   min_piotroski_f?: number;
+  min_magic_formula?: number;
   min_minervini?: number;
   minervini_criteria_min?: number;
   weinstein_stage?: string[];
@@ -622,6 +652,13 @@ interface RawMinerviniDetail {
   criteria?: Record<string, unknown> | null;
 }
 
+interface RawMagicFormulaDetail {
+  score?: number | null;
+  roic?: number | null;
+  ey?: number | null;
+  detail?: Record<string, unknown> | null;
+}
+
 interface RawWeinsteinDetail {
   score?: number | null;
   stage?: string | null;
@@ -735,6 +772,7 @@ interface RawInstrumentDetail {
   strategy_pass_count?: number | null;
   canslim: RawCANSLIMDetail;
   piotroski: RawPiotroskiDetail;
+  magic_formula?: RawMagicFormulaDetail;
   minervini: RawMinerviniDetail;
   weinstein: RawWeinsteinDetail;
   technical: RawTechnicalDetail;
@@ -902,6 +940,47 @@ function extractPass(
   return false;
 }
 
+function readNumber(
+  source: Record<string, unknown> | null | undefined,
+  key: string
+): number | null {
+  const value = source?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readString(
+  source: Record<string, unknown> | null | undefined,
+  key: string
+): string | null {
+  const value = source?.[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function normalizeMagicFormulaDetail(
+  raw: RawMagicFormulaDetail | null | undefined
+): NonNullable<StrategyDetail["magic_formula_detail"]> | undefined {
+  if (!raw) return undefined;
+  const score = typeof raw.score === "number" ? raw.score : null;
+  const detail = raw.detail ?? {};
+  return {
+    score: score ?? 0,
+    roic: typeof raw.roic === "number" ? raw.roic : readNumber(detail, "roic"),
+    ey:   typeof raw.ey   === "number" ? raw.ey   : readNumber(detail, "ey"),
+    roic_rank:            readNumber(detail, "roic_rank"),
+    ey_rank:              readNumber(detail, "ey_rank"),
+    combined_rank:        readNumber(detail, "combined_rank"),
+    universe_size:        readNumber(detail, "universe_size"),
+    exclude_reason:       readString(detail, "exclude_reason"),
+    ev:                   readNumber(detail, "ev"),
+    nwc:                  readNumber(detail, "nwc"),
+    invested_capital:     readNumber(detail, "invested_capital"),
+    ebit:                 readNumber(detail, "ebit"),
+    market_cap:           readNumber(detail, "market_cap"),
+    total_debt:           readNumber(detail, "total_debt"),
+    cash_and_equivalents: readNumber(detail, "cash_and_equivalents"),
+  };
+}
+
 function humanizePattern(pattern: string | undefined): string {
   if (!pattern) return "Pattern";
   return pattern
@@ -1044,6 +1123,9 @@ function normalizeRankingItem(item: RawRankingItem): RankingItem {
     score_date: item.score_date,
     canslim_score: toNumber(item.scores.canslim),
     piotroski_score: toNumber(item.scores.piotroski),
+    magic_formula_score: toNumber(
+      (item.scores as { magic_formula?: number | null }).magic_formula
+    ),
     minervini_score: toNumber(item.scores.minervini),
     weinstein_score: toNumber(item.scores.weinstein),
   };
@@ -1116,6 +1198,7 @@ function normalizeInstrument(raw: RawInstrumentDetail): InstrumentDetail {
     score_date: raw.score_date,
     canslim_score: toNumber(raw.canslim.score),
     piotroski_score: toNumber(raw.piotroski.score),
+    magic_formula_score: toNumber(raw.magic_formula?.score),
     minervini_score: toNumber(raw.minervini.score),
     weinstein_score: toNumber(raw.weinstein.score),
     computed_at: raw.computed_at ?? undefined,
@@ -1149,6 +1232,7 @@ function normalizeInstrument(raw: RawInstrumentDetail): InstrumentDetail {
       f9: extractPass(piotroskiCriteria, "F9_asset_turnover_improving"),
       f_score: toNumber(raw.piotroski.f_raw),
     },
+    magic_formula_detail: normalizeMagicFormulaDetail(raw.magic_formula),
     minervini_detail: {
       t1: extractPass(minerviniCriteria, "T1_above_150ma"),
       t2: extractPass(minerviniCriteria, "T2_above_200ma"),

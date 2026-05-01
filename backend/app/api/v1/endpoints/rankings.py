@@ -144,7 +144,8 @@ def _entry_from_row(
         21 quarterly_as_of
         22 annual_as_of
         23 ranked_as_of
-        24 total_count  (from COUNT(*) OVER ())
+        24 magic_formula_score
+        25 total_count  (from COUNT(*) OVER ())
     """
     if row[19] is None:
         coverage_state = "ranked"
@@ -178,6 +179,7 @@ def _entry_from_row(
             piotroski=_f(row[13]),
             minervini=_f(row[14]),
             weinstein=_f(row[15]),
+            magic_formula=_f(row[24]),
         ),
         weinstein_stage=row[18],
         regime_warning=bool(row[16]) if row[16] is not None else False,
@@ -276,6 +278,7 @@ async def get_rankings(
     min_strategy_pass_count: Optional[int] = Query(None, ge=0, le=10),
     min_canslim: Optional[float] = Query(None, ge=0, le=100),
     min_piotroski: Optional[float] = Query(None, ge=0, le=100),
+    min_magic_formula: Optional[float] = Query(None, ge=0, le=100),
     min_minervini: Optional[float] = Query(None, ge=0, le=100),
     min_weinstein: Optional[float] = Query(None, ge=0, le=100),
     min_rs_rating: Optional[float] = Query(None, ge=0, le=100),
@@ -351,7 +354,8 @@ async def get_rankings(
             InstrumentCoverageSummary.quarterly_as_of,    # 21
             InstrumentCoverageSummary.annual_as_of,       # 22
             InstrumentCoverageSummary.ranked_as_of,       # 23
-            total_col,                                   # 24
+            ConsensusScore.magic_formula_score,          # 24
+            total_col,                                   # 25
         )
         .join(Instrument, ConsensusScore.instrument_id == Instrument.id)
         .outerjoin(
@@ -423,6 +427,8 @@ async def get_rankings(
         stmt = stmt.where(ConsensusScore.canslim_score >= min_canslim)
     if min_piotroski is not None:
         stmt = stmt.where(ConsensusScore.piotroski_score >= min_piotroski)
+    if min_magic_formula is not None:
+        stmt = stmt.where(ConsensusScore.magic_formula_score >= min_magic_formula)
     if min_minervini is not None:
         stmt = stmt.where(ConsensusScore.minervini_score >= min_minervini)
     if min_weinstein is not None:
@@ -470,7 +476,7 @@ async def get_rankings(
     result = await db.execute(stmt)
     rows_live = result.all()
 
-    total = rows_live[0][24] if rows_live else 0
+    total = rows_live[0][25] if rows_live else 0
     items = [_entry_from_row(row, offset + idx + 1) for idx, row in enumerate(rows_live)]
     regime = await _get_regime(market or "US", score_date, db) if items else None
     regime_warning_count = sum(1 for it in items if it.regime_warning)
@@ -493,6 +499,7 @@ async def get_rankings(
             "min_strategy_pass_count": min_strategy_pass_count,
             "min_canslim": min_canslim,
             "min_piotroski": min_piotroski,
+            "min_magic_formula": min_magic_formula,
             "min_minervini": min_minervini,
             "min_weinstein": min_weinstein,
             "min_rs_rating": min_rs_rating,

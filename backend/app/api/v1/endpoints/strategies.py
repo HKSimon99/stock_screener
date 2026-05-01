@@ -2,7 +2,7 @@
 GET  /api/v1/strategies/{name}/rankings  — per-strategy ranked list
 POST /api/v1/filters/query               — advanced multi-criteria filter
 
-Strategy names: canslim | piotroski | minervini | weinstein | dual_mom | technical
+Strategy names: canslim | piotroski | magic_formula | minervini | weinstein | dual_mom | technical
 """
 
 from __future__ import annotations
@@ -34,21 +34,23 @@ _LATEST_STRATEGY_DATE_CACHE = TtlCache[Optional[date]](ttl_seconds=60)
 # ---------------------------------------------------------------------------
 
 _STRATEGY_SCORE_COL = {
-    "canslim":    StrategyScore.canslim_score,
-    "piotroski":  StrategyScore.piotroski_score,
-    "minervini":  StrategyScore.minervini_score,
-    "weinstein":  StrategyScore.weinstein_score,
-    "dual_mom":   StrategyScore.dual_mom_score,
-    "technical":  StrategyScore.technical_composite,
+    "canslim":       StrategyScore.canslim_score,
+    "piotroski":     StrategyScore.piotroski_score,
+    "magic_formula": StrategyScore.magic_formula_score,
+    "minervini":     StrategyScore.minervini_score,
+    "weinstein":     StrategyScore.weinstein_score,
+    "dual_mom":      StrategyScore.dual_mom_score,
+    "technical":     StrategyScore.technical_composite,
 }
 
 _STRATEGY_DETAIL_COL = {
-    "canslim":   StrategyScore.canslim_detail,
-    "piotroski": StrategyScore.piotroski_detail,
-    "minervini": StrategyScore.minervini_detail,
-    "weinstein": StrategyScore.weinstein_detail,
-    "dual_mom":  StrategyScore.dual_mom_detail,
-    "technical": StrategyScore.technical_detail,
+    "canslim":       StrategyScore.canslim_detail,
+    "piotroski":     StrategyScore.piotroski_detail,
+    "magic_formula": StrategyScore.magic_formula_detail,
+    "minervini":     StrategyScore.minervini_detail,
+    "weinstein":     StrategyScore.weinstein_detail,
+    "dual_mom":      StrategyScore.dual_mom_detail,
+    "technical":     StrategyScore.technical_detail,
 }
 
 _CONSENSUS_SORT_COL = {
@@ -57,6 +59,7 @@ _CONSENSUS_SORT_COL = {
     "technical_composite":   ConsensusScore.technical_composite,
     "canslim_score":         ConsensusScore.canslim_score,
     "piotroski_score":       ConsensusScore.piotroski_score,
+    "magic_formula_score":   ConsensusScore.magic_formula_score,
     "minervini_score":       ConsensusScore.minervini_score,
     "weinstein_score":       ConsensusScore.weinstein_score,
     "dual_mom_score":        ConsensusScore.dual_mom_score,
@@ -239,6 +242,8 @@ async def filter_instruments(
         stmt = stmt.where(ConsensusScore.piotroski_score >= body.min_piotroski)
     if body.min_piotroski_f is not None:
         stmt = stmt.where(StrategyScore.piotroski_f_raw >= body.min_piotroski_f)
+    if body.min_magic_formula is not None:
+        stmt = stmt.where(ConsensusScore.magic_formula_score >= body.min_magic_formula)
     if body.min_minervini is not None:
         stmt = stmt.where(ConsensusScore.minervini_score >= body.min_minervini)
     if body.minervini_criteria_min is not None:
@@ -282,11 +287,12 @@ async def filter_instruments(
             technical_composite = float(cs.technical_composite) if cs.technical_composite   else None,
             strategy_pass_count = cs.strategy_pass_count or 0,
             scores = StrategyScores(
-                canslim   = float(cs.canslim_score)   if cs.canslim_score   else None,
-                piotroski = float(cs.piotroski_score) if cs.piotroski_score else None,
-                minervini = float(cs.minervini_score) if cs.minervini_score else None,
-                weinstein = float(cs.weinstein_score) if cs.weinstein_score else None,
-                dual_mom  = float(cs.dual_mom_score)  if cs.dual_mom_score  else None,
+                canslim       = float(cs.canslim_score)       if cs.canslim_score       else None,
+                piotroski     = float(cs.piotroski_score)     if cs.piotroski_score     else None,
+                magic_formula = float(cs.magic_formula_score) if cs.magic_formula_score else None,
+                minervini     = float(cs.minervini_score)     if cs.minervini_score     else None,
+                weinstein     = float(cs.weinstein_score)     if cs.weinstein_score     else None,
+                dual_mom      = float(cs.dual_mom_score)      if cs.dual_mom_score      else None,
             ),
             regime_warning = cs.regime_warning or False,
             score_date     = cs.score_date,

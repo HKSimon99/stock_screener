@@ -1,4 +1,8 @@
 from app.services.strategies.dual_momentum.engine import compute_dual_momentum
+from app.services.strategies.magic_formula.engine import (
+    compute_magic_formula_raw,
+    rank_magic_formula_universe,
+)
 from app.services.strategies.minervini.engine import compute_minervini_score
 from app.services.strategies.piotroski.engine import compute_f_score
 from app.services.strategies.weinstein.engine import compute_weinstein_stage
@@ -193,3 +197,104 @@ def test_dual_momentum_returns_error_when_12m_history_is_missing():
     assert abs_mom is False
     assert rel_mom is False
     assert detail["error"] == "insufficient price history for 12-month return"
+
+
+# =============================================================================
+# Magic Formula
+# =============================================================================
+
+def _mf_inputs(**overrides):
+    """Healthy baseline so individual tests can mutate one factor at a time."""
+    base = dict(
+        ebit=200.0,
+        current_assets=300.0,
+        current_liabilities=100.0,
+        net_fixed_assets=400.0,
+        market_cap=1500.0,
+        total_debt=500.0,
+        cash_and_equivalents=200.0,
+    )
+    base.update(overrides)
+    return base
+
+
+def test_magic_formula_computes_roic_and_ey_for_healthy_inputs():
+    raw = compute_magic_formula_raw(**_mf_inputs())
+
+    # NWC = max(300 - 100, 0) = 200; invested = 200 + 400 = 600; ROIC = 200/600 ≈ 0.3333
+    assert raw["data_sufficient"] is True
+    assert abs(raw["roic"] - (200 / 600)) < 1e-9
+    # EV = 1500 + 500 - 200 = 1800; EY = 200/1800 ≈ 0.1111
+    assert raw["ev"] == 1800
+    assert abs(raw["ey"] - (200 / 1800)) < 1e-9
+    assert raw["nwc"] == 200
+
+
+def test_magic_formula_excludes_negative_ebit():
+    raw = compute_magic_formula_raw(**_mf_inputs(ebit=-50.0))
+
+    assert raw["data_sufficient"] is False
+    # ROIC and EY are still computed (negative), but the exclusion gate trips
+    assert raw["roic"] is not None and raw["roic"] < 0
+    assert raw["ey"] is not None and raw["ey"] < 0
+
+
+def test_magic_formula_excludes_non_positive_ev():
+    # EV = market_cap + total_debt - cash; force net_debt to dominate so EV ≤ 0
+    raw = compute_magic_formula_raw(**_mf_inputs(market_cap=100.0, total_debt=50.0, cash_and_equivalents=200.0))
+
+    # EV = 100 + 50 - 200 = -50  → non-positive
+    assert raw["ev"] == -50
+    assert raw["data_sufficient"] is False
+
+
+def test_magic_formula_handles_missing_balance_sheet():
+    raw = compute_magic_formula_raw(**_mf_inputs(current_assets=None, current_liabilities=None))
+
+    assert raw["nwc"] is None
+    assert raw["roic"] is None
+    assert raw["data_sufficient"] is False
+
+
+def test_magic_formula_ranking_assigns_top_score_to_best_combined_rank():
+    # Construct three eligible stocks. Stock A has best ROIC + best EY; should score 100.
+    rows = [
+        {"instrument_id": 1, **compute_magic_formula_raw(
+            ebit=300, current_assets=200, current_liabilities=50,
+            net_fixed_assets=200, market_cap=1000, total_debt=100, cash_and_equivalents=50,
+        )},
+        {"instrument_id": 2, **compute_magic_formula_raw(
+            ebit=100, current_assets=200, current_liabilities=50,
+            net_fixed_assets=200, market_cap=1500, total_debt=200, cash_and_equivalents=50,
+        )},
+        {"instrument_id": 3, **compute_magic_formula_raw(
+            ebit=50, current_assets=200, current_liabilities=50,
+            net_fixed_assets=200, market_cap=2000, total_debt=300, cash_and_equivalents=50,
+        )},
+    ]
+
+    ranked = rank_magic_formula_universe(rows)
+    by_id = {r["instrument_id"]: r for r in ranked}
+
+    # Stock 1 has the highest ROIC AND highest EY → roic_rank=1, ey_rank=1, combined=2 → score top
+    assert by_id[1]["roic_rank"] == 1
+    assert by_id[1]["ey_rank"] == 1
+    assert by_id[1]["combined_rank"] == 2
+    # combined_rank ranges 2..6 for 3 stocks; max_combined = 2*3 = 6
+    # score = (1 - 2/6) * 100 ≈ 66.67
+    assert by_id[1]["score"] is not None
+    assert by_id[1]["score"] > by_id[2]["score"] > by_id[3]["score"]
+
+
+def test_magic_formula_ranking_skips_ineligible_rows():
+    rows = [
+        {"instrument_id": 1, **compute_magic_formula_raw(**_mf_inputs())},
+        {"instrument_id": 2, **compute_magic_formula_raw(**_mf_inputs(ebit=-100))},   # negative EBIT
+    ]
+
+    ranked = rank_magic_formula_universe(rows)
+    by_id = {r["instrument_id"]: r for r in ranked}
+
+    assert by_id[1]["score"] is not None
+    assert by_id[2]["score"] is None
+    assert by_id[2]["roic_rank"] is None

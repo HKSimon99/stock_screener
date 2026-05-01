@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 
-export default function AppRankingsRedirect({
+export default async function AppRankingsRedirect({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string>>;
 }) {
-  void searchParams;
-  redirect("/rankings");
+  const sp = await searchParams;
+  const qs = new URLSearchParams(sp).toString();
+  redirect(qs ? `/rankings?${qs}` : "/rankings");
 }

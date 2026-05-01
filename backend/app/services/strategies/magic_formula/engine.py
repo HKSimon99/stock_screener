@@ -96,7 +96,14 @@ def compute_magic_formula_raw(
     ey = _safe_div(ebit, ev)
     detail["ey"] = ey
 
-    data_sufficient = roic is not None and ey is not None
+    # Greenblatt exclusions:
+    #   • Negative EBIT: operating losses distort both ROIC and EY rankings.
+    #   • Non-positive EV: negative or zero EV produces meaningless EY ratios.
+    # Both are excluded from the eligible universe (data_sufficient = False).
+    ebit_positive = ebit is not None and ebit > 0
+    ev_positive = ev is not None and ev > 0
+
+    data_sufficient = roic is not None and ey is not None and ebit_positive and ev_positive
     detail["data_sufficient"] = data_sufficient
 
     return {

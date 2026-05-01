@@ -38,7 +38,11 @@ class EdgarFundamentalIngester:
             'gross_profit': ['GrossProfit'],
             'revenue': ['Revenues', 'SalesRevenueNet', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'RevenuesNetOfYear2015To2016'],
             'shares_outstanding': ['CommonStockSharesOutstanding', 'EntityCommonStockSharesOutstanding'],
-            'eps': ['EarningsPerShareBasic', 'EarningsPerShareDiluted']
+            'eps': ['EarningsPerShareBasic', 'EarningsPerShareDiluted'],
+            # Magic Formula fields
+            'ebit': ['OperatingIncomeLoss'],
+            'short_term_debt': ['ShortTermBorrowings', 'NotesPayableCurrent', 'LongTermDebtCurrent'],
+            'cash_and_equivalents': ['CashAndCashEquivalentsAtCarryingValue', 'CashCashEquivalentsAndShortTermInvestments', 'Cash'],
         }
         
         self.quarterly_concept_map = {
@@ -64,22 +68,36 @@ class EdgarFundamentalIngester:
             "shares_outstanding_annual": record_dict.get("shares_outstanding"),
             "operating_cash_flow": record_dict.get("operating_cash_flow"),
             "data_source": "EDGAR",
+            # Magic Formula fields
+            "ebit": record_dict.get("ebit"),
+            "cash_and_equivalents": record_dict.get("cash_and_equivalents"),
         }
 
         total_assets = prepared.get("total_assets")
+        current_assets = prepared.get("current_assets")
         revenue = prepared.get("revenue")
         current_liabilities = prepared.get("current_liabilities")
 
         if prepared.get("net_income") is not None and total_assets:
             prepared["roa"] = prepared["net_income"] / total_assets
-        if prepared.get("current_assets") is not None and current_liabilities:
-            prepared["current_ratio"] = prepared["current_assets"] / current_liabilities
+        if current_assets is not None and current_liabilities:
+            prepared["current_ratio"] = current_assets / current_liabilities
         if prepared.get("gross_profit") is not None and revenue:
             prepared["gross_margin"] = prepared["gross_profit"] / revenue
         if revenue is not None and total_assets:
             prepared["asset_turnover"] = revenue / total_assets
         if prepared.get("long_term_debt") is not None and total_assets:
             prepared["leverage_ratio"] = prepared["long_term_debt"] / total_assets
+
+        # total_debt = long_term_debt + short_term_debt (pop short_term_debt; not a model column)
+        short_term_debt = record_dict.get("short_term_debt")
+        long_term_debt = prepared.get("long_term_debt") or 0
+        if short_term_debt is not None or long_term_debt:
+            prepared["total_debt"] = (long_term_debt or 0) + (short_term_debt or 0)
+
+        # net_fixed_assets = total_assets - current_assets (proxy for PP&E net)
+        if total_assets is not None and current_assets is not None:
+            prepared["net_fixed_assets"] = max(0, total_assets - current_assets)
 
         required_keys = {"instrument_id", "fiscal_year", "report_date", "data_source"}
         return {

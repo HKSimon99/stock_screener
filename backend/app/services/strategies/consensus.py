@@ -7,17 +7,16 @@ with regime gating and a Weinstein Stage 2 gate.
 
 Weighting scheme (market-specific)
 ----------------------------------
-US strategy consensus (80% of final_score):
-  CANSLIM       50%
-  Piotroski     25%
-  Minervini     25%
-
-KR strategy consensus (80% of final_score):
-  Piotroski     50%
-  Minervini     50%
+Both US and KR (80% of final_score):
+  CANSLIM        40%
+  Piotroski      30%
+  Magic Formula  30%
 
 Technical composite contributes the remaining 20% when available.
 Weights are renormalized over strategies that actually have data.
+
+Minervini has been replaced by Magic Formula (Greenblatt). Legacy minervini_score
+columns are retained in the DB for historical data.
 
 Weinstein is **gate-only**: if the instrument is not in Stage 2
 (2_early / 2_mid / 2_late) the final conviction is capped at SILVER.
@@ -62,8 +61,8 @@ logger = logging.getLogger(__name__)
 
 # Market-specific strategy weights (each market's dict sums to 1.0)
 STRATEGY_WEIGHTS: dict[str, dict[str, float]] = {
-    "US": {"canslim": 0.50, "piotroski": 0.25, "minervini": 0.25},
-    "KR": {"piotroski": 0.50, "minervini": 0.50},
+    "US": {"canslim": 0.40, "piotroski": 0.30, "magic_formula": 0.30},
+    "KR": {"canslim": 0.40, "piotroski": 0.30, "magic_formula": 0.30},
 }
 
 # Strategy consensus gets 80%, technical composite 20% (if both present).
@@ -119,13 +118,14 @@ def _assign_conviction(final_score: float, pass_count: int) -> str:
 def compute_consensus(
     *,
     market: str,
-    canslim_score:       Optional[float] = None,
-    piotroski_score:     Optional[float] = None,
-    minervini_score:     Optional[float] = None,
-    technical_composite: Optional[float] = None,
-    weinstein_stage:     Optional[str]   = None,
-    weinstein_score:     Optional[float] = None,   # stored for history, not weighted
-    regime_state:        Optional[str]   = "CONFIRMED_UPTREND",
+    canslim_score:         Optional[float] = None,
+    piotroski_score:       Optional[float] = None,
+    magic_formula_score:   Optional[float] = None,
+    minervini_score:       Optional[float] = None,  # legacy — ignored in weighting
+    technical_composite:   Optional[float] = None,
+    weinstein_stage:       Optional[str]   = None,
+    weinstein_score:       Optional[float] = None,  # stored for history, not weighted
+    regime_state:          Optional[str]   = "CONFIRMED_UPTREND",
 ) -> dict:
     """
     Compute consensus composite, conviction level, and full score breakdown.
@@ -139,9 +139,9 @@ def compute_consensus(
 
     weights_for_market = STRATEGY_WEIGHTS[market]
     raw_scores: dict[str, Optional[float]] = {
-        "canslim":   canslim_score,
-        "piotroski": piotroski_score,
-        "minervini": minervini_score,
+        "canslim":       canslim_score,
+        "piotroski":     piotroski_score,
+        "magic_formula": magic_formula_score,
     }
     # Restrict to strategies valid for this market AND present.
     available = {
@@ -282,24 +282,26 @@ async def score_instrument_consensus(
         return float(val) if val is not None else None
 
     result = compute_consensus(
-        market              = market,
-        canslim_score       = _f(ss.canslim_score),
-        piotroski_score     = _f(ss.piotroski_score),
-        minervini_score     = _f(ss.minervini_score),
-        technical_composite = _f(ss.technical_composite),
-        weinstein_stage     = ss.weinstein_stage,
-        weinstein_score     = _f(ss.weinstein_score),
-        regime_state        = regime_state,
+        market               = market,
+        canslim_score        = _f(ss.canslim_score),
+        piotroski_score      = _f(ss.piotroski_score),
+        magic_formula_score  = _f(ss.magic_formula_score),
+        minervini_score      = _f(ss.minervini_score),
+        technical_composite  = _f(ss.technical_composite),
+        weinstein_stage      = ss.weinstein_stage,
+        weinstein_score      = _f(ss.weinstein_score),
+        regime_state         = regime_state,
     )
 
     return {
-        "instrument_id":       instrument_id,
-        "score_date":          score_date,
-        "canslim_score":       _f(ss.canslim_score),
-        "piotroski_score":     _f(ss.piotroski_score),
-        "minervini_score":     _f(ss.minervini_score),
-        "weinstein_score":     _f(ss.weinstein_score),
-        "technical_composite": _f(ss.technical_composite),
+        "instrument_id":        instrument_id,
+        "score_date":           score_date,
+        "canslim_score":        _f(ss.canslim_score),
+        "piotroski_score":      _f(ss.piotroski_score),
+        "magic_formula_score":  _f(ss.magic_formula_score),
+        "minervini_score":      _f(ss.minervini_score),
+        "weinstein_score":      _f(ss.weinstein_score),
+        "technical_composite":  _f(ss.technical_composite),
         **result,
     }
 

@@ -64,6 +64,12 @@ class FundamentalAnnual(Base):
     # Cash flow (Piotroski F2, F4)
     operating_cash_flow = Column(BigInteger)
 
+    # Magic Formula (Greenblatt) fields
+    ebit = Column(BigInteger)                            # 영업이익 (Operating Profit)
+    total_debt = Column(BigInteger)                      # long_term_debt + short_term_debt
+    cash_and_equivalents = Column(BigInteger)            # for EV = market_cap + net_debt
+    net_fixed_assets = Column(BigInteger)                # total_assets - current_assets - intangibles
+
     # Pre-computed ratios (for Piotroski)
     roa = Column(Numeric(10, 6))                        # net_income / total_assets
     current_ratio = Column(Numeric(10, 6))              # current_assets / current_liabilities

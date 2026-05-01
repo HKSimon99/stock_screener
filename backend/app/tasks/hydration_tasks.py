@@ -40,17 +40,19 @@ async def run_hydration_job(*, job_id: int, celery_task_id: str | None = None) -
 
     try:
         if market == "US":
-            price_result = await run_us_price_ingestion(tickers=[ticker], days=365, sync_universe=False)
+            price_coro = run_us_price_ingestion(tickers=[ticker], days=365, sync_universe=False)
         elif market == "KR":
-            price_result = await run_kr_price_ingestion(tickers=[ticker], days=365, sync_universe=False)
+            price_coro = run_kr_price_ingestion(tickers=[ticker], days=365, sync_universe=False)
         else:
             raise ValueError(f"Unsupported market: {market}")
 
-        fundamentals_result = await run_market_fundamentals_ingestion(
+        fundamentals_coro = run_market_fundamentals_ingestion(
             market=market,
             tickers=[ticker],
             years=5,
         )
+
+        price_result, fundamentals_result = await asyncio.gather(price_coro, fundamentals_coro)
 
         result = {
             "job_id": job_id,

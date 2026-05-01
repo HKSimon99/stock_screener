@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
 
 const NAV_ITEMS = [
-  { href: "/app/rankings", label: "Rankings", icon: Layers3 },
+  { href: "/rankings", label: "Rankings", icon: Layers3 },
   { href: "/app/search", label: "Search", icon: Search },
   { href: "/app/alerts", label: "Alerts", icon: Bell },
   { href: "/app/market-regime", label: "Regime", icon: Radar },
@@ -37,7 +37,7 @@ export function AppNav() {
               <div>
                 <div className="tiny-label">Consensus Research App</div>
                 <Link
-                  href="/app/rankings"
+                  href="/rankings"
                   className="mt-1 inline-block font-heading text-3xl uppercase tracking-[0.05em] text-white"
                 >
                   Signal Research Desk

@@ -936,6 +936,30 @@ def run_minervini_task(
     }
 
 
+@celery_app.task(name="app.tasks.scoring.run_magic_formula")
+def run_magic_formula_task(
+    score_date: Optional[str] = None,
+    market: Optional[str] = None,
+    instrument_ids: Optional[list[int]] = None,
+) -> dict:
+    from app.services.strategies.magic_formula.engine import run_magic_formula_scoring
+
+    parsed_date = _parse_score_date(score_date)
+    results = asyncio.run(
+        run_magic_formula_scoring(
+            score_date=parsed_date,
+            market=market,
+            instrument_ids=instrument_ids,
+        )
+    )
+    return {
+        "score_date": (parsed_date or date.today()).isoformat(),
+        "market": market,
+        "scored_count": len(results),
+        "scored_instrument_ids": [r["instrument_id"] for r in results],
+    }
+
+
 @celery_app.task(name="app.tasks.scoring.run_weinstein")
 def run_weinstein_task(
     score_date: Optional[str] = None,

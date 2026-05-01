@@ -14,6 +14,7 @@ import { Pin } from "lucide-react";
 import { buildInstrumentPath } from "@/lib/api";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { SparklineChart } from "@/components/sparkline-chart";
 
 // ── Shared data shape ─────────────────────────────────────────────────────────
 
@@ -117,13 +118,21 @@ export function RankingRow({ item, showPin = true }: RankingRowProps) {
           )}
         </div>
 
-        {/* ── Score + pin ───────────────────────────────────────────────── */}
+        {/* ── Score + sparkline + pin ───────────────────────────────────── */}
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <div className="text-right">
-            <div className="font-mono text-lg text-white">
-              {item.final_score.toFixed(1)}
+          <div className="flex items-end gap-3">
+            <SparklineChart
+              ticker={item.ticker}
+              market={item.market}
+              width={72}
+              height={28}
+            />
+            <div className="text-right">
+              <div className="font-mono text-lg text-white">
+                {item.final_score.toFixed(1)}
+              </div>
+              <ScoreBar score={item.final_score} />
             </div>
-            <ScoreBar score={item.final_score} />
           </div>
 
           {showPin && (

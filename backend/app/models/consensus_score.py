@@ -20,7 +20,8 @@ class ConsensusScore(Base):
     # Strategy composite scores (0–100 each)
     canslim_score = Column(Numeric(5, 2))
     piotroski_score = Column(Numeric(5, 2))
-    minervini_score = Column(Numeric(5, 2))
+    minervini_score = Column(Numeric(5, 2))           # legacy — kept for history
+    magic_formula_score = Column(Numeric(5, 2))
     weinstein_score = Column(Numeric(5, 2))
     dual_mom_score = Column(Numeric(5, 2))
     technical_composite = Column(Numeric(5, 2))

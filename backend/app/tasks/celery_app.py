@@ -44,6 +44,45 @@ celery_app.conf.update(
     result_expires=86400,                   # Keep results for 1 day
     worker_max_tasks_per_child=100,         # Restart worker after 100 tasks (prevent memory leaks)
     beat_schedule={
+        # ── KR nightly (장 마감 후 UTC 07:00 = KST 16:00) ──────────────────
+        "nightly-kr-prices": {
+            "task": "app.tasks.ingestion.run_kr_prices_batch",
+            "schedule": crontab(minute=0, hour=7),
+        },
+        "nightly-kr-fundamentals": {
+            "task": "app.tasks.ingestion.run_kr_fundamentals_batch",
+            "schedule": crontab(minute=30, hour=7),
+        },
+        "nightly-kr-magic-formula": {
+            "task": "app.tasks.scoring.run_magic_formula",
+            "schedule": crontab(minute=0, hour=8),
+            "kwargs": {"market": "KR"},
+        },
+        "nightly-kr-scoring": {
+            "task": "app.tasks.scoring.run_full_pipeline",
+            "schedule": crontab(minute=30, hour=9),
+            "kwargs": {"market": "KR"},
+        },
+        # ── US nightly (장 마감 후 UTC 22:00 = ET 17:00 + 1h buffer) ────────
+        "nightly-us-prices": {
+            "task": "app.tasks.ingestion.run_us_prices_batch",
+            "schedule": crontab(minute=0, hour=22),
+        },
+        "nightly-us-fundamentals": {
+            "task": "app.tasks.ingestion.run_us_fundamentals_batch",
+            "schedule": crontab(minute=30, hour=22),
+        },
+        "nightly-us-magic-formula": {
+            "task": "app.tasks.scoring.run_magic_formula",
+            "schedule": crontab(minute=0, hour=23),
+            "kwargs": {"market": "US"},
+        },
+        "nightly-us-scoring": {
+            "task": "app.tasks.scoring.run_full_pipeline",
+            "schedule": crontab(minute=30, hour=0),
+            "kwargs": {"market": "US"},
+        },
+        # ── Alerts ───────────────────────────────────────────────────────────
         "daily-data-integrity-monitor": {
             "task": "app.tasks.alerts.run_data_integrity_monitoring",
             "schedule": crontab(minute=15, hour=1),

@@ -761,6 +761,40 @@ async def get_instrument_hydration_status(
 
 
 @router.get(
+    "/{ticker}/sparkline",
+    summary="Last N daily close prices for mini-chart (sparkline) display",
+)
+async def get_instrument_sparkline(
+    ticker: str,
+    market: Optional[str] = Query(None, pattern="^(US|KR)$"),
+    points: int = Query(16, ge=5, le=60),
+    db: AsyncSession = Depends(get_read_db),
+) -> dict:
+    """Returns the last `points` daily closes as a simple float array.
+    Designed for ranking-card sparklines — fast, lightweight, no auth needed.
+    """
+    instrument = await _resolve_instrument(ticker=ticker, market=market, db=db)
+
+    stmt = (
+        select(Price.date, Price.close)
+        .where(Price.instrument_id == instrument.id)
+        .where(Price.close.is_not(None))
+        .order_by(Price.date.desc())
+        .limit(points)
+    )
+    rows = (await db.execute(stmt)).all()
+    # Return in chronological order (oldest → newest)
+    closes = [float(row.close) for row in reversed(rows)]
+
+    return {
+        "ticker": ticker,
+        "market": instrument.market,
+        "closes": closes,
+        "count": len(closes),
+    }
+
+
+@router.get(
     "/{ticker}/chart",
     response_model=InstrumentChartResponse,
     summary="Chart payload for a ticker",

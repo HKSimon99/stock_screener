@@ -38,6 +38,12 @@ class StrategyScore(Base):
     minervini_criteria_count = Column(Integer)      # How many of 8 criteria pass
     minervini_detail = Column(JSONB)                # T1–T8 individual pass/fail
 
+    # ── Magic Formula (Greenblatt) ──────────────────────────────────────────
+    magic_formula_score = Column(Numeric(5, 2))       # Normalized 0-100 (universe rank)
+    magic_formula_roic = Column(Numeric(10, 6))       # Return on Invested Capital
+    magic_formula_ey = Column(Numeric(10, 6))         # Earnings Yield (EBIT/EV)
+    magic_formula_detail = Column(JSONB)              # roic_rank, ey_rank, ev, nwc, etc.
+
     # ── Weinstein Stage Analysis (Section 3.4) ───────────────────────────────
     weinstein_score = Column(Numeric(5, 2))
     weinstein_stage = Column(String(20))            # '1'|'2_early'|'2_mid'|'2_late'|'3'|'4'

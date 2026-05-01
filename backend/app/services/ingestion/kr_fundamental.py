@@ -43,6 +43,12 @@ ANNUAL_MODEL_FIELDS = {
     "long_term_debt",
     "shares_outstanding_annual",
     "operating_cash_flow",
+    # Magic Formula fields
+    "ebit",
+    "total_debt",
+    "cash_and_equivalents",
+    "net_fixed_assets",
+    # Pre-computed ratios
     "roa",
     "current_ratio",
     "gross_margin",
@@ -155,6 +161,43 @@ class KRFundamentalIngester:
                     "영업활동으로 인한 현금흐름",
                     "영업에서 창출된 현금흐름",
                     "영업으로부터 창출된 현금흐름",
+                ],
+            },
+            # ── Magic Formula (Greenblatt) ───────────────────────────────────
+            "ebit": {
+                "sj_div": ("IS", "CIS"),
+                "account_names": [
+                    "영업이익",
+                    "영업이익(손실)",
+                    "연결영업이익",
+                    "영업손익",
+                ],
+                "account_ids": [
+                    "ifrs-full_ProfitLossFromOperatingActivities",
+                    "ifrs-full_OperatingIncome",
+                ],
+            },
+            "short_term_debt": {
+                "sj_div": ("BS",),
+                "account_names": [
+                    "단기차입금",
+                    "유동성장기부채",
+                    "유동성장기차입금",
+                    "유동성사채",
+                    "단기사채",
+                ],
+                "sum_matches": True,
+            },
+            "cash_and_equivalents": {
+                "sj_div": ("BS",),
+                "account_names": [
+                    "현금및현금성자산",
+                    "현금과예금",
+                    "현금및예금",
+                    "현금및단기금융상품",
+                ],
+                "account_ids": [
+                    "ifrs-full_CashAndCashEquivalents",
                 ],
             },
         }
@@ -377,6 +420,14 @@ class KRFundamentalIngester:
             prepared["asset_turnover"] = revenue / total_assets
         if long_term_debt is not None and total_assets not in (None, 0):
             prepared["leverage_ratio"] = long_term_debt / total_assets
+
+        # Magic Formula derived fields
+        short_term_debt = prepared.pop("short_term_debt", None)
+        long_term_debt_val = prepared.get("long_term_debt")
+        if short_term_debt is not None or long_term_debt_val is not None:
+            prepared["total_debt"] = (short_term_debt or 0) + (long_term_debt_val or 0)
+        if total_assets is not None and current_assets is not None:
+            prepared["net_fixed_assets"] = total_assets - current_assets
 
         return {key: value for key, value in prepared.items() if key in ANNUAL_MODEL_FIELDS}
 

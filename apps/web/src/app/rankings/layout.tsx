@@ -1,14 +1,11 @@
-import { auth } from "@clerk/nextjs/server";
 import { AppNav } from "@/components/app-nav";
 import { LegalFooter } from "@/components/legal-footer";
 
-export default async function ProductAppLayout({
+export default function PublicRankingsLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  await auth.protect();
-
   return (
     <div className="min-h-screen">
       <AppNav />

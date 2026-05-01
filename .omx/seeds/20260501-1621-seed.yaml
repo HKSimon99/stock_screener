@@ -1,0 +1,102 @@
+version: "1.0"
+created: "2026-05-01T16:21:00"
+project: consensus-stock-screener
+
+objective: >
+  "Consensus"를 product-ready freemium SaaS로 완성한다.
+  한국·미국 주식을 CANSLIM·Piotroski·Magic Formula 3전략으로 점수화·순위화하여
+  주식 초보도 직관적으로 쓰고 "wow" 반응을 보이는 수준의 웹 서비스를 배포한다.
+  로그인 기반 무료 서비스로 시작해 전략 검증 후 유료 전환을 준비한다.
+
+brownfield:
+  monorepo: apps/web (Next.js), apps/mobile (React Native/Expo), backend/ (FastAPI + Neon PostgreSQL)
+  infra: Railway (backend), Vercel (web)
+  design_reference: Downloads/stock-screener/project/Consensus Mobile Prototype.html
+  known_issues:
+    - 신규 종목 데이터 로딩 18초+ (구조적 병목, 전면 개선 필요)
+    - CANSLIM·Piotroski·Minervini 기준 일부 미완성
+    - UI/UX가 프로토타입 수준 미달
+
+platform_priority:
+  phase1: 웹 (완성 후 배포)
+  phase2: 모바일 (앱스토어 출시)
+
+strategies:
+  canslim:
+    guru: William O'Neil
+    priority: 핵심 (기술적 + 펀더멘털 통합)
+    criteria:
+      C: EPS 전분기 대비 25%+ 성장
+      A: EPS 3년 연속 25%+ 성장
+      N: 52주 신고가 또는 신제품·신경영
+      S: 유통주식수 적고 거래량 동반 급등
+      L: RS Rating 업종 상위 20%
+      I: 기관 매수 증가 (분기별 확인)
+      M: 시장 국면 Bull (200일선 위)
+  piotroski:
+    guru: Joseph Piotroski
+    priority: 보조 (재무 건전성 검증)
+    criteria:
+      수익성: ROA > 0, CFO > 0, ROA 전년 대비 개선, Accrual(CFO > ROA)
+      레버리지: 부채비율 감소, 유동비율 개선, 신주 발행 없음
+      효율성: 매출총이익률 개선, 자산회전율 개선
+      scoring: 9점 만점, 7점 이상 = 강한 기업
+  magic_formula:
+    guru: Joel Greenblatt
+    priority: 보조 (가치 + 수익성 복합)
+    criteria:
+      ROIC: 투하자본수익률 (영업이익 / 순유형자산 + 순운전자본)
+      EY: 이익수익률 (EBIT / EV)
+      scoring: 두 지표 순위 합산, 낮을수록 우수
+
+monetization:
+  model: freemium
+  current: 무료 (로그인 필수)
+  future: 전략 수익 검증 후 유료 플랜 전환
+  rationale: 로그인으로 이메일 확보 → 습관 형성 → 유료 전환 유도
+
+acceptance_criteria:
+  - id: AC-01
+    name: 로딩 속도
+    description: 랭킹 리스트 첫 화면 3초 이내 로드 (현재 18초+ → 전면 구조 개선)
+    priority: critical
+
+  - id: AC-02
+    name: 3전략 완성
+    description: CANSLIM·Piotroski·Magic Formula 모든 기준이 실제 데이터로 정확히 계산됨
+    priority: critical
+
+  - id: AC-03
+    name: 디자인 품질
+    description: 프로토타입(Space Grotesk + Instrument Serif, 다크 테마) 수준의 웹 UI 구현
+    priority: critical
+
+  - id: AC-04
+    name: 한·미 시장
+    description: US(NASDAQ·NYSE) + KR(KOSPI·KOSDAQ) 동시 지원
+    priority: critical
+
+  - id: AC-05
+    name: 로그인 시스템
+    description: 소셜 로그인(Google 등) 포함 인증 플로우 완성
+    priority: high
+
+  - id: AC-06
+    name: 초보 친화 UX
+    description: 각 구루 기준을 비전문가도 이해하는 설명과 함께 표시
+    priority: high
+
+  - id: AC-07
+    name: 웹 배포
+    description: Vercel에 실제 배포, 외부 사용자 접근 가능
+    priority: high
+
+assumptions:
+  - 데이터 소스는 yfinance·OpenDART·KIS Developers 무료 API 유지
+  - 백엔드 인프라(Railway + Neon)는 유지하되 데이터 파이프라인 구조 전면 개선
+  - Minervini는 CANSLIM과 중복이 크므로 Magic Formula로 교체
+
+constraints:
+  - 유료 데이터 API 불가 (Polygon 등)
+  - 기존 모노레포 구조 유지
+  - 웹 완성 전까지 모바일 개발 시작 안 함

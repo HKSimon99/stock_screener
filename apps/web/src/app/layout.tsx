@@ -7,6 +7,7 @@ import {
 import { ClerkProvider } from "@clerk/nextjs";
 import { Observability } from "@/components/observability";
 import { Providers } from "@/components/providers";
+import SentryErrorBoundary from "@/components/sentry-error-boundary";
 import "./globals.css";
 
 const bodyFont = Public_Sans({
@@ -55,11 +56,13 @@ export default function RootLayout({
         >
           Skip to content
         </a>
-        <ClerkProvider>
-          <Providers>
-            <div id="content">{children}</div>
-          </Providers>
-        </ClerkProvider>
+        <SentryErrorBoundary>
+          <ClerkProvider>
+            <Providers>
+              <div id="content">{children}</div>
+            </Providers>
+          </ClerkProvider>
+        </SentryErrorBoundary>
         <Observability />
       </body>
     </html>

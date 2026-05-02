@@ -1,6 +1,5 @@
 "use client";
 
-import * as Sentry from "@sentry/nextjs";
 import React, { ReactNode } from "react";
 
 interface ErrorBoundaryProps {
@@ -22,17 +21,7 @@ class SentryErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBound
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Capture to Sentry. errorInfo's componentStack is a multi-line stack of
-    // React component names; flatten to a Sentry-compatible Context shape
-    // (Sentry's Context type is Record<string, unknown>; React.ErrorInfo's
-    // declared type is structurally incompatible).
-    Sentry.captureException(error, {
-      contexts: {
-        react: {
-          componentStack: errorInfo.componentStack ?? null,
-        },
-      },
-    });
+    console.error("Uncaught error:", error, errorInfo);
   }
 
   render() {
@@ -41,7 +30,7 @@ class SentryErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBound
         <div className="min-h-screen flex items-center justify-center bg-black p-4">
           <div className="text-center max-w-md">
             <h1 className="text-2xl font-bold text-white mb-4">Something went wrong</h1>
-            <p className="text-faint mb-6">We've logged the error. Please try refreshing the page.</p>
+            <p className="text-faint mb-6">Please try refreshing the page.</p>
             <button
               onClick={() => window.location.reload()}
               className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded"

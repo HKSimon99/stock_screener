@@ -294,6 +294,117 @@ def compute_technical_composite_from_context(
     }
 
 
+def compute_magic_formula_raw_from_context(
+    *,
+    instrument_id: int,
+    annuals: tuple[AnnualReport, ...],
+    prices: tuple[PriceBar, ...],
+    shares_outstanding: Optional[float],
+) -> Optional[dict]:
+    """
+    Compute raw ROIC and Earnings Yield per instrument.
+    Returns None if the instrument is ineligible (negative EBIT, zero capital, etc.).
+    Cross-sectional ranking happens separately in rank_magic_formula_results().
+    """
+    if not annuals or not prices:
+        return None
+
+    latest = annuals[-1]
+    ebit = latest.ebit
+    if ebit is None or ebit <= 0:
+        return None  # Greenblatt requires positive operating earnings
+
+    # Net Working Capital = max(0, current_assets - current_liabilities)
+    ca = latest.current_assets or 0.0
+    cl = latest.current_liabilities or 0.0
+    nwc = max(0.0, ca - cl)
+
+    nfa = latest.net_fixed_assets or 0.0
+    invested_capital = nwc + nfa
+    if invested_capital <= 0:
+        return None
+
+    roic = ebit / invested_capital
+
+    # Enterprise Value = Market Cap + Total Debt - Cash
+    latest_price = prices[-1].close
+    if latest_price is None or shares_outstanding is None or shares_outstanding <= 0:
+        return None
+
+    market_cap = shares_outstanding * latest_price
+    total_debt = latest.total_debt or 0.0
+    cash = latest.cash_and_equivalents or 0.0
+    ev = market_cap + total_debt - cash
+    if ev <= 0:
+        return None
+
+    ey = ebit / ev
+
+    return {
+        "instrument_id": instrument_id,
+        "roic": roic,
+        "ey": ey,
+        "ebit": ebit,
+        "invested_capital": invested_capital,
+        "market_cap": market_cap,
+        "ev": ev,
+    }
+
+
+def rank_magic_formula_results(
+    raw_results: list[dict],
+    score_date: date,
+) -> list[dict]:
+    """
+    Cross-sectional Magic Formula ranking (Greenblatt two-pass approach).
+
+    1. Rank all eligible instruments by ROIC descending (rank 1 = highest ROIC)
+    2. Rank all eligible instruments by EY descending (rank 1 = highest EY)
+    3. Combined rank = ROIC rank + EY rank (lower combined = better)
+    4. Normalize combined rank to 0-100 score (best gets 100)
+    """
+    if not raw_results:
+        return []
+
+    n = len(raw_results)
+
+    roic_sorted = sorted(raw_results, key=lambda x: x["roic"], reverse=True)
+    roic_rank = {item["instrument_id"]: rank + 1 for rank, item in enumerate(roic_sorted)}
+
+    ey_sorted = sorted(raw_results, key=lambda x: x["ey"], reverse=True)
+    ey_rank = {item["instrument_id"]: rank + 1 for rank, item in enumerate(ey_sorted)}
+
+    enriched = [
+        {**item, "combined_rank": roic_rank[item["instrument_id"]] + ey_rank[item["instrument_id"]]}
+        for item in raw_results
+    ]
+    enriched.sort(key=lambda x: x["combined_rank"])
+
+    results = []
+    for position, item in enumerate(enriched):
+        normalized = 100.0 * (n - 1 - position) / (n - 1) if n > 1 else 100.0
+        inst_id = item["instrument_id"]
+        results.append({
+            "instrument_id": inst_id,
+            "score_date": score_date,
+            "magic_formula_score": round(normalized, 2),
+            "magic_formula_roic": round(item["roic"], 4),
+            "magic_formula_ey": round(item["ey"], 4),
+            "magic_formula_detail": {
+                "ebit": item["ebit"],
+                "invested_capital": round(item["invested_capital"], 0),
+                "market_cap": round(item["market_cap"], 0),
+                "enterprise_value": round(item["ev"], 0),
+                "roic_rank": roic_rank[inst_id],
+                "ey_rank": ey_rank[inst_id],
+                "combined_rank": item["combined_rank"],
+                "universe_size": n,
+            },
+        })
+
+    return results
+
+
 def compute_canslim_from_context(
     *,
     instrument: InstrumentMeta,

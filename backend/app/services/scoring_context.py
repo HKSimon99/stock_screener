@@ -69,6 +69,11 @@ class AnnualReport:
     long_term_debt: Optional[float]
     shares_outstanding_annual: Optional[float]
     operating_cash_flow: Optional[float]
+    # Magic Formula fields (populated after migration 0012)
+    ebit: Optional[float] = None
+    total_debt: Optional[float] = None
+    cash_and_equivalents: Optional[float] = None
+    net_fixed_assets: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -284,6 +289,10 @@ async def load_batch_scoring_context(
                 long_term_debt=_float(row.long_term_debt),
                 shares_outstanding_annual=_float(row.shares_outstanding_annual),
                 operating_cash_flow=_float(row.operating_cash_flow),
+                ebit=_float(getattr(row, "ebit", None)),
+                total_debt=_float(getattr(row, "total_debt", None)),
+                cash_and_equivalents=_float(getattr(row, "cash_and_equivalents", None)),
+                net_fixed_assets=_float(getattr(row, "net_fixed_assets", None)),
             )
             for row in reversed(grouped_annuals_desc.get(instrument_id, []))
         )

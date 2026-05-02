@@ -16,12 +16,14 @@ from app.models.price import Price
 from app.services.scoring_compute import (
     compute_canslim_from_context,
     compute_dual_momentum_from_context,
+    compute_magic_formula_raw_from_context,
     compute_minervini_from_context,
     compute_patterns_from_context,
     compute_piotroski_from_context,
     compute_technical_composite_from_context,
     compute_technical_indicators_from_context,
     compute_weinstein_from_context,
+    rank_magic_formula_results,
 )
 from app.services.scoring_context import load_batch_scoring_context
 from app.services.strategy_score_bulk import bulk_upsert_strategy_scores, merge_strategy_score_rows
@@ -225,6 +227,7 @@ def _build_full_pipeline_result(
     market: Optional[str],
     canslim_count: int,
     piotroski_count: int,
+    magic_formula_count: int,
     minervini_count: int,
     weinstein_count: int,
     dual_momentum_count: int,
@@ -256,6 +259,7 @@ def _build_full_pipeline_result(
         "market": market,
         "canslim_scored": canslim_count,
         "piotroski_scored": piotroski_count,
+        "magic_formula_scored": magic_formula_count,
         "minervini_scored": minervini_count,
         "weinstein_scored": weinstein_count,
         "dual_momentum_scored": dual_momentum_count,
@@ -302,6 +306,7 @@ async def _run_context_full_scoring_pipeline(
 
         canslim_count = 0
         piotroski_count = 0
+        magic_formula_count = 0
         minervini_count = 0
         weinstein_count = 0
         dual_momentum_count = 0
@@ -309,6 +314,7 @@ async def _run_context_full_scoring_pipeline(
         pattern_count = 0
         pattern_hits = 0
         composite_results: list[dict] = []
+        raw_mf_results: list[dict] = []  # Collected across all chunks; ranked after
 
         market_inputs_started_at = perf_counter()
         (
@@ -414,6 +420,30 @@ async def _run_context_full_scoring_pipeline(
                     name="piotroski",
                     duration_ms=(perf_counter() - stage_started_at) * 1000,
                     result_count=len(piotroski_results),
+                )
+
+                # Magic Formula: collect raw ROIC/EY per instrument this chunk.
+                # Cross-sectional ranking happens after all chunks are processed.
+                stage_started_at = perf_counter()
+                chunk_raw_mf: list[dict] = []
+                for inst_id in chunk_ids:
+                    ctx = batch_context.instruments.get(inst_id)
+                    if ctx is None:
+                        continue
+                    result = compute_magic_formula_raw_from_context(
+                        instrument_id=inst_id,
+                        annuals=ctx.annuals,
+                        prices=ctx.prices,
+                        shares_outstanding=ctx.instrument.shares_outstanding,
+                    )
+                    if result is not None:
+                        chunk_raw_mf.append(result)
+                raw_mf_results.extend(chunk_raw_mf)
+                _accumulate_stage_metric(
+                    stage_metrics,
+                    name="magic_formula_raw",
+                    duration_ms=(perf_counter() - stage_started_at) * 1000,
+                    result_count=len(chunk_raw_mf),
                 )
 
                 stage_started_at = perf_counter()
@@ -565,6 +595,22 @@ async def _run_context_full_scoring_pipeline(
                 composite_results.extend(chunk_composite_results)
                 unique_ids.update(row["instrument_id"] for row in bulk_rows)
 
+        # Magic Formula cross-sectional ranking (requires all instruments to be seen first)
+        mf_started_at = perf_counter()
+        mf_scored_rows = rank_magic_formula_results(raw_mf_results, parsed_date)
+        if mf_scored_rows:
+            async with AsyncSessionLocal() as db:
+                await bulk_upsert_strategy_scores(db, mf_scored_rows)
+                await db.commit()
+            magic_formula_count = len(mf_scored_rows)
+            unique_ids.update(row["instrument_id"] for row in mf_scored_rows)
+        _accumulate_stage_metric(
+            stage_metrics,
+            name="magic_formula_rank",
+            duration_ms=(perf_counter() - mf_started_at) * 1000,
+            result_count=magic_formula_count,
+        )
+
         consensus_results = await _run_profiled_stage(
             "consensus",
             run_consensus_scoring(
@@ -599,6 +645,7 @@ async def _run_context_full_scoring_pipeline(
         market=market,
         canslim_count=canslim_count,
         piotroski_count=piotroski_count,
+        magic_formula_count=magic_formula_count,
         minervini_count=minervini_count,
         weinstein_count=weinstein_count,
         dual_momentum_count=dual_momentum_count,

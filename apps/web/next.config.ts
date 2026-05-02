@@ -2,12 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   redirects: async () => [
-    // Old root routes → /app/* authenticated equivalents (301 permanent)
-    {
-      source: "/rankings",
-      destination: "/app/rankings",
-      permanent: true,
-    },
+    // /rankings is now a public route — no redirect needed (D5 decision)
     {
       source: "/alerts",
       destination: "/app/alerts",

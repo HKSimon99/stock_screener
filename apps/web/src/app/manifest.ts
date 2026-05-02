@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Consensus Signal Research",
     short_name: "Consensus",
     description: "Coverage-aware stock search, rankings, and chart research for US and Korea.",
-    start_url: "/app/rankings",
+    start_url: "/rankings",
     display: "standalone",
     background_color: "#0f1218",
     theme_color: "#d4a951",

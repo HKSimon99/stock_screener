@@ -28,7 +28,7 @@ export function SiteChrome() {
             </Link>
           ))}
           <Link
-            href="/app/rankings"
+            href="/rankings"
             className="rounded-full border border-[oklch(0.78_0.11_84_/_0.42)] bg-[oklch(0.8_0.11_84_/_0.14)] px-4 py-2 text-[0.72rem] uppercase tracking-[0.14em] text-white"
           >
             Open App

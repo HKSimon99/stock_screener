@@ -1711,6 +1711,7 @@ export async function acceptTos(params: {
   return apiFetch<UserMe>("/users/me/accept-tos", {
     method: "POST",
     bearerToken: params.bearerToken,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       version: params.version,
       email: params.email,

@@ -27,6 +27,79 @@ import { CanslimTab } from "@/app/app/strategies/_components/canslim-filter-buil
 
 type StrategyTab = "canslim" | "piotroski" | "magic_formula";
 
+// ── Strategy metadata ─────────────────────────────────────────────────────────
+
+interface StrategyCriterion {
+  label: string;
+  desc: string;
+}
+
+interface StrategyInfo {
+  guru: string;
+  guruTitle: string;
+  tagline: string;
+  description: string;
+  criteria: StrategyCriterion[];
+}
+
+const STRATEGY_INFO: Record<StrategyTab, StrategyInfo> = {
+  canslim: {
+    guru: "William J. O'Neil",
+    guruTitle: "Investor's Business Daily 창업자",
+    tagline: "성장주 7대 기준",
+    description:
+      "IBD 창업자 윌리엄 오닐이 1988년 정리한 성장주 선별 기준. 주당순이익(EPS)과 매출 성장, 기관 매수, 시장 추세를 결합해 '폭발적 성장이 임박한 종목'을 찾는다. CAN SLIM 각 글자는 독립적인 필터로, 모두 통과할수록 확신도가 높다.",
+    criteria: [
+      { label: "C — Current EPS", desc: "최근 분기 EPS 25% 이상 성장" },
+      { label: "A — Annual EPS", desc: "최근 3년 연간 EPS 25% 이상 성장" },
+      { label: "N — New Product", desc: "신제품·신서비스·52주 신고가" },
+      { label: "S — Supply & Demand", desc: "거래량 급증 + 낮은 유통주식 수" },
+      { label: "L — Leader", desc: "RS 등급 80 이상 (섹터 내 상위 20%)" },
+      { label: "I — Institutional", desc: "기관 순매수 증가" },
+      { label: "M — Market Direction", desc: "상승 장세(Confirmed Uptrend)에서만 매수" },
+    ],
+  },
+  piotroski: {
+    guru: "Joseph Piotroski",
+    guruTitle: "스탠퍼드 경영대학원 교수",
+    tagline: "재무 건전성 9점 F-Score",
+    description:
+      "스탠퍼드 교수 조셉 피오트로스키가 2000년 발표한 논문에서 제시한 재무 건전성 점수. 수익성·레버리지·효율성 9개 항목을 0/1로 채점해 합산. F-Score 8–9는 '재무적으로 강한 기업', 0–2는 '위험 기업'으로 분류한다. 가치주 함정(value trap)을 피하는 데 특히 효과적이다.",
+    criteria: [
+      { label: "ROA > 0", desc: "총자산 대비 순이익 양수" },
+      { label: "영업 현금흐름 > 0", desc: "실제 현금 창출" },
+      { label: "ROA 개선", desc: "전년 대비 ROA 증가" },
+      { label: "발생액 < 0", desc: "현금이익 > 장부이익 (분식 방어)" },
+      { label: "부채비율 감소", desc: "장기부채 비중 하락" },
+      { label: "유동비율 개선", desc: "단기 지급 능력 향상" },
+      { label: "희석 없음", desc: "신주 발행 없음" },
+      { label: "총자산회전율 개선", desc: "자산 효율 상승" },
+      { label: "매출총이익률 개선", desc: "수익성 구조 개선" },
+    ],
+  },
+  magic_formula: {
+    guru: "Joel Greenblatt",
+    guruTitle: "고담 캐피탈 창업자 · 컬럼비아 교수",
+    tagline: "ROIC + 이익수익률 복합 랭킹",
+    description:
+      "헤지펀드 매니저 조엘 그린블라트가 《주식시장을 이기는 작은 책》(2005)에서 공개한 전략. '좋은 기업을 저렴한 가격에 사라'는 워런 버핏의 원칙을 두 개의 숫자로 단순화했다. ROIC가 높은 기업(우량 기업)과 이익수익률(EY)이 높은 기업(저평가 기업)의 순위를 합산해, 복합 순위가 낮은 종목을 선택한다.",
+    criteria: [
+      {
+        label: "ROIC (자본이익률)",
+        desc: "EBIT ÷ (순운전자본 + 순고정자산) — 높을수록 우량",
+      },
+      {
+        label: "EY (이익수익률)",
+        desc: "EBIT ÷ 기업가치(시총+부채-현금) — 높을수록 저평가",
+      },
+      {
+        label: "복합 순위",
+        desc: "ROIC 순위 + EY 순위 합산 → 낮을수록 매력적",
+      },
+    ],
+  },
+};
+
 const TAB_LABELS: Record<StrategyTab, string> = {
   canslim:       "CANSLIM",
   piotroski:     "Piotroski",
@@ -39,6 +112,42 @@ const STRATEGY_MARKETS: Record<StrategyTab, Array<"US" | "KR">> = {
   piotroski:     ["US", "KR"],
   magic_formula: ["US", "KR"],
 };
+
+// ── Sub-component: strategy info card ────────────────────────────────────────
+
+function StrategyInfoCard({ tab }: { tab: StrategyTab }) {
+  const info = STRATEGY_INFO[tab];
+  return (
+    <div className="surface-panel rounded-[1.65rem] px-5 py-5 space-y-4">
+      {/* Guru */}
+      <div className="flex items-start gap-3">
+        <div className="flex-1">
+          <div className="tiny-label">{info.tagline}</div>
+          <h2 className="mt-1 font-heading text-xl uppercase tracking-[0.04em] text-white">
+            {info.guru}
+          </h2>
+          <div className="mt-0.5 text-[0.68rem] text-faint">{info.guruTitle}</div>
+          <p className="mt-3 text-xs leading-5 text-quiet">{info.description}</p>
+        </div>
+      </div>
+
+      {/* Criteria grid */}
+      <div className="grid gap-1.5 sm:grid-cols-2">
+        {info.criteria.map((c) => (
+          <div
+            key={c.label}
+            className="rounded-[0.9rem] border border-white/6 bg-white/[0.025] px-3.5 py-2.5"
+          >
+            <div className="text-[0.65rem] font-medium uppercase tracking-[0.12em] text-white/70">
+              {c.label}
+            </div>
+            <div className="mt-0.5 text-[0.7rem] leading-4 text-faint">{c.desc}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ── Sub-component: strategy list ──────────────────────────────────────────────
 
@@ -189,6 +298,9 @@ export function StrategiesClient({ initialData = {} }: StrategiesClientProps) {
           </div>
         )}
       </div>
+
+      {/* ── Strategy info card ─────────────────────────────────────────── */}
+      <StrategyInfoCard tab={activeTab} />
 
       {/* ── Strategy list ──────────────────────────────────────────────── */}
       {activeTab === "canslim" ? (

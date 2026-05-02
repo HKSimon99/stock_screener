@@ -1684,6 +1684,40 @@ export async function fetchStrategyRankings(
   );
 }
 
+// ── User / Terms of Service ──────────────────────────────────────────────────
+
+export interface UserMe {
+  clerk_user_id: string;
+  email: string | null;
+  /** True iff the user has accepted the *current* ToS version. */
+  tos_accepted: boolean;
+  /** ISO 8601 — when they last accepted (any version). Null if never accepted. */
+  tos_accepted_at: string | null;
+  /** The ToS version they accepted; may differ from current_tos_version. */
+  tos_version: string | null;
+  /** The ToS version the server is currently demanding. Echo this back in /accept-tos. */
+  current_tos_version: string;
+}
+
+export async function fetchMe(bearerToken: string): Promise<UserMe> {
+  return apiFetch<UserMe>("/users/me", { bearerToken });
+}
+
+export async function acceptTos(params: {
+  bearerToken: string;
+  version: string;
+  email?: string;
+}): Promise<UserMe> {
+  return apiFetch<UserMe>("/users/me/accept-tos", {
+    method: "POST",
+    bearerToken: params.bearerToken,
+    body: JSON.stringify({
+      version: params.version,
+      email: params.email,
+    }),
+  });
+}
+
 export async function fetchWatchlist(bearerToken: string): Promise<WatchlistResponse> {
   return apiFetch<WatchlistResponse>("/watchlist", { bearerToken });
 }

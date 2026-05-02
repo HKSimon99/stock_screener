@@ -22,8 +22,17 @@ class SentryErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBound
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Capture to Sentry
-    Sentry.captureException(error, { contexts: { react: errorInfo } });
+    // Capture to Sentry. errorInfo's componentStack is a multi-line stack of
+    // React component names; flatten to a Sentry-compatible Context shape
+    // (Sentry's Context type is Record<string, unknown>; React.ErrorInfo's
+    // declared type is structurally incompatible).
+    Sentry.captureException(error, {
+      contexts: {
+        react: {
+          componentStack: errorInfo.componentStack ?? null,
+        },
+      },
+    });
   }
 
   render() {

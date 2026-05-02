@@ -8,6 +8,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { Observability } from "@/components/observability";
 import { Providers } from "@/components/providers";
 import SentryErrorBoundary from "@/components/sentry-error-boundary";
+import { TosConsentGate } from "@/components/tos-consent-gate";
 import "./globals.css";
 
 const bodyFont = Public_Sans({
@@ -59,7 +60,9 @@ export default function RootLayout({
         <SentryErrorBoundary>
           <ClerkProvider>
             <Providers>
-              <div id="content">{children}</div>
+              <TosConsentGate>
+                <div id="content">{children}</div>
+              </TosConsentGate>
             </Providers>
           </ClerkProvider>
         </SentryErrorBoundary>

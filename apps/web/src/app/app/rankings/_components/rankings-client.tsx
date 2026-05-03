@@ -39,6 +39,7 @@ import {
 import { ConvictionBadge } from "@/components/conviction-badge";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { useT } from "@/hooks/use-t";
 
 type Market = "US" | "KR";
 type AssetType = "stock" | "etf";
@@ -400,6 +401,7 @@ function PinnedButton({
   light?: boolean;
 }) {
   const { getToken } = useAuth();
+  const { t } = useT();
   const togglePinned = useUIStore((state) => state.togglePinnedInstrument);
   const isPinned = useUIStore((state) => state.isPinned);
   const pinned = isPinned(ticker, market);
@@ -434,7 +436,7 @@ function PinnedButton({
       )}
     >
       <Pin className="size-3.5" />
-      {pinned ? "Pinned" : "Pin"}
+      {pinned ? t("ui.pinned") : t("ui.pin")}
     </button>
   );
 }
@@ -656,6 +658,7 @@ function SectionShell({
 }
 
 export function RankingsClient({ initialFilters, initialData }: RankingsClientProps) {
+  const { t } = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { getToken, isSignedIn } = useAuth();
@@ -803,49 +806,50 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[oklch(0.78_0.04_88)] bg-white/55 px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[oklch(0.42_0.02_250)]">
               <Sparkles className="size-3.5" />
-              Production rankings desk
+              {t("rankings.kicker")}
             </div>
             <h1 className="mt-4 max-w-5xl font-heading text-[clamp(4rem,10vw,8rem)] uppercase leading-[0.82] tracking-[-0.07em] text-[oklch(0.16_0.018_250)]">
-              Signal Board
+              {t("rankings.headline")}
             </h1>
             <p className="mt-5 max-w-3xl text-sm leading-7 text-[oklch(0.38_0.02_250)] sm:text-base">
-              Ranked names stay score-backed. Partial and explore rows sit underneath so we can
-              surface more of the US/KR universe without pretending incomplete data is ranked.
+              {t("rankings.sub")}
             </p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
             <div className="rounded-[1.5rem] border border-[oklch(0.8_0.03_88)] bg-white/58 p-4">
               <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[oklch(0.48_0.02_250)]">
-                Loaded
+                {t("rankings.stat.loaded")}
               </div>
               <div className="mt-2 font-heading text-4xl uppercase tracking-[-0.04em]">
                 {rankedItems.length}/{data?.total ?? 0}
               </div>
               <div className="mt-1 text-xs text-[oklch(0.46_0.02_250)]">
-                Top {filters.limit} requested
+                {t("rankings.controls.top")} {filters.limit} {t("rankings.stat.requested")}
               </div>
             </div>
             <div className="rounded-[1.5rem] border border-[oklch(0.8_0.03_88)] bg-white/58 p-4">
               <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[oklch(0.48_0.02_250)]">
-                Top score
+                {t("rankings.stat.topScore")}
               </div>
               <div className={cn("mt-2 font-heading text-4xl uppercase tracking-[-0.04em]", scoreTone(topScore))}>
                 {topScore ? topScore.toFixed(1) : "--"}
               </div>
               <div className="mt-1 text-xs text-[oklch(0.46_0.02_250)]">
-                Average {averageScore ? averageScore.toFixed(1) : "--"}
+                {t("rankings.stat.average")} {averageScore ? averageScore.toFixed(1) : "--"}
               </div>
             </div>
             <div className="rounded-[1.5rem] border border-[oklch(0.8_0.03_88)] bg-white/58 p-4">
               <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[oklch(0.48_0.02_250)]">
-                Freshness
+                {t("rankings.stat.freshness")}
               </div>
               <div className="mt-2 text-lg font-semibold">
                 {data?.score_date ? formatSnapshotDate(data.score_date) : "Waiting"}
               </div>
               <div className="mt-1 text-xs text-[oklch(0.46_0.02_250)]">
-                {rankings.isFetching || isPending ? "Refreshing view" : `${activeFilters} active filters`}
+                {rankings.isFetching || isPending
+                  ? t("rankings.stat.refreshing")
+                  : `${activeFilters} ${t("rankings.stat.activeFilters")}`}
               </div>
             </div>
           </div>
@@ -856,7 +860,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
         <div className="surface-panel rounded-[2rem] px-4 py-4 sm:px-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <div className="tiny-label">Market and result controls</div>
+              <div className="tiny-label">{t("rankings.controls.kicker")}</div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {(["US", "KR"] as const).map((market) => (
                   <button
@@ -866,7 +870,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
                     className="filter-chip px-4 py-2 text-sm font-semibold"
                     data-active={filters.market === market}
                   >
-                    {market === "US" ? "US Market" : "Korea Market"}
+                    {market === "US" ? t("rankings.controls.usMarket") : t("rankings.controls.krMarket")}
                   </button>
                 ))}
                 {(["stock", "etf"] as const).map((assetType) => (
@@ -884,7 +888,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
             </div>
 
             <div>
-              <div className="tiny-label lg:text-right">Result count</div>
+              <div className="tiny-label lg:text-right">{t("rankings.controls.resultCount")}</div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {LIMIT_OPTIONS.map((limit) => (
                   <button
@@ -894,7 +898,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
                     className="filter-chip px-4 py-2 text-sm font-semibold"
                     data-active={filters.limit === limit}
                   >
-                    Top {limit}
+                    {t("rankings.controls.top")} {limit}
                   </button>
                 ))}
               </div>
@@ -903,7 +907,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
         </div>
 
         <div className="surface-panel rounded-[2rem] px-4 py-4 sm:px-5">
-          <div className="tiny-label">Current lens</div>
+          <div className="tiny-label">{t("rankings.lens.kicker")}</div>
           <div className="mt-3 flex items-center gap-3">
             <div className="flex size-11 items-center justify-center rounded-2xl border border-white/10 bg-black/14">
               <Filter className="size-5 text-white" />
@@ -920,9 +924,9 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <div className="tiny-label">Strategy presets</div>
+              <div className="tiny-label">{t("rankings.presets.kicker")}</div>
               <h2 className="mt-2 font-heading text-4xl uppercase tracking-[-0.04em] text-white">
-                Gentle filters, not a black box.
+                {t("rankings.presets.headline")}
               </h2>
             </div>
             <button
@@ -931,7 +935,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
               className="inline-flex items-center gap-2 self-start rounded-full border border-white/10 px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-faint transition-colors hover:text-white sm:self-auto"
             >
               <RefreshCw className="size-3.5" />
-              Reset filters
+              {t("rankings.presets.reset")}
             </button>
           </div>
 
@@ -958,28 +962,28 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 text-sm font-semibold text-white">
               <span className="inline-flex items-center gap-2">
                 <Search className="size-4" />
-                Advanced filter panel
+                {t("rankings.presets.advanced")}
               </span>
               <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
             </summary>
             <div className="grid gap-3 border-t border-white/8 px-4 py-4 md:grid-cols-2 xl:grid-cols-4">
               <FilterSelect
-                label="Conviction"
+                label={t("rankings.filters.conviction")}
                 value={filters.conviction}
                 onChange={(value) => setFilter("conviction", value || null)}
               >
                 {CONVICTION_OPTIONS.map((option) => (
                   <option key={option || "all"} value={option}>
-                    {option || "Any conviction"}
+                    {option || t("rankings.filters.anyConviction")}
                   </option>
                 ))}
               </FilterSelect>
               <FilterSelect
-                label="Coverage"
+                label={t("rankings.filters.coverage")}
                 value={filters.coverageState ?? ""}
                 onChange={(value) => setFilter("coverage_state", value || null)}
               >
-                <option value="">Any coverage</option>
+                <option value="">{t("rankings.filters.anyCoverage")}</option>
                 {[...COVERAGE_STATES].map((state) => (
                   <option key={state} value={state}>
                     {coverageLabel(state)}
@@ -987,35 +991,35 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
                 ))}
               </FilterSelect>
               <FilterSelect
-                label="Final score"
+                label={t("rankings.filters.finalScore")}
                 value={filters.minFinalScore?.toString() ?? ""}
                 onChange={(value) => setFilter("min_final_score", value || null)}
               >
                 {SCORE_OPTIONS.map((option) => (
                   <option key={option || "all"} value={option}>
-                    {option ? `${option}+` : "No minimum"}
+                    {option ? `${option}+` : t("rankings.filters.noMinimum")}
                   </option>
                 ))}
               </FilterSelect>
               <FilterSelect
-                label="Strategy count"
+                label={t("rankings.filters.strategyCount")}
                 value={filters.minStrategyPassCount?.toString() ?? ""}
                 onChange={(value) => setFilter("min_strategy_pass_count", value || null)}
               >
                 {PASS_OPTIONS.map((option) => (
                   <option key={option || "all"} value={option}>
-                    {option ? `${option}+ passing` : "No minimum"}
+                    {option ? `${option}+ passing` : t("rankings.filters.noPassing")}
                   </option>
                 ))}
               </FilterSelect>
               <FilterSelect
-                label="Technical"
+                label={t("rankings.filters.technical")}
                 value={filters.minTechnicalComposite?.toString() ?? ""}
                 onChange={(value) => setFilter("min_technical_composite", value || null)}
               >
                 {SCORE_OPTIONS.map((option) => (
                   <option key={option || "all"} value={option}>
-                    {option ? `${option}+` : "No minimum"}
+                    {option ? `${option}+` : t("rankings.filters.noMinimum")}
                   </option>
                 ))}
               </FilterSelect>
@@ -1075,13 +1079,13 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
                 ))}
               </FilterSelect>
               <FilterSelect
-                label="RS New High"
+                label={t("rankings.filters.rsNewHigh")}
                 value={filters.rsLineNewHigh == null ? "" : String(filters.rsLineNewHigh)}
                 onChange={(value) => setFilter("rs_line_new_high", value || null)}
               >
-                <option value="">Any</option>
-                <option value="true">Required</option>
-                <option value="false">Exclude</option>
+                <option value="">{t("rankings.filters.any")}</option>
+                <option value="true">{t("rankings.filters.required")}</option>
+                <option value="false">{t("rankings.filters.exclude")}</option>
               </FilterSelect>
             </div>
           </details>
@@ -1091,13 +1095,13 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
       {(data?.regime_warning_count ?? 0) > 0 && (
         <div className="mt-5 flex items-center gap-3 rounded-[1.65rem] border border-[oklch(0.78_0.18_55_/_0.35)] bg-[oklch(0.35_0.07_55_/_0.15)] px-5 py-3 text-sm text-[oklch(0.9_0.06_75)]">
           <AlertTriangle className="size-4 shrink-0" />
-          {data!.regime_warning_count} ranked instruments have an active regime warning.
+          {data!.regime_warning_count} {t("rankings.regime.warning")}
         </div>
       )}
 
       <div className="mt-5 grid gap-5">
         {watchlistDisplay.length > 0 && (
-          <SectionShell eyebrow="Your watchlist" title="Pinned instruments" tone="light">
+          <SectionShell eyebrow={t("rankings.watchlist.eyebrow")} title={t("rankings.watchlist.title")} tone="light">
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {watchlistDisplay.map((item) => (
                 <WatchlistCard
@@ -1109,36 +1113,35 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
             </div>
             {watchlistDisplay.length === 0 && (
               <p className="text-sm text-[oklch(0.46_0.02_250)]">
-                No pinned instruments for this market yet. Pin a row from the board below.
+                {t("rankings.watchlist.empty")}
               </p>
             )}
             {!isSignedIn && (
               <p className="mt-3 text-xs text-[oklch(0.52_0.02_250)]">
                 <Bookmark className="mr-1 inline size-3" />
-                Sign in to sync your watchlist across devices.
+                {t("rankings.watchlist.signIn")}
               </p>
             )}
           </SectionShell>
         )}
 
         <SectionShell
-          eyebrow="Ranked results"
-          title={`${filters.market} ${filters.assetType === "etf" ? "ETF" : "stock"} leaderboard`}
-          subtitle="These rows are backed by stored consensus scores. Use filters to narrow the ranked board without changing the underlying order."
+          eyebrow={t("rankings.leaderboard.eyebrow")}
+          title={`${filters.market} ${filters.assetType === "etf" ? "ETF" : t("ui.stock").toLowerCase()} leaderboard`}
+          subtitle={t("rankings.leaderboard.subtitle")}
           tone="light"
         >
           {rankings.error && (
             <div className="rounded-[1.4rem] border border-[oklch(0.68_0.18_28_/_0.3)] bg-[oklch(0.96_0.04_28_/_0.54)] px-5 py-4 text-sm text-[oklch(0.42_0.12_28)]">
               {rankings.error instanceof APIError
-                ? rankings.error.detail ?? "Rankings are temporarily unavailable."
-                : "Rankings are temporarily unavailable."}
+                ? rankings.error.detail ?? t("rankings.leaderboard.error")
+                : t("rankings.leaderboard.error")}
             </div>
           )}
 
           {!rankings.error && rankedItems.length === 0 && !rankings.isFetching && (
             <div className="rounded-[1.4rem] border border-[oklch(0.8_0.03_88)] bg-white/55 px-5 py-8 text-center text-sm text-[oklch(0.42_0.02_250)]">
-              No ranked instruments match this lens yet. Try removing thresholds or browse the
-              incomplete universe below.
+              {t("rankings.leaderboard.empty")}
             </div>
           )}
 
@@ -1153,10 +1156,10 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
               {rankings.isFetching || isPending ? (
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="size-4 animate-spin" />
-                  Refreshing the desk
+                  {t("rankings.leaderboard.refreshing")}
                 </span>
               ) : (
-                `Showing ${rankedItems.length} of ${data?.total ?? 0} ranked rows`
+                `${t("rankings.leaderboard.showing")} ${rankedItems.length} of ${data?.total ?? 0} ranked rows`
               )}
             </div>
             {data?.pagination.has_more && filters.limit < 200 && (
@@ -1165,7 +1168,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
                 onClick={() => replaceParams({ limit: Math.min(filters.limit + 50, 200) })}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-[oklch(0.18_0.018_250)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[oklch(0.28_0.03_250)]"
               >
-                Load more ranked names
+                {t("rankings.leaderboard.loadMore")}
                 <BarChart3 className="size-4" />
               </button>
             )}
@@ -1174,22 +1177,22 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
 
         {showPartial && (
           <SectionShell
-            eyebrow="Partial rows"
-            title="Ready for scoring"
-            subtitle="These symbols have enough persisted coverage to be interesting, but they are not part of the ranked board until scoring runs."
+            eyebrow={t("rankings.partial.eyebrow")}
+            title={t("rankings.partial.title")}
+            subtitle={t("rankings.partial.subtitle")}
           >
             {partial.error ? (
               <div className="rounded-[1.35rem] border border-white/10 bg-black/12 px-4 py-4 text-sm text-faint">
-                Partial rows are unavailable, but ranked results are unaffected.
+                {t("rankings.partial.error")}
               </div>
             ) : partialItems.length === 0 && !partial.isFetching ? (
               <div className="rounded-[1.35rem] border border-white/10 bg-black/12 px-4 py-5 text-sm text-faint">
-                No needs-scoring symbols are available for this market yet.
+                {t("rankings.partial.empty")}
               </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {partialItems.map((item) => (
-                  <BrowseCard key={`partial-${item.market}-${item.ticker}`} item={item} label="Needs scoring" />
+                  <BrowseCard key={`partial-${item.market}-${item.ticker}`} item={item} label={t("ui.needsScoring")} />
                 ))}
               </div>
             )}
@@ -1199,7 +1202,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
                 onClick={() => setPartialLimit((value) => Math.min(value + 8, 200))}
                 className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-faint transition-colors hover:text-white"
               >
-                Load more partial rows
+                {t("rankings.partial.loadMore")}
                 <LineChart className="size-4" />
               </button>
             )}
@@ -1208,22 +1211,22 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
 
         {showExplore && (
           <SectionShell
-            eyebrow="Explore more"
-            title="Known but incomplete"
-            subtitle="Discovery-only rows from the covered universe. They do not affect ranking totals and never claim a score they do not have."
+            eyebrow={t("rankings.explore.eyebrow")}
+            title={t("rankings.explore.title")}
+            subtitle={t("rankings.explore.subtitle")}
           >
             {explore.error ? (
               <div className="rounded-[1.35rem] border border-white/10 bg-black/12 px-4 py-4 text-sm text-faint">
-                Explore More is unavailable, but ranked results are unaffected.
+                {t("rankings.explore.error")}
               </div>
             ) : exploreItems.length === 0 && !explore.isFetching ? (
               <div className="rounded-[1.35rem] border border-white/10 bg-black/12 px-4 py-5 text-sm text-faint">
-                No additional discoverable rows match this market and asset type.
+                {t("rankings.explore.empty")}
               </div>
             ) : (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {exploreItems.map((item) => (
-                  <BrowseCard key={`explore-${item.market}-${item.ticker}`} item={item} label="Explore" />
+                  <BrowseCard key={`explore-${item.market}-${item.ticker}`} item={item} label={t("ui.explore")} />
                 ))}
               </div>
             )}
@@ -1233,7 +1236,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
                 onClick={() => setExploreLimit((value) => Math.min(value + 8, 200))}
                 className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-faint transition-colors hover:text-white"
               >
-                Load more explore rows
+                {t("rankings.explore.loadMore")}
                 <ShieldCheck className="size-4" />
               </button>
             )}

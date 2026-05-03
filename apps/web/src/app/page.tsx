@@ -1,9 +1,13 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowRight, CandlestickChart, Search, ShieldCheck, Waves } from "lucide-react";
 import { SiteChrome } from "@/components/site-chrome";
+import { useT } from "@/hooks/use-t";
 
 /**
- * Landing page — Revolut three-band layout
+ * Landing page — Revolut three-band layout.
+ * Strings pulled from useT() so EN/KO toggle works immediately.
  *
  * Band 1: Black storytelling canvas — hero headline + CTAs + launch stats
  * Band 2: White catalogue canvas — feature grid (light card, dark ink)
@@ -11,36 +15,36 @@ import { SiteChrome } from "@/components/site-chrome";
  * Footer: Black hairline bottom
  */
 
-const FEATURE_GRID = [
-  {
-    title: "Full-market search",
-    body: "Search every covered US and KR symbol, then open a chart workspace even when a stock is not yet fully ranked.",
-    icon: Search,
-  },
-  {
-    title: "Coverage-aware ranking",
-    body: "The product separates symbols that need more data, scoring, or freshness repair from ranked names so the board stays honest about what it knows.",
-    icon: ShieldCheck,
-  },
-  {
-    title: "Research chart workspace",
-    body: "Move from rankings into a single-stock desk with price structure, relative strength, patterns, and freshness context in one place.",
-    icon: CandlestickChart,
-  },
-  {
-    title: "Market-state discipline",
-    body: "US and KR regime boards stay visible so rank interpretation is grounded in actual market posture instead of blind score chasing.",
-    icon: Waves,
-  },
-] as const;
-
-const LAUNCH_STATS = [
-  { label: "Universe", value: "6,500+", sub: "US + KR equities & ETFs" },
-  { label: "Strategies", value: "3", sub: "CANSLIM · Piotroski · Magic Formula" },
-  { label: "Market data", value: "Nightly", sub: "KR live path, US delayed" },
-] as const;
+const FEATURE_ICONS = [Search, ShieldCheck, CandlestickChart, Waves] as const;
 
 export default function Home() {
+  const { t } = useT();
+
+  const FEATURES = [
+    { icon: FEATURE_ICONS[0], titleKey: "home.features.search.title",   bodyKey: "home.features.search.body"   },
+    { icon: FEATURE_ICONS[1], titleKey: "home.features.coverage.title", bodyKey: "home.features.coverage.body" },
+    { icon: FEATURE_ICONS[2], titleKey: "home.features.chart.title",    bodyKey: "home.features.chart.body"    },
+    { icon: FEATURE_ICONS[3], titleKey: "home.features.regime.title",   bodyKey: "home.features.regime.body"   },
+  ] as const;
+
+  const STATS = [
+    {
+      labelKey: "home.stats.universe.label",
+      valueKey: "home.stats.universe.value",
+      subKey:   "home.stats.universe.sub",
+    },
+    {
+      labelKey: "home.stats.strategies.label",
+      valueKey: "home.stats.strategies.value",
+      subKey:   "home.stats.strategies.sub",
+    },
+    {
+      labelKey: "home.stats.data.label",
+      valueKey: "home.stats.data.value",
+      subKey:   "home.stats.data.sub",
+    },
+  ] as const;
+
   return (
     <div className="min-h-screen" style={{ background: "#000000" }}>
       <SiteChrome />
@@ -49,23 +53,20 @@ export default function Home() {
       <section style={{ background: "#000000", paddingBottom: "var(--sp-band)" }}>
         <div className="app-shell" style={{ paddingTop: "var(--sp-band)" }}>
 
-          {/* Kicker */}
           <div className="section-kicker" style={{ color: "rgba(255,255,255,0.45)" }}>
-            Production research for US + Korea
+            {t("home.kicker")}
           </div>
 
-          {/* Hero headline */}
           <h1
             className="display-hero text-white text-balance"
             style={{ marginTop: "var(--sp-xl)", maxWidth: "16ch" }}
           >
-            Search Everything.{" "}
+            {t("home.headline1")}{" "}
             <span style={{ color: "rgba(255,255,255,0.42)" }}>
-              Rank What You Can Defend.
+              {t("home.headline2")}
             </span>
           </h1>
 
-          {/* Sub-copy */}
           <p
             className="text-quiet"
             style={{
@@ -75,12 +76,9 @@ export default function Home() {
               lineHeight: 1.7,
             }}
           >
-            Consensus Signal Research is a full-market search, ranking, and chart
-            workspace for US and Korean equities. Honest coverage, regime-aware
-            conviction levels, nightly data.
+            {t("home.sub")}
           </p>
 
-          {/* CTAs */}
           <div
             style={{
               marginTop: "var(--sp-xxl)",
@@ -90,11 +88,11 @@ export default function Home() {
             }}
           >
             <Link href="/rankings" className="btn-primary">
-              Open Research App
+              {t("home.cta.app")}
               <ArrowRight style={{ width: 16, height: 16 }} />
             </Link>
             <Link href="/methodology" className="btn-outline">
-              Read methodology
+              {t("home.cta.methodology")}
             </Link>
           </div>
 
@@ -107,9 +105,9 @@ export default function Home() {
               gap: "var(--sp-md)",
             }}
           >
-            {LAUNCH_STATS.map((stat) => (
+            {STATS.map((stat) => (
               <div
-                key={stat.label}
+                key={stat.labelKey}
                 style={{
                   borderRadius: "var(--radius-lg)",
                   border: "1px solid rgba(255,255,255,0.08)",
@@ -117,7 +115,7 @@ export default function Home() {
                   padding: "var(--sp-xl)",
                 }}
               >
-                <div className="tiny-label">{stat.label}</div>
+                <div className="tiny-label">{t(stat.labelKey)}</div>
                 <div
                   className="font-heading text-white"
                   style={{
@@ -127,7 +125,7 @@ export default function Home() {
                     letterSpacing: "-0.03em",
                   }}
                 >
-                  {stat.value}
+                  {t(stat.valueKey)}
                 </div>
                 <div
                   style={{
@@ -136,7 +134,7 @@ export default function Home() {
                     color: "rgba(255,255,255,0.42)",
                   }}
                 >
-                  {stat.sub}
+                  {t(stat.subKey)}
                 </div>
               </div>
             ))}
@@ -148,7 +146,6 @@ export default function Home() {
       <section style={{ background: "#ffffff", paddingBlock: "var(--sp-band)" }}>
         <div className="app-shell">
 
-          {/* Section kicker */}
           <div
             style={{
               fontSize: "0.75rem",
@@ -158,7 +155,7 @@ export default function Home() {
               color: "#505a63",
             }}
           >
-            What's inside
+            {t("home.features.kicker")}
           </div>
 
           <h2
@@ -173,10 +170,9 @@ export default function Home() {
               maxWidth: "20ch",
             }}
           >
-            Built for how research actually works.
+            {t("home.features.headline")}
           </h2>
 
-          {/* Feature grid — light cards on white canvas */}
           <div
             style={{
               marginTop: "var(--sp-3xl)",
@@ -185,11 +181,11 @@ export default function Home() {
               gap: "var(--sp-lg)",
             }}
           >
-            {FEATURE_GRID.map((feature) => {
+            {FEATURES.map((feature) => {
               const Icon = feature.icon;
               return (
                 <article
-                  key={feature.title}
+                  key={feature.titleKey}
                   style={{
                     borderRadius: "var(--radius-lg)",
                     border: "1px solid #e2e2e7",
@@ -197,7 +193,6 @@ export default function Home() {
                     padding: "var(--sp-xl)",
                   }}
                 >
-                  {/* Icon */}
                   <div
                     style={{
                       display: "flex",
@@ -223,7 +218,7 @@ export default function Home() {
                       color: "#191c1f",
                     }}
                   >
-                    {feature.title}
+                    {t(feature.titleKey)}
                   </h3>
                   <p
                     style={{
@@ -233,7 +228,7 @@ export default function Home() {
                       color: "#505a63",
                     }}
                   >
-                    {feature.body}
+                    {t(feature.bodyKey)}
                   </p>
                 </article>
               );
@@ -262,7 +257,7 @@ export default function Home() {
             }}
           >
             <div className="section-kicker" style={{ color: "rgba(255,255,255,0.42)" }}>
-              Fresh build direction
+              {t("home.direction.kicker")}
             </div>
             <h2
               className="font-heading text-white"
@@ -274,9 +269,9 @@ export default function Home() {
                 textTransform: "uppercase",
               }}
             >
-              Public site outside,{" "}
+              {t("home.direction.headline1")}{" "}
               <span style={{ color: "rgba(255,255,255,0.42)" }}>
-                working desk inside.
+                {t("home.direction.headline2")}
               </span>
             </h2>
             <p
@@ -288,10 +283,7 @@ export default function Home() {
                 maxWidth: "44ch",
               }}
             >
-              The public surface explains methodology, data contracts, freshness,
-              and disclosures. The app is where rankings, symbol search, and
-              instrument workspaces live — kept separate to stay sharp and easy
-              to trust at launch.
+              {t("home.direction.body")}
             </p>
           </article>
 
@@ -307,7 +299,7 @@ export default function Home() {
             }}
           >
             <div className="section-kicker" style={{ color: "rgba(255,255,255,0.42)" }}>
-              Next action
+              {t("home.next.kicker")}
             </div>
             <h2
               className="font-heading text-white"
@@ -319,7 +311,7 @@ export default function Home() {
                 textTransform: "uppercase",
               }}
             >
-              Try the production shell
+              {t("home.next.headline")}
             </h2>
             <p
               style={{
@@ -329,12 +321,11 @@ export default function Home() {
                 color: "rgba(255,255,255,0.55)",
               }}
             >
-              The app shell exposes canonical routes, a search-first entry, and
-              coverage-aware instrument pages. Rankings update nightly.
+              {t("home.next.body")}
             </p>
             <div style={{ marginTop: "auto", paddingTop: "var(--sp-xxl)" }}>
               <Link href="/app/search" className="btn-primary">
-                Open search
+                {t("home.next.cta")}
                 <ArrowRight style={{ width: 16, height: 16 }} />
               </Link>
             </div>
@@ -371,19 +362,15 @@ export default function Home() {
           >
             Consensus
           </span>
-          <nav
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "var(--sp-xl)",
-            }}
-          >
-            {[
-              { href: "/methodology", label: "Methodology" },
-              { href: "/data-sources", label: "Data Sources" },
-              { href: "/freshness-policy", label: "Freshness" },
-              { href: "/disclosures", label: "Disclosures" },
-            ].map((item) => (
+          <nav style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-xl)" }}>
+            {(
+              [
+                { href: "/methodology",      labelKey: "nav.methodology" },
+                { href: "/data-sources",     labelKey: "nav.dataSources" },
+                { href: "/freshness-policy", labelKey: "nav.freshness"   },
+                { href: "/disclosures",      labelKey: "nav.disclosures" },
+              ] as const
+            ).map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -397,12 +384,12 @@ export default function Home() {
                   (e.currentTarget.style.color = "rgba(255,255,255,0.42)")
                 }
               >
-                {item.label}
+                {t(item.labelKey)}
               </Link>
             ))}
           </nav>
           <span style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.28)" }}>
-            Not investment advice.
+            {t("home.footer.disclaimer")}
           </span>
         </div>
       </footer>

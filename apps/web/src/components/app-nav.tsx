@@ -8,6 +8,7 @@
  *  - Wordmark left → search bar centre → UserButton + pinned count right.
  *  - Sub-nav pills below header bar (sub-nav-pill token: surface-elevated bg, pill shape).
  *  - Mobile: hamburger collapses centre nav; bottom fixed nav-rail (4 icons).
+ *  - KO/EN language toggle pill in right cluster.
  */
 
 import Link from "next/link";
@@ -17,19 +18,23 @@ import { FormEvent, useState } from "react";
 import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
-
-const NAV_ITEMS = [
-  { href: "/rankings",          label: "Rankings",  icon: Layers3 },
-  { href: "/app/search",        label: "Search",    icon: Search  },
-  { href: "/app/alerts",        label: "Alerts",    icon: Bell    },
-  { href: "/app/market-regime", label: "Regime",    icon: Radar   },
-] as const;
+import { useT } from "@/hooks/use-t";
 
 export function AppNav() {
-  const pathname    = usePathname();
-  const router      = useRouter();
+  const pathname      = usePathname();
+  const router        = useRouter();
   const [query, setQuery] = useState("");
-  const pinnedCount = useUIStore((state) => state.pinnedInstruments.length);
+  const pinnedCount   = useUIStore((state) => state.pinnedInstruments.length);
+  const lang          = useUIStore((state) => state.lang);
+  const setLang       = useUIStore((state) => state.setLang);
+  const { t }         = useT();
+
+  const NAV_ITEMS = [
+    { href: "/rankings",          label: t("nav.rankings"),  icon: Layers3 },
+    { href: "/app/search",        label: t("nav.search"),    icon: Search  },
+    { href: "/app/alerts",        label: t("nav.alerts"),    icon: Bell    },
+    { href: "/app/market-regime", label: t("nav.regime"),    icon: Radar   },
+  ] as const;
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,7 +77,7 @@ export function AppNav() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Ticker, company, or Korean name…"
+                placeholder={t("search.placeholder")}
                 className="w-full rounded-full border py-2.5 pl-11 pr-5 text-sm text-white outline-none transition-colors placeholder:text-white/35"
                 style={{
                   background: "#16181a",
@@ -85,8 +90,38 @@ export function AppNav() {
             </label>
           </form>
 
-          {/* Right cluster: pinned count + user */}
+          {/* Right cluster: lang toggle + pinned count + user */}
           <div className="ml-auto flex items-center gap-3">
+
+            {/* KO / EN language toggle */}
+            <div
+              className="hidden items-center rounded-full border md:flex"
+              style={{
+                borderColor: "rgba(255,255,255,0.12)",
+                background:  "#16181a",
+                padding:     2,
+              }}
+            >
+              {(["en", "ko"] as const).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => setLang(l)}
+                  className="rounded-full font-medium transition-colors"
+                  style={{
+                    fontSize:      "0.65rem",
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    padding:       "4px 10px",
+                    background:    lang === l ? "#494fdf" : "transparent",
+                    color:         lang === l ? "#ffffff" : "rgba(255,255,255,0.45)",
+                  }}
+                >
+                  {l === "en" ? t("lang.toggle.en") : t("lang.toggle.ko")}
+                </button>
+              ))}
+            </div>
+
             {pinnedCount > 0 && (
               <div
                 className="hidden items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium text-white/70 lg:flex"
@@ -163,6 +198,37 @@ export function AppNav() {
               </Link>
             );
           })}
+        </div>
+
+        {/* Mobile lang toggle inside bottom rail */}
+        <div
+          style={{
+            display:        "flex",
+            justifyContent: "center",
+            paddingBottom:  8,
+            gap:            4,
+          }}
+        >
+          {(["en", "ko"] as const).map((l) => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => setLang(l)}
+              style={{
+                borderRadius:  9999,
+                padding:       "2px 10px",
+                fontSize:      "0.6rem",
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                fontWeight:    600,
+                background:    lang === l ? "#494fdf" : "transparent",
+                color:         lang === l ? "#ffffff" : "rgba(255,255,255,0.40)",
+                transition:    "background 180ms ease, color 180ms ease",
+              }}
+            >
+              {l === "en" ? "EN" : "KO"}
+            </button>
+          ))}
         </div>
       </nav>
     </>

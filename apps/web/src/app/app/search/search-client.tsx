@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { SavedInstrument, useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { useT } from "@/hooks/use-t";
 
 interface SearchClientProps {
   initialQuery: string;
@@ -38,6 +39,7 @@ export function SearchClient({
   const deferredQuery = useDeferredValue(query);
   const [market, setMarket] = useState<"US" | "KR" | "ALL">(initialMarket ?? "ALL");
   const [assetType, setAssetType] = useState<"stock" | "etf" | "ALL">(initialAssetType ?? "ALL");
+  const { t } = useT();
   const recentSearches = useUIStore((state) => state.recentSearches);
   const pinned = useUIStore((state) => state.pinnedInstruments);
   const addRecentSearch = useUIStore((state) => state.addRecentSearch);
@@ -74,13 +76,12 @@ export function SearchClient({
   return (
     <div className="app-shell py-4 sm:py-6">
       <section className="surface-panel rounded-[2rem] px-5 py-5 sm:px-6">
-        <div className="section-kicker">Symbol Search</div>
+        <div className="section-kicker">{t("search.kicker")}</div>
         <h1 className="mt-3 font-heading text-5xl uppercase tracking-[0.03em] text-white">
-          Search the covered universe first.
+          {t("search.headline")}
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-quiet">
-          Search by ticker, company, Korean name, or exchange. The result list shows whether a symbol
-          needs price data, needs fundamentals, needs scoring, is stale, or is fully ranked.
+          {t("search.sub")}
         </p>
 
         <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
@@ -89,7 +90,7 @@ export function SearchClient({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="AAPL, Samsung, semiconductors, NYSE..."
+              placeholder={t("search.placeholder")}
               className="w-full rounded-[1.4rem] border border-white/10 bg-black/18 py-4 pl-11 pr-4 text-sm text-white outline-none transition-colors placeholder:text-faint focus:border-[oklch(0.78_0.11_84_/_0.42)]"
             />
           </label>
@@ -102,7 +103,7 @@ export function SearchClient({
                 className="filter-chip px-4 py-2 text-sm font-medium"
                 data-active={market === value}
               >
-                {value === "ALL" ? "All Markets" : value}
+                {value === "ALL" ? t("search.filter.allMarkets") : value}
               </button>
             ))}
           </div>
@@ -115,7 +116,7 @@ export function SearchClient({
                 className="filter-chip px-4 py-2 text-sm font-medium"
                 data-active={assetType === value}
               >
-                {value === "ALL" ? "All Types" : value.toUpperCase()}
+                {value === "ALL" ? t("search.filter.allTypes") : value.toUpperCase()}
               </button>
             ))}
           </div>
@@ -125,7 +126,7 @@ export function SearchClient({
       {(spotlight.length > 0 || recentSearches.length > 0) && (
         <section className="mt-6 grid gap-4 xl:grid-cols-2">
           <article className="surface-panel rounded-[1.8rem] px-5 py-5">
-            <div className="tiny-label">Pinned symbols</div>
+            <div className="tiny-label">{t("search.pinned")}</div>
             <div className="mt-4 flex flex-wrap gap-2">
               {spotlight.length > 0 ? (
                 spotlight.map((item) => (
@@ -138,13 +139,13 @@ export function SearchClient({
                   </Link>
                 ))
               ) : (
-                <div className="text-sm text-quiet">Pin symbols from a result row to keep them nearby.</div>
+                <div className="text-sm text-quiet">{t("search.pinEmpty")}</div>
               )}
             </div>
           </article>
 
           <article className="surface-panel rounded-[1.8rem] px-5 py-5">
-            <div className="tiny-label">Recent searches</div>
+            <div className="tiny-label">{t("search.recent")}</div>
             <div className="mt-4 flex flex-wrap gap-2">
               {recentSearches.length > 0 ? (
                 recentSearches.map((item) => (
@@ -157,7 +158,7 @@ export function SearchClient({
                   </Link>
                 ))
               ) : (
-                <div className="text-sm text-quiet">Your recent search trail will appear here.</div>
+                <div className="text-sm text-quiet">{t("search.recentEmpty")}</div>
               )}
             </div>
           </article>
@@ -166,9 +167,9 @@ export function SearchClient({
 
       <section className="mt-6 surface-panel rounded-[1.8rem] px-5 py-5 sm:px-6">
         <div className="flex items-center justify-between gap-3">
-          <div className="tiny-label">Results</div>
+          <div className="tiny-label">{t("search.results")}</div>
           <div className="text-sm text-faint">
-            {isFetching ? "Searching..." : `${data?.total ?? 0} matches`}
+            {isFetching ? t("search.fetching") : `${data?.total ?? 0} ${t("search.matches")}`}
           </div>
         </div>
 
@@ -180,12 +181,12 @@ export function SearchClient({
           <div className="mt-5 rounded-[1.4rem] border border-white/10 bg-black/14 px-5 py-6">
             <div className="flex items-center gap-3 text-white">
               <Sparkles className="size-5" />
-              Start with a ticker, company, or Korean name.
+              {t("search.startPrompt")}
             </div>
           </div>
         ) : data && data.items.length === 0 ? (
           <div className="mt-5 rounded-[1.4rem] border border-white/10 bg-black/14 px-5 py-6 text-sm text-quiet">
-            No matching symbols were found in the current covered universe.
+            {t("search.noResults")}
           </div>
         ) : (
           <div className="mt-5 grid gap-3">
@@ -248,7 +249,7 @@ export function SearchClient({
                     )}
                   >
                     <Pin className="size-3.5" />
-                    {pinnedState ? "Pinned" : "Pin"}
+                    {pinnedState ? t("ui.pinned") : t("ui.pin")}
                   </button>
                 </div>
               );

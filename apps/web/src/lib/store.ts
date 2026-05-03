@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 
 type Market = "US" | "KR";
 type AssetType = "stock" | "etf";
+export type Lang = "en" | "ko";
 
 export interface SavedInstrument {
   ticker: string;
@@ -12,6 +13,7 @@ export interface SavedInstrument {
 }
 
 interface UIStore {
+  lang: Lang;
   market: Market;
   assetType: AssetType;
   conviction: string;
@@ -19,6 +21,7 @@ interface UIStore {
   pinnedInstruments: SavedInstrument[];
   chartInterval: "1d" | "1w" | "1m";
   chartRangeDays: number;
+  setLang: (l: Lang) => void;
   setMarket: (m: Market) => void;
   setAssetType: (t: AssetType) => void;
   setConviction: (c: string) => void;
@@ -47,6 +50,7 @@ function dedupe(
 export const useUIStore = create<UIStore>()(
   persist(
     (set, get) => ({
+      lang: "en",
       market: "US",
       assetType: "stock",
       conviction: "",
@@ -54,6 +58,7 @@ export const useUIStore = create<UIStore>()(
       pinnedInstruments: [],
       chartInterval: "1d",
       chartRangeDays: 350,
+      setLang: (lang) => set({ lang }),
       setMarket: (market) => set({ market }),
       setAssetType: (assetType) => set({ assetType }),
       setConviction: (conviction) => set({ conviction }),
@@ -92,6 +97,7 @@ export const useUIStore = create<UIStore>()(
     {
       name: "consensus-ui-state",
       partialize: (state) => ({
+        lang: state.lang,
         market: state.market,
         assetType: state.assetType,
         conviction: state.conviction,

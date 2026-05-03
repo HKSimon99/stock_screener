@@ -44,6 +44,11 @@ celery_app.conf.update(
     result_expires=86400,                   # Keep results for 1 day
     worker_max_tasks_per_child=100,         # Restart worker after 100 tasks (prevent memory leaks)
     beat_schedule={
+        # ── Nightly price history cleanup (runs before ingestion to prevent DB full) ─
+        "nightly-purge-old-prices": {
+            "task": "app.tasks.ingestion.purge_old_prices",
+            "schedule": crontab(minute=45, hour=6),   # UTC 06:45 — 15 min before KR prices
+        },
         # ── KR nightly (장 마감 후 UTC 07:00 = KST 16:00) ──────────────────
         "nightly-kr-prices": {
             "task": "app.tasks.ingestion.run_kr_prices_batch",

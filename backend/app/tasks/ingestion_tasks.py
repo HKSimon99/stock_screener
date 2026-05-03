@@ -5,7 +5,7 @@ import logging
 import os
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from tenacity import retry, wait_exponential, stop_after_attempt
 
 from app.core.database import AsyncTaskSessionLocal
@@ -654,3 +654,46 @@ def run_kr_investor_flows_task(
         )
     )
     return result
+
+
+# ── Rolling price history cleanup ─────────────────────────────────────────────
+
+_PRICES_RETAIN_TRADING_DAYS = 300   # MA200 + 52-week high + buffer
+
+
+async def _purge_old_prices_async() -> dict:
+    """Delete prices older than the last RETAIN trading days and return stats."""
+    async with AsyncTaskSessionLocal() as db:
+        # Find the cutoff: the oldest trade_date we want to KEEP
+        cutoff_row = await db.execute(
+            text(
+                "SELECT trade_date FROM ("
+                "  SELECT DISTINCT trade_date FROM consensus_app.prices"
+                "  ORDER BY trade_date DESC LIMIT :retain"
+                ") t ORDER BY trade_date ASC LIMIT 1"
+            ),
+            {"retain": _PRICES_RETAIN_TRADING_DAYS},
+        )
+        row = cutoff_row.fetchone()
+        if row is None:
+            return {"deleted": 0, "cutoff": None}
+
+        cutoff_date = row[0]
+        result = await db.execute(
+            text("DELETE FROM consensus_app.prices WHERE trade_date < :cutoff"),
+            {"cutoff": cutoff_date},
+        )
+        await db.commit()
+        deleted = result.rowcount
+        logger.info("purge_old_prices: deleted %d rows older than %s", deleted, cutoff_date)
+        return {"deleted": deleted, "cutoff": str(cutoff_date)}
+
+
+@celery_app.task(name="app.tasks.ingestion.purge_old_prices")
+def purge_old_prices_task() -> dict:
+    """
+    Rolling cleanup: keep only the last 300 trading days of prices.
+    Runs nightly before price ingestion (UTC 06:45) so the table never
+    grows beyond ~250 MB on the Neon free tier (512 MB cap).
+    """
+    return asyncio.run(_purge_old_prices_async())

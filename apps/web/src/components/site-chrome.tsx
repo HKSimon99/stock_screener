@@ -44,10 +44,7 @@ export function SiteChrome() {
             <Link
               key={item.href}
               href={item.href}
-              className="text-sm font-medium transition-colors"
-              style={{ color: "rgba(255,255,255,0.60)" }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "#ffffff")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.60)")}
+              className="text-sm font-medium text-white/60 transition-colors hover:text-white"
             >
               {item.label}
             </Link>

@@ -9,6 +9,7 @@ import { Observability } from "@/components/observability";
 import { Providers } from "@/components/providers";
 import SentryErrorBoundary from "@/components/sentry-error-boundary";
 import { TosConsentGate } from "@/components/tos-consent-gate";
+import { LangSync } from "@/components/lang-sync";
 import "./globals.css";
 
 /**
@@ -70,6 +71,7 @@ export default function RootLayout({
         <SentryErrorBoundary>
           <ClerkProvider>
             <Providers>
+              <LangSync />
               <TosConsentGate>
                 <div id="content">{children}</div>
               </TosConsentGate>

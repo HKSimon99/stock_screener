@@ -87,7 +87,7 @@ export default function Home() {
               gap: "var(--sp-md)",
             }}
           >
-            <Link href="/rankings" className="btn-primary">
+            <Link href="/app/rankings" className="btn-primary">
               {t("home.cta.app")}
               <ArrowRight style={{ width: 16, height: 16 }} />
             </Link>
@@ -324,7 +324,7 @@ export default function Home() {
               {t("home.next.body")}
             </p>
             <div style={{ marginTop: "auto", paddingTop: "var(--sp-xxl)" }}>
-              <Link href="/app/search" className="btn-primary">
+              <Link href="/app/rankings" className="btn-primary">
                 {t("home.next.cta")}
                 <ArrowRight style={{ width: 16, height: 16 }} />
               </Link>

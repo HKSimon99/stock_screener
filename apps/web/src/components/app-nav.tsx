@@ -30,7 +30,7 @@ export function AppNav() {
   const { t }         = useT();
 
   const NAV_ITEMS = [
-    { href: "/rankings",          label: t("nav.rankings"),  icon: Layers3 },
+    { href: "/app/rankings",      label: t("nav.rankings"),  icon: Layers3 },
     { href: "/app/search",        label: t("nav.search"),    icon: Search  },
     { href: "/app/alerts",        label: t("nav.alerts"),    icon: Bell    },
     { href: "/app/market-regime", label: t("nav.regime"),    icon: Radar   },

@@ -1,5 +1,15 @@
 "use client";
 
+/**
+ * AppNav — authenticated research desk header + mobile bottom nav.
+ *
+ * Revolut nav-bar pattern applied to the app shell:
+ *  - Sticky true-black header, 64px tall, 1px hairline-dark border below.
+ *  - Wordmark left → search bar centre → UserButton + pinned count right.
+ *  - Sub-nav pills below header bar (sub-nav-pill token: surface-elevated bg, pill shape).
+ *  - Mobile: hamburger collapses centre nav; bottom fixed nav-rail (4 icons).
+ */
+
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Bell, Layers3, Radar, Search, Star } from "lucide-react";
@@ -9,15 +19,15 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
 
 const NAV_ITEMS = [
-  { href: "/rankings", label: "Rankings", icon: Layers3 },
-  { href: "/app/search", label: "Search", icon: Search },
-  { href: "/app/alerts", label: "Alerts", icon: Bell },
-  { href: "/app/market-regime", label: "Regime", icon: Radar },
+  { href: "/rankings",          label: "Rankings",  icon: Layers3 },
+  { href: "/app/search",        label: "Search",    icon: Search  },
+  { href: "/app/alerts",        label: "Alerts",    icon: Bell    },
+  { href: "/app/market-regime", label: "Regime",    icon: Radar   },
 ] as const;
 
 export function AppNav() {
-  const pathname = usePathname();
-  const router = useRouter();
+  const pathname    = usePathname();
+  const router      = useRouter();
   const [query, setQuery] = useState("");
   const pinnedCount = useUIStore((state) => state.pinnedInstruments.length);
 
@@ -30,99 +40,129 @@ export function AppNav() {
 
   return (
     <>
-      <header className="app-shell pt-4 sm:pt-6">
-        <div className="surface-panel rounded-[1.65rem] px-4 py-4 sm:px-5">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <div className="tiny-label">Consensus Research App</div>
-                <Link
-                  href="/rankings"
-                  className="mt-1 inline-block font-heading text-3xl uppercase tracking-[0.05em] text-white"
-                >
-                  Signal Research Desk
-                </Link>
-              </div>
-              <div className="flex items-center gap-2">
-                <Link
-                  href="/app/search"
-                  className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-[0.72rem] uppercase tracking-[0.16em] text-faint transition-colors hover:text-white xl:hidden"
-                >
-                  <Search className="size-3.5" />
-                  Search
-                </Link>
-                <UserButton />
-              </div>
-            </div>
+      {/* ── Sticky header ──────────────────────────────────────────── */}
+      <header
+        className="sticky top-0 z-40 w-full"
+        style={{
+          background: "#000000",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <div className="app-shell flex h-16 items-center gap-4">
 
-            <form onSubmit={submitSearch} className="flex flex-1 items-center gap-3 xl:max-w-xl">
-              <label className="relative hidden min-w-0 flex-1 md:block">
-                <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-faint" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search ticker, company, Korean name, or exchange"
-                  className="w-full rounded-full border border-white/10 bg-black/18 py-3 pl-11 pr-4 text-sm text-white outline-none transition-colors placeholder:text-faint focus:border-[oklch(0.78_0.11_84_/_0.42)]"
-                />
-              </label>
-              <Link
-                href="/app/search"
-                className="hidden rounded-full border border-white/10 px-4 py-3 text-[0.72rem] font-medium uppercase tracking-[0.16em] text-faint transition-colors hover:text-white md:inline-flex"
+          {/* Wordmark */}
+          <Link
+            href="/rankings"
+            className="shrink-0 font-heading text-xl font-semibold uppercase text-white"
+            style={{ letterSpacing: "-0.02em" }}
+          >
+            Consensus
+          </Link>
+
+          {/* Search bar — grows to fill space */}
+          <form
+            onSubmit={submitSearch}
+            className="hidden flex-1 md:block"
+          >
+            <label className="relative block">
+              <Search
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/40"
+                style={{ width: 16, height: 16 }}
+              />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Ticker, company, or Korean name…"
+                className="w-full rounded-full border py-2.5 pl-11 pr-5 text-sm text-white outline-none transition-colors placeholder:text-white/35"
+                style={{
+                  background: "#16181a",
+                  borderColor: "rgba(255,255,255,0.10)",
+                  height: 40,
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = "#494fdf")}
+                onBlur={(e)  => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.10)")}
+              />
+            </label>
+          </form>
+
+          {/* Right cluster: pinned count + user */}
+          <div className="ml-auto flex items-center gap-3">
+            {pinnedCount > 0 && (
+              <div
+                className="hidden items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium text-white/70 lg:flex"
+                style={{ borderColor: "rgba(255,255,255,0.12)", background: "#16181a" }}
               >
-                Open search
-              </Link>
-              <div className="hidden items-center gap-2 rounded-full border border-white/10 px-4 py-3 text-[0.72rem] uppercase tracking-[0.16em] text-faint lg:inline-flex">
-                <Star className="size-3.5" />
-                {pinnedCount} pinned
+                <Star style={{ width: 13, height: 13 }} />
+                {pinnedCount}
               </div>
-            </form>
+            )}
+            {/* Mobile search link */}
+            <Link
+              href="/app/search"
+              className="flex size-9 items-center justify-center rounded-full text-white/60 transition-colors hover:text-white md:hidden"
+              style={{ background: "#16181a" }}
+            >
+              <Search style={{ width: 16, height: 16 }} />
+            </Link>
+            <UserButton />
           </div>
+        </div>
 
-          <nav className="mt-4 hidden flex-wrap gap-2 md:flex">
+        {/* ── Sub-nav pills (desktop) — sub-nav-pill Revolut token ── */}
+        <div className="app-shell hidden pb-3 md:block">
+          <div className="flex flex-wrap gap-1.5">
             {NAV_ITEMS.map((item) => {
-              const Icon = item.icon;
+              const Icon   = item.icon;
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[0.72rem] uppercase tracking-[0.16em] transition-all",
+                    "inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors",
                     active
-                      ? "border-[oklch(0.78_0.11_84_/_0.42)] bg-[oklch(0.8_0.11_84_/_0.12)] text-white"
-                      : "border-white/8 bg-black/12 text-faint hover:border-white/16 hover:text-white"
+                      ? "border-[#494fdf] bg-[rgba(73,79,223,0.18)] text-white"
+                      : "text-white/55 hover:text-white"
                   )}
+                  style={{
+                    borderColor: active ? "#494fdf" : "rgba(255,255,255,0.10)",
+                    background:  active ? "rgba(73,79,223,0.18)" : "#16181a",
+                  }}
                 >
-                  <Icon className="size-3.5" />
+                  <Icon style={{ width: 14, height: 14 }} />
                   {item.label}
                 </Link>
               );
             })}
-          </nav>
+          </div>
         </div>
       </header>
 
-      <nav className="fixed inset-x-4 bottom-4 z-50 md:hidden">
-        <div className="surface-panel rounded-[1.45rem] px-2 py-2">
-          <div className="grid grid-cols-4 gap-1">
-            {NAV_ITEMS.map((item) => {
-              const Icon = item.icon;
-              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex flex-col items-center gap-1 rounded-[1rem] px-2 py-2 text-[0.65rem] uppercase tracking-[0.12em] transition-colors",
-                    active ? "bg-white/10 text-white" : "text-faint"
-                  )}
-                >
-                  <Icon className="size-4" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
+      {/* ── Mobile bottom nav-rail ─────────────────────────────────── */}
+      <nav
+        className="fixed inset-x-3 bottom-3 z-50 md:hidden"
+        style={{ borderRadius: 20, background: "#16181a", border: "1px solid rgba(255,255,255,0.10)" }}
+      >
+        <div className="grid grid-cols-4 gap-0.5 p-1.5">
+          {NAV_ITEMS.map((item) => {
+            const Icon   = item.icon;
+            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex flex-col items-center gap-1 rounded-[14px] px-2 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] transition-colors",
+                  active
+                    ? "bg-[rgba(73,79,223,0.22)] text-white"
+                    : "text-white/45 hover:text-white"
+                )}
+              >
+                <Icon style={{ width: 17, height: 17 }} />
+                {item.label}
+              </Link>
+            );
+          })}
         </div>
       </nav>
     </>

@@ -4,71 +4,126 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ─── Revolut Design Token System ─────────────────────────────────────────── */
+
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
+  /* Map Tailwind color utilities to Revolut CSS vars */
+  --color-background:        var(--background);
+  --color-foreground:        var(--foreground);
+  --color-card:              var(--card);
+  --color-card-foreground:   var(--card-foreground);
+  --color-popover:           var(--popover);
+  --color-popover-foreground:var(--popover-foreground);
+  --color-primary:           var(--primary);
+  --color-primary-foreground:var(--primary-foreground);
+  --color-secondary:         var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
+  --color-muted:             var(--muted);
+  --color-muted-foreground:  var(--muted-foreground);
+  --color-accent:            var(--accent);
   --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --font-sans: var(--font-body);
+  --color-destructive:       var(--destructive);
+  --color-border:            var(--border);
+  --color-input:             var(--input);
+  --color-ring:              var(--ring);
+
+  --font-sans:    var(--font-body);
   --font-heading: var(--font-display);
-  --font-mono: var(--font-code);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.35);
-  --radius-2xl: calc(var(--radius) * 1.8);
+  --font-mono:    var(--font-code);
+
+  /* Radius scale — Revolut uses explicit px values */
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  20px;
+  --radius-xl:  28px;
+  --radius-2xl: 9999px;    /* pill */
 }
 
 :root {
   color-scheme: dark;
-  --background: oklch(0.15 0.014 250);
-  --foreground: oklch(0.95 0.012 92);
-  --card: oklch(0.22 0.018 248 / 0.92);
-  --card-foreground: oklch(0.95 0.012 92);
-  --popover: oklch(0.21 0.016 248);
-  --popover-foreground: oklch(0.95 0.012 92);
-  --primary: oklch(0.8 0.118 84);
-  --primary-foreground: oklch(0.16 0.01 248);
-  --secondary: oklch(0.28 0.018 250);
-  --secondary-foreground: oklch(0.9 0.01 92);
-  --muted: oklch(0.24 0.014 248);
-  --muted-foreground: oklch(0.71 0.016 88);
-  --accent: oklch(0.78 0.075 184);
-  --accent-foreground: oklch(0.16 0.012 248);
-  --destructive: oklch(0.68 0.18 28);
-  --border: oklch(0.33 0.022 248 / 0.82);
-  --input: oklch(0.26 0.018 248);
-  --ring: oklch(0.8 0.118 84 / 0.55);
-  --surface-0: oklch(0.145 0.012 250);
-  --surface-1: oklch(0.19 0.017 248 / 0.9);
-  --surface-2: oklch(0.235 0.02 248 / 0.94);
-  --surface-3: oklch(0.285 0.025 248 / 0.98);
-  --line-soft: oklch(0.43 0.02 248 / 0.36);
-  --text-quiet: oklch(0.72 0.015 88);
-  --text-faint: oklch(0.56 0.014 92);
-  --signal-emerald: oklch(0.77 0.145 150);
-  --signal-amber: oklch(0.82 0.155 78);
-  --signal-crimson: oklch(0.68 0.185 28);
-  --signal-bronze: oklch(0.68 0.12 58);
-  --signal-silver: oklch(0.75 0.025 240);
-  --signal-diamond: oklch(0.82 0.1 196);
-  --shadow-elevated: 0 24px 80px oklch(0.06 0.015 250 / 0.44);
-  --radius: 1rem;
+
+  /* ── Brand ─────────────────────────────────────────────────── */
+  --rv-primary:        #494fdf;   /* cobalt violet — use sparingly */
+  --rv-primary-bright: #4f55f1;
+  --rv-primary-deep:   #3a40c4;
+  --rv-on-primary:     #ffffff;
+
+  /* ── Canvas ────────────────────────────────────────────────── */
+  --rv-canvas-dark:      #000000;  /* true black — storytelling canvas */
+  --rv-canvas-light:     #ffffff;
+  --rv-surface-deep:     #0a0a0a;  /* one step above canvas-dark */
+  --rv-surface-elevated: #16181a;  /* plan cards / feature cards on dark */
+  --rv-surface-card:     #ffffff;
+  --rv-surface-soft:     #f4f4f4;  /* white-canvas inset groups */
+
+  /* ── Text ──────────────────────────────────────────────────── */
+  --rv-ink:          #191c1f;               /* primary on light canvas */
+  --rv-body-text:    #1f2226;
+  --rv-charcoal:     #3a3d40;
+  --rv-mute:         #505a63;
+  --rv-stone:        #8d969e;
+  --rv-faint:        #c9c9cd;
+  --rv-on-dark:      #ffffff;
+  --rv-on-dark-mute: rgba(255, 255, 255, 0.72);
+
+  /* ── Hairlines / Dividers ──────────────────────────────────── */
+  --rv-hairline-dark:   rgba(255, 255, 255, 0.12);
+  --rv-hairline-light:  #e2e2e7;
+  --rv-hairline-strong: #191c1f;
+  --rv-divider-soft:    rgba(255, 255, 255, 0.06);
+
+  /* ── Semantic accents (illustrations only — never button surfaces) ── */
+  --rv-teal:       #00a87e;
+  --rv-blue:       #007bc2;
+  --rv-green:      #428619;
+  --rv-yellow:     #b09000;
+  --rv-warning:    #ec7e00;
+  --rv-pink:       #e61e49;
+  --rv-danger:     #e23b4a;
+
+  /* ── Conviction signal colours ─────────────────────────────── */
+  --signal-diamond:  #a5f3fc;   /* cyan-200 */
+  --signal-platinum: #c4b5fd;   /* violet-300 */
+  --signal-gold:     #fcd34d;   /* amber-300 */
+  --signal-silver:   #cbd5e1;   /* slate-300 */
+  --signal-bronze:   #fdba74;   /* orange-300 */
+  --signal-unranked: #64748b;   /* slate-500 */
+
+  /* ── Shadcn/Tailwind compatibility mappings ─────────────────── */
+  --background:         var(--rv-canvas-dark);
+  --foreground:         var(--rv-on-dark);
+  --card:               var(--rv-surface-elevated);
+  --card-foreground:    var(--rv-on-dark);
+  --popover:            var(--rv-surface-elevated);
+  --popover-foreground: var(--rv-on-dark);
+  --primary:            var(--rv-primary);
+  --primary-foreground: var(--rv-on-primary);
+  --secondary:          var(--rv-surface-deep);
+  --secondary-foreground: var(--rv-on-dark);
+  --muted:              var(--rv-surface-deep);
+  --muted-foreground:   var(--rv-on-dark-mute);
+  --accent:             var(--rv-primary);
+  --accent-foreground:  var(--rv-on-primary);
+  --destructive:        var(--rv-danger);
+  --border:             var(--rv-hairline-dark);
+  --input:              var(--rv-surface-elevated);
+  --ring:               var(--rv-primary);
+
+  /* ── Spacing tokens ─────────────────────────────────────────── */
+  --sp-xxs: 4px;
+  --sp-xs:  6px;
+  --sp-sm:  8px;
+  --sp-md:  14px;
+  --sp-lg:  16px;
+  --sp-xl:  24px;
+  --sp-xxl: 32px;
+  --sp-3xl: 48px;
+  --sp-block:   80px;
+  --sp-section: 88px;
+  --sp-band:    120px;
 }
+
+/* ─── Base ───────────────────────────────────────────────────────────────── */
 
 @layer base {
   * {
@@ -78,58 +133,13 @@
 
   html {
     @apply font-sans;
-    background: var(--surface-0);
+    background: var(--rv-canvas-dark);
   }
 
   body {
     min-height: 100%;
-    background:
-      radial-gradient(circle at 12% 0%, oklch(0.33 0.07 78 / 0.16), transparent 28%),
-      radial-gradient(circle at 88% 18%, oklch(0.46 0.07 188 / 0.14), transparent 22%),
-      linear-gradient(180deg, oklch(0.17 0.014 248), oklch(0.12 0.01 252));
-    color: var(--foreground);
-    position: relative;
-  }
-
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    background:
-      linear-gradient(
-        90deg,
-        transparent 0,
-        transparent calc(100% - 1px),
-        oklch(0.95 0.02 86 / 0.02) calc(100% - 1px),
-        oklch(0.95 0.02 86 / 0.02) 100%
-      ),
-      linear-gradient(
-        180deg,
-        transparent 0,
-        transparent calc(100% - 1px),
-        oklch(0.95 0.02 86 / 0.018) calc(100% - 1px),
-        oklch(0.95 0.02 86 / 0.018) 100%
-      );
-    background-size: 72px 72px;
-    opacity: 0.24;
-    mask-image: linear-gradient(180deg, white, transparent 82%);
-  }
-
-  body::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    background:
-      linear-gradient(180deg, transparent, oklch(0.05 0.01 248 / 0.24)),
-      repeating-linear-gradient(
-        180deg,
-        transparent 0 3px,
-        oklch(0.98 0.01 80 / 0.012) 3px 4px
-      );
-    mix-blend-mode: soft-light;
-    opacity: 0.6;
+    background: var(--rv-canvas-dark);
+    color: var(--rv-on-dark);
   }
 
   a {
@@ -142,125 +152,237 @@
   }
 
   ::selection {
-    background: oklch(0.78 0.11 84 / 0.32);
-    color: oklch(0.98 0.01 88);
+    background: rgba(73, 79, 223, 0.28);
+    color: #ffffff;
   }
 }
 
+/* ─── Utilities ──────────────────────────────────────────────────────────── */
+
 @layer utilities {
+
+  /* ── Layout shell ─────────────────────────────────────────── */
   .app-shell {
     margin-inline: auto;
-    width: min(100%, 96rem);
-    padding-inline: clamp(1rem, 2vw, 2rem);
+    width: min(100%, 80rem);       /* 1280px max — Revolut content width */
+    padding-inline: clamp(1rem, 2vw, 1.5rem);
   }
 
+  /* ── Surface cards (dark canvas) ─────────────────────────── */
+  /* feature-card-dark equivalent */
   .surface-panel {
-    border: 1px solid var(--line-soft);
-    background:
-      linear-gradient(180deg, oklch(0.24 0.02 248 / 0.94), oklch(0.19 0.017 248 / 0.94));
-    box-shadow: var(--shadow-elevated);
-    backdrop-filter: blur(24px);
-    border-radius: calc(var(--radius) * 1.05);
+    border: 1px solid var(--rv-hairline-dark);
+    background: var(--rv-surface-elevated);
   }
 
+  /* A slightly deeper inset variant */
   .surface-panel-soft {
-    border: 1px solid oklch(0.45 0.022 248 / 0.22);
-    background: oklch(0.22 0.018 248 / 0.58);
-    border-radius: calc(var(--radius) * 0.9);
+    border: 1px solid var(--rv-hairline-dark);
+    background: var(--rv-surface-deep);
   }
 
-  .section-kicker {
+  /* ── Typography utilities ─────────────────────────────────── */
+
+  /* display-xxl — 136px, weight 500, tight */
+  .display-hero {
     font-family: var(--font-display);
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.22em;
+    font-size: clamp(3.5rem, 10vw, 8.5rem);
+    font-weight: 500;
+    line-height: 1.0;
+    letter-spacing: -0.04em;
     text-transform: uppercase;
-    color: var(--text-quiet);
   }
 
-  .section-title {
+  /* display-xl — 80px */
+  .display-xl {
     font-family: var(--font-display);
-    font-size: clamp(2.8rem, 4vw, 4.8rem);
-    line-height: 0.92;
+    font-size: clamp(2.8rem, 6vw, 5rem);
+    font-weight: 500;
+    line-height: 1.0;
     letter-spacing: -0.03em;
     text-transform: uppercase;
   }
 
-  .tiny-label {
-    font-size: 0.72rem;
+  /* display-lg — 48px */
+  .display-lg {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 500;
+    line-height: 1.21;
+    letter-spacing: -0.02em;
+    text-transform: uppercase;
+  }
+
+  /* heading-md — 24px */
+  .heading-md {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 500;
+    line-height: 1.33;
+  }
+
+  /* Kicker / overline label */
+  .section-kicker {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: var(--text-faint);
+    color: var(--rv-on-dark-mute);
   }
 
-  .text-balance {
-    text-wrap: balance;
+  /* Tiny meta label */
+  .tiny-label {
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
   }
 
-  .text-quiet {
-    color: var(--text-quiet);
+  /* ── Text colours ─────────────────────────────────────────── */
+  .text-on-dark      { color: var(--rv-on-dark); }
+  .text-quiet        { color: var(--rv-on-dark-mute); }
+  .text-faint        { color: var(--rv-stone); }
+  .text-balance      { text-wrap: balance; }
+
+  /* ── Buttons ──────────────────────────────────────────────── */
+
+  /* button-primary: white pill on dark canvas — the loudest action */
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 9999px;
+    background: #ffffff;
+    color: #000000;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: 0.01em;
+    padding: 14px 28px;
+    height: 48px;
+    transition: background 180ms ease;
+    white-space: nowrap;
+  }
+  .btn-primary:hover { background: #f4f4f4; }
+
+  /* button-outline-dark: transparent outline on dark canvas */
+  .btn-outline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 9999px;
+    background: transparent;
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    font-family: var(--font-body);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: 0.01em;
+    padding: 13px 27px;
+    height: 48px;
+    transition: border-color 180ms ease, color 180ms ease;
+    white-space: nowrap;
+  }
+  .btn-outline:hover {
+    border-color: rgba(255, 255, 255, 0.54);
+    color: #ffffff;
   }
 
-  .text-faint {
-    color: var(--text-faint);
+  /* button-cobalt: primary brand action on white canvas */
+  .btn-cobalt {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 9999px;
+    background: var(--rv-primary);
+    color: #ffffff;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.5;
+    padding: 14px 28px;
+    height: 48px;
+    transition: background 180ms ease;
+    white-space: nowrap;
+  }
+  .btn-cobalt:hover { background: var(--rv-primary-bright); }
+
+  /* button-pill-sm: small filter chip */
+  .btn-pill-sm {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 9999px;
+    background: var(--rv-surface-elevated);
+    color: var(--rv-on-dark-mute);
+    border: 1px solid var(--rv-hairline-dark);
+    font-family: var(--font-body);
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.43;
+    padding: 8px 16px;
+    height: 36px;
+    transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+  }
+  .btn-pill-sm:hover,
+  .btn-pill-sm[data-active="true"] {
+    background: var(--rv-primary);
+    border-color: var(--rv-primary);
+    color: #ffffff;
   }
 
+  /* ── Filter chip (rankings / strategies) ─────────────────── */
   .filter-chip {
-    border-radius: 999px;
-    border: 1px solid transparent;
-    background: oklch(0.28 0.02 248 / 0.55);
-    color: var(--text-quiet);
-    transition:
-      transform 220ms cubic-bezier(0.19, 1, 0.22, 1),
-      border-color 220ms ease,
-      background-color 220ms ease,
-      color 220ms ease;
+    border-radius: 9999px;
+    border: 1px solid var(--rv-hairline-dark);
+    background: var(--rv-surface-elevated);
+    color: var(--rv-stone);
+    transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
   }
-
   .filter-chip:hover {
-    transform: translateY(-1px);
-    border-color: oklch(0.8 0.11 84 / 0.32);
-    color: oklch(0.95 0.014 88);
+    border-color: rgba(255, 255, 255, 0.28);
+    color: var(--rv-on-dark);
   }
-
   .filter-chip[data-active="true"] {
-    border-color: oklch(0.78 0.11 84 / 0.54);
-    background: oklch(0.8 0.11 84 / 0.16);
-    color: oklch(0.95 0.012 88);
+    border-color: var(--rv-primary);
+    background: rgba(73, 79, 223, 0.16);
+    color: #ffffff;
   }
 
+  /* ── Signal divider ───────────────────────────────────────── */
   .signal-divider {
     height: 1px;
     background: linear-gradient(
       90deg,
       transparent,
-      oklch(0.82 0.11 84 / 0.4),
+      var(--rv-primary) 50%,
       transparent
     );
+    opacity: 0.32;
   }
 
+  /* ── Animate ─────────────────────────────────────────────── */
   .animate-rise {
-    animation: rise-in 620ms cubic-bezier(0.19, 1, 0.22, 1) both;
+    animation: rise-in 520ms cubic-bezier(0.19, 1, 0.22, 1) both;
   }
 }
+
+/* ─── Keyframes ──────────────────────────────────────────────────────────── */
 
 @keyframes rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(18px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ─── Reduced Motion ─────────────────────────────────────────────────────── */
+
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import {
-  Barlow_Condensed,
+  Inter,
+  Plus_Jakarta_Sans,
   JetBrains_Mono,
-  Public_Sans,
 } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Observability } from "@/components/observability";
@@ -11,13 +11,23 @@ import SentryErrorBoundary from "@/components/sentry-error-boundary";
 import { TosConsentGate } from "@/components/tos-consent-gate";
 import "./globals.css";
 
-const bodyFont = Public_Sans({
+/**
+ * Body font: Inter — Revolut's workhorse for UI labels, body copy, buttons.
+ * Revolut uses Inter at 400 (body) and 600 (emphatic / button).
+ */
+const bodyFont = Inter({
   variable: "--font-body",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
 
-const displayFont = Barlow_Condensed({
+/**
+ * Display font: Plus Jakarta Sans — closest freely-licensed match to Revolut's
+ * proprietary Aeonik Pro. Both are humanist geometric sans-serifs at weight 500
+ * with excellent large-scale display legibility.
+ * Apply letter-spacing: -0.04em at display sizes in CSS to match Revolut's tight stacking.
+ */
+const displayFont = Plus_Jakarta_Sans({
   variable: "--font-display",
   subsets: ["latin"],
   weight: ["500", "600", "700"],

@@ -1,6 +1,22 @@
 import { cn } from "@/lib/utils";
 import type { ConvictionLevel } from "@/lib/api";
 
+/**
+ * ConvictionBadge — Revolut badge-feature token.
+ *
+ * Colours are sourced from the signal CSS variables defined in globals.css:
+ *   --signal-diamond  #a5f3fc  (cyan-200)
+ *   --signal-platinum #c4b5fd  (violet-300)
+ *   --signal-gold     #fcd34d  (amber-300)
+ *   --signal-silver   #cbd5e1  (slate-300)
+ *   --signal-bronze   #fdba74  (orange-300)
+ *   --signal-unranked #64748b  (slate-500)
+ *
+ * Shape: pill (border-radius 9999px), 1px border at 35% alpha of the signal
+ * colour, background at 12% alpha, text is the signal colour itself.
+ * No drop shadows — Revolut elevation is colour-block only.
+ */
+
 interface ConvictionBadgeProps {
   level: ConvictionLevel;
   size?: "sm" | "md";
@@ -9,53 +25,54 @@ interface ConvictionBadgeProps {
 const CONVICTION_CONFIG: Record<
   ConvictionLevel,
   {
-    dot: string;
-    shell: string;
+    colorVar: string;        // CSS variable for the signal colour
+    bgAlpha: string;         // rgba for background
+    borderAlpha: string;     // rgba for border
     label: string;
     detail: string;
   }
 > = {
   DIAMOND: {
-    dot: "bg-[oklch(0.84_0.09_196)]",
-    shell:
-      "border-[oklch(0.84_0.09_196_/_0.45)] bg-[oklch(0.32_0.04_196_/_0.22)] text-[oklch(0.93_0.03_192)]",
-    label: "Diamond",
-    detail: "Top-tier alignment",
+    colorVar:    "var(--signal-diamond)",
+    bgAlpha:     "rgba(165,243,252,0.10)",
+    borderAlpha: "rgba(165,243,252,0.28)",
+    label:       "Diamond",
+    detail:      "Top-tier alignment",
   },
   PLATINUM: {
-    dot: "bg-[oklch(0.85_0.06_280)]",
-    shell:
-      "border-[oklch(0.85_0.06_280_/_0.45)] bg-[oklch(0.35_0.03_280_/_0.22)] text-[oklch(0.92_0.02_275)]",
-    label: "Platinum",
-    detail: "Elite prospects",
+    colorVar:    "var(--signal-platinum)",
+    bgAlpha:     "rgba(196,181,253,0.10)",
+    borderAlpha: "rgba(196,181,253,0.28)",
+    label:       "Platinum",
+    detail:      "Elite prospects",
   },
   GOLD: {
-    dot: "bg-[oklch(0.82_0.15_78)]",
-    shell:
-      "border-[oklch(0.82_0.15_78_/_0.42)] bg-[oklch(0.38_0.05_78_/_0.2)] text-[oklch(0.94_0.04_88)]",
-    label: "Gold",
-    detail: "Actionable setup",
+    colorVar:    "var(--signal-gold)",
+    bgAlpha:     "rgba(252,211,77,0.10)",
+    borderAlpha: "rgba(252,211,77,0.28)",
+    label:       "Gold",
+    detail:      "Actionable setup",
   },
   SILVER: {
-    dot: "bg-[oklch(0.78_0.03_235)]",
-    shell:
-      "border-[oklch(0.78_0.03_235_/_0.3)] bg-[oklch(0.36_0.02_235_/_0.18)] text-[oklch(0.9_0.02_230)]",
-    label: "Silver",
-    detail: "Promising watch",
+    colorVar:    "var(--signal-silver)",
+    bgAlpha:     "rgba(203,213,225,0.10)",
+    borderAlpha: "rgba(203,213,225,0.24)",
+    label:       "Silver",
+    detail:      "Promising watch",
   },
   BRONZE: {
-    dot: "bg-[oklch(0.72_0.11_58)]",
-    shell:
-      "border-[oklch(0.72_0.11_58_/_0.35)] bg-[oklch(0.34_0.04_58_/_0.18)] text-[oklch(0.89_0.03_70)]",
-    label: "Bronze",
-    detail: "Developing case",
+    colorVar:    "var(--signal-bronze)",
+    bgAlpha:     "rgba(253,186,116,0.10)",
+    borderAlpha: "rgba(253,186,116,0.24)",
+    label:       "Bronze",
+    detail:      "Developing case",
   },
   UNRANKED: {
-    dot: "bg-[oklch(0.62_0.01_240)]",
-    shell:
-      "border-[oklch(0.62_0.01_240_/_0.24)] bg-[oklch(0.27_0.015_248_/_0.68)] text-[oklch(0.78_0.012_88)]",
-    label: "Unranked",
-    detail: "Below threshold",
+    colorVar:    "var(--signal-unranked)",
+    bgAlpha:     "rgba(100,116,139,0.10)",
+    borderAlpha: "rgba(100,116,139,0.20)",
+    label:       "Unranked",
+    detail:      "Below threshold",
   },
 };
 
@@ -65,13 +82,30 @@ export function ConvictionBadge({ level, size = "md" }: ConvictionBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border font-medium tracking-[0.16em] uppercase",
-        config.shell,
-        size === "sm" ? "px-2.5 py-1 text-[0.62rem]" : "px-3 py-1.5 text-[0.68rem]"
+        "inline-flex items-center gap-1.5 rounded-full border font-medium uppercase",
+        size === "sm"
+          ? "px-2.5 py-1 text-[0.62rem] tracking-[0.14em]"
+          : "px-3 py-1.5 text-[0.68rem] tracking-[0.16em]"
       )}
+      style={{
+        background:  config.bgAlpha,
+        borderColor: config.borderAlpha,
+        color:       config.colorVar,
+      }}
       title={config.detail}
     >
-      <span className={cn("size-1.5 rounded-full", config.dot)} aria-hidden="true" />
+      {/* Signal dot */}
+      <span
+        aria-hidden="true"
+        style={{
+          display:      "inline-block",
+          width:        6,
+          height:       6,
+          borderRadius: "50%",
+          background:   config.colorVar,
+          flexShrink:   0,
+        }}
+      />
       <span>{config.label}</span>
     </span>
   );

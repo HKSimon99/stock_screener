@@ -15,7 +15,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
     <SearchClient
       initialQuery={sp.q ?? ""}
       initialMarket={sp.market === "KR" ? "KR" : sp.market === "US" ? "US" : undefined}
-      initialAssetType={sp.asset_type === "etf" ? "etf" : sp.asset_type === "stock" ? "stock" : undefined}
+      initialAssetType={sp.asset_type === "stock" ? "stock" : undefined}
     />
   );
 }

@@ -16,7 +16,7 @@ export default function DataSourcesPage() {
       <main className="app-shell pt-6 sm:pt-8">
         <section className="surface-panel rounded-[2rem] px-6 py-7 sm:px-8">
           <div className="section-kicker">Data Sources</div>
-          <h1 className="mt-3 font-heading text-6xl uppercase tracking-[0.03em] text-white">
+          <h1 className="mt-3 font-heading text-4xl sm:text-5xl lg:text-6xl uppercase tracking-[0.03em] text-white break-words">
             Source provenance is part of the product.
           </h1>
           <p className="mt-5 max-w-3xl text-sm leading-7 text-quiet sm:text-base">

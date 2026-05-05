@@ -105,6 +105,14 @@ async def test_rankings_endpoint_returns_weinstein_stage_and_regime(client, db_s
 
 
 @pytest.mark.asyncio
+async def test_rankings_endpoint_rejects_etf_asset_type(client):
+    response = await client.get("/api/v1/rankings?asset_type=etf")
+
+    assert response.status_code == 400
+    assert "ETF asset_type is no longer supported" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_rankings_endpoint_defaults_to_latest_snapshot_date_over_newer_single_symbol_scores(
     client,
     db_session,

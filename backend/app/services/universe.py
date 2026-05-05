@@ -282,7 +282,7 @@ def _eligibility_reasons(
         reasons.append("inactive_listing")
     if instrument.is_test_issue:
         reasons.append("test_issue")
-    if instrument.asset_type not in {"stock", "etf"}:
+    if instrument.asset_type != "stock":
         reasons.append("unsupported_asset_type")
     if price_as_of is None:
         reasons.append("no_price_history")
@@ -429,7 +429,10 @@ async def refresh_instrument_coverage_summary(
     instrument_ids: Optional[list[int]] = None,
     market: Optional[str] = None,
 ) -> int:
-    stmt = select(Instrument).where(Instrument.is_active == True)
+    stmt = select(Instrument).where(
+        Instrument.is_active == True,
+        Instrument.asset_type == "stock",
+    )
     if instrument_ids:
         stmt = stmt.where(Instrument.id.in_(instrument_ids))
     if market:
@@ -508,6 +511,7 @@ async def refresh_coverage_summary_for_market_tickers(
         select(Instrument.id)
         .where(
             Instrument.market == market,
+            Instrument.asset_type == "stock",
             func.upper(Instrument.ticker).in_(normalized),
         )
         .order_by(Instrument.id.asc())
@@ -622,7 +626,12 @@ async def search_instruments(
     seen_ids: set[int] = set()
 
     def _base_stmt():
-        stmt = select(Instrument).where(Instrument.is_active == True)
+        stmt = select(
+            Instrument
+        ).where(
+            Instrument.is_active == True,
+            Instrument.asset_type == "stock",
+        )
         if market:
             stmt = stmt.where(Instrument.market == market)
         if asset_type:
@@ -734,6 +743,7 @@ async def browse_instruments(
             InstrumentCoverageSummary.instrument_id == Instrument.id,
         )
         .where(Instrument.is_active == True)
+        .where(Instrument.asset_type == "stock")
     )
     if market:
         stmt = stmt.where(Instrument.market == market)
@@ -777,7 +787,10 @@ async def summarize_universe_coverage(db: AsyncSession) -> dict:
     active_total = int(
         (
             await db.execute(
-                select(func.count()).select_from(Instrument).where(Instrument.is_active == True)
+                select(func.count()).select_from(Instrument).where(
+                    Instrument.is_active == True,
+                    Instrument.asset_type == "stock",
+                )
             )
         ).scalar_one()
         or 0
@@ -787,6 +800,11 @@ async def summarize_universe_coverage(db: AsyncSession) -> dict:
             await db.execute(
                 select(func.count())
                 .select_from(InstrumentCoverageSummary)
+                .join(Instrument, InstrumentCoverageSummary.instrument_id == Instrument.id)
+                .where(
+                    Instrument.is_active == True,
+                    Instrument.asset_type == "stock",
+                )
             )
         ).scalar_one()
         or 0
@@ -794,7 +812,10 @@ async def summarize_universe_coverage(db: AsyncSession) -> dict:
 
     if active_total != summary_total:
         result = await db.execute(
-            select(Instrument).where(Instrument.is_active == True).order_by(Instrument.market, Instrument.ticker)
+            select(Instrument).where(
+                Instrument.is_active == True,
+                Instrument.asset_type == "stock",
+            ).order_by(Instrument.market, Instrument.ticker)
         )
         instruments = list(result.scalars().all())
         coverage_map = await build_coverage_map(db, instruments)
@@ -851,6 +872,7 @@ async def summarize_universe_coverage(db: AsyncSession) -> dict:
             InstrumentCoverageSummary.instrument_id == Instrument.id,
         )
         .where(Instrument.is_active == True)
+        .where(Instrument.asset_type == "stock")
         .group_by(Instrument.market, Instrument.asset_type)
         .order_by(Instrument.market, Instrument.asset_type)
     )

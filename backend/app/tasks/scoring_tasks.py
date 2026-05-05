@@ -5,7 +5,7 @@ import logging
 from contextlib import contextmanager
 from datetime import date, timedelta
 from time import perf_counter
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import event, select
 
@@ -23,6 +23,7 @@ from app.services.scoring_compute import (
     compute_technical_composite_from_context,
     compute_technical_indicators_from_context,
     compute_weinstein_from_context,
+    diagnose_magic_formula_ineligibility_from_context,
     rank_magic_formula_results,
 )
 from app.services.scoring_context import load_batch_scoring_context
@@ -39,6 +40,12 @@ from app.services.strategies.piotroski.engine import run_piotroski_scoring
 from app.services.strategies.backtest_validation import run_backtest, run_consensus_backtest
 
 logger = logging.getLogger(__name__)
+
+
+async def _empty_dict() -> dict:
+    """Noop coroutine — used when KR is not in the scoring scope."""
+    return {}
+
 
 # Keep the historical module-level session name available for tests and older
 # helpers while routing task work through the direct-host task session factory.
@@ -171,6 +178,42 @@ async def _resolve_target_instruments(
             stmt = stmt.where(Instrument.id.in_(instrument_ids))
         rows = await db.execute(stmt)
         return rows.all()
+
+
+async def _load_kr_live_kis_data(target_ids: list[int]) -> "dict[int, Any]":
+    """
+    Fetch live KIS financial ratio data for all KR instruments and return a
+    dict keyed by instrument_id.
+
+    Called once at the start of the scoring pipeline — data lives in memory
+    for the duration of the run and is never written to the database.
+    """
+    from app.services.ingestion.kr_kis_finance import bulk_fetch_kr_finance  # noqa: PLC0415
+
+    if not target_ids:
+        return {}
+
+    async with AsyncTaskSessionLocal() as db:
+        rows = await db.execute(
+            select(Instrument.id, Instrument.ticker)
+            .where(
+                Instrument.id.in_(target_ids),
+                Instrument.market == "KR",
+                Instrument.is_active == True,
+            )
+        )
+        kr_pairs = rows.fetchall()
+
+    if not kr_pairs:
+        return {}
+
+    id_by_ticker = {ticker: iid for iid, ticker in kr_pairs}
+    tickers = list(id_by_ticker.keys())
+
+    kis_by_ticker = await bulk_fetch_kr_finance(tickers)
+
+    # Re-key by instrument_id for fast lookup during chunk processing
+    return {id_by_ticker[ticker]: data for ticker, data in kis_by_ticker.items()}
 
 
 async def _load_market_inputs(
@@ -315,6 +358,7 @@ async def _run_context_full_scoring_pipeline(
         pattern_hits = 0
         composite_results: list[dict] = []
         raw_mf_results: list[dict] = []  # Collected across all chunks; ranked after
+        magic_formula_ineligible_reasons: dict[str, int] = {}
 
         market_inputs_started_at = perf_counter()
         (
@@ -322,15 +366,17 @@ async def _run_context_full_scoring_pipeline(
             risk_free_by_market,
             rs_lookup_by_market,
             rs_4w_lookup_by_market,
-        ) = await _load_market_inputs(
-            markets=target_markets,
-            score_date=parsed_date,
+        ), kis_live_by_id = await asyncio.gather(
+            _load_market_inputs(markets=target_markets, score_date=parsed_date),
+            # Live KIS financial data (quarterly/annual EPS) — fetched fresh,
+            # never stored in DB.  Only runs when KR is in scope.
+            _load_kr_live_kis_data(target_ids) if "KR" in target_markets else _empty_dict(),
         )
         _accumulate_stage_metric(
             stage_metrics,
             name="market_inputs",
             duration_ms=(perf_counter() - market_inputs_started_at) * 1000,
-            extra={"markets_loaded": len(target_markets)},
+            extra={"markets_loaded": len(target_markets), "kis_live_loaded": len(kis_live_by_id)},
         )
 
         chunk_size = 100
@@ -438,6 +484,16 @@ async def _run_context_full_scoring_pipeline(
                     )
                     if result is not None:
                         chunk_raw_mf.append(result)
+                    else:
+                        diagnosis = diagnose_magic_formula_ineligibility_from_context(
+                            annuals=ctx.annuals,
+                            prices=ctx.prices,
+                            shares_outstanding=ctx.instrument.shares_outstanding,
+                        )
+                        for reason in diagnosis["reasons"]:
+                            magic_formula_ineligible_reasons[reason] = (
+                                magic_formula_ineligible_reasons.get(reason, 0) + 1
+                            )
                 raw_mf_results.extend(chunk_raw_mf)
                 _accumulate_stage_metric(
                     stage_metrics,
@@ -514,10 +570,25 @@ async def _run_context_full_scoring_pipeline(
                         continue
                     pattern_result = patterns_by_id.get(inst_id)
                     technical_result = technical_by_id.get(inst_id)
+
+                    # For KR stocks, merge live KIS financial data (quarterly/annual
+                    # EPS fetched fresh from KIS this run) into the DB-loaded context.
+                    # This gives the C and A scorers more data points without any DB writes.
+                    if ctx.instrument.market == "KR":
+                        from app.services.ingestion.kr_kis_finance import (  # noqa: PLC0415
+                            merge_kis_annuals, merge_kis_quarterlies,
+                        )
+                        kis_live = kis_live_by_id.get(inst_id)
+                        effective_quarterlies = merge_kis_quarterlies(ctx.quarterlies, kis_live)
+                        effective_annuals = merge_kis_annuals(ctx.annuals, kis_live)
+                    else:
+                        effective_quarterlies = ctx.quarterlies
+                        effective_annuals = ctx.annuals
+
                     result = compute_canslim_from_context(
                         instrument=ctx.instrument,
-                        quarterlies=ctx.quarterlies,
-                        annuals=ctx.annuals,
+                        quarterlies=effective_quarterlies,
+                        annuals=effective_annuals,
                         prices=ctx.prices,
                         institutional=ctx.institutional,
                         regime=batch_context.regimes_by_market.get(ctx.instrument.market),
@@ -609,6 +680,10 @@ async def _run_context_full_scoring_pipeline(
             name="magic_formula_rank",
             duration_ms=(perf_counter() - mf_started_at) * 1000,
             result_count=magic_formula_count,
+            extra={
+                "raw_eligible": len(raw_mf_results),
+                "ineligible_reasons": magic_formula_ineligible_reasons,
+            },
         )
 
         consensus_results = await _run_profiled_stage(

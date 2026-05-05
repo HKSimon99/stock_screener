@@ -92,6 +92,7 @@ async def _load_existing_market_tickers(
         await db.execute(
             select(Instrument).where(
                 Instrument.market == market,
+                Instrument.asset_type == "stock",
                 Instrument.is_active.is_(True),
                 func.upper(Instrument.ticker).in_(requested_tickers),
             )

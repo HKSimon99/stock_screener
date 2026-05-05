@@ -1,5 +1,6 @@
 import pytest
 
+from app.models.instrument import Instrument
 from app.services.ingestion.us_fundamental import EdgarFundamentalIngester
 
 
@@ -35,3 +36,45 @@ def test_prepare_annual_record_maps_model_fields_and_ratios():
     assert prepared["gross_margin"] == pytest.approx(0.6)
     assert prepared["asset_turnover"] == pytest.approx(0.5)
     assert prepared["leverage_ratio"] == pytest.approx(0.2)
+
+
+def test_maybe_update_instrument_shares_backfills_from_annual_record():
+    ingester = EdgarFundamentalIngester()
+    instrument = Instrument(
+        ticker="AAPL",
+        name="Apple",
+        market="US",
+        exchange="NASDAQ",
+        asset_type="stock",
+        is_active=True,
+        shares_outstanding=None,
+    )
+
+    changed = ingester._maybe_update_instrument_shares(
+        instrument,
+        {"shares_outstanding_annual": 15_000_000_000.0},
+    )
+
+    assert changed is True
+    assert instrument.shares_outstanding == 15_000_000_000.0
+
+
+def test_maybe_update_instrument_shares_ignores_missing_or_zero_values():
+    ingester = EdgarFundamentalIngester()
+    instrument = Instrument(
+        ticker="AAPL",
+        name="Apple",
+        market="US",
+        exchange="NASDAQ",
+        asset_type="stock",
+        is_active=True,
+        shares_outstanding=10.0,
+    )
+
+    changed = ingester._maybe_update_instrument_shares(
+        instrument,
+        {"shares_outstanding_annual": 0.0},
+    )
+
+    assert changed is False
+    assert instrument.shares_outstanding == 10.0

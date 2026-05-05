@@ -18,7 +18,7 @@ import { RankingRow } from "@/components/ui/ranking-row";
 
 type Market = "US" | "KR";
 
-const FILTER_CHIPS = ["All", "Stocks", "ETFs", "Diamond+", "Pass 4+"];
+const FILTER_CHIPS = ["All", "Stocks", "Diamond+", "Pass 4+"];
 
 function formatRegime(state?: string | null) {
   switch (state) {

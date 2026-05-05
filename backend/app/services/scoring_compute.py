@@ -328,10 +328,11 @@ def compute_magic_formula_raw_from_context(
 
     # Enterprise Value = Market Cap + Total Debt - Cash
     latest_price = prices[-1].close
-    if latest_price is None or shares_outstanding is None or shares_outstanding <= 0:
+    effective_shares = shares_outstanding or latest.shares_outstanding_annual
+    if latest_price is None or effective_shares is None or effective_shares <= 0:
         return None
 
-    market_cap = shares_outstanding * latest_price
+    market_cap = effective_shares * latest_price
     total_debt = latest.total_debt or 0.0
     cash = latest.cash_and_equivalents or 0.0
     ev = market_cap + total_debt - cash
@@ -348,6 +349,77 @@ def compute_magic_formula_raw_from_context(
         "invested_capital": invested_capital,
         "market_cap": market_cap,
         "ev": ev,
+        "shares_outstanding": effective_shares,
+        "shares_source": (
+            "instrument"
+            if shares_outstanding is not None and shares_outstanding > 0
+            else "fundamentals_annual"
+        ),
+    }
+
+
+def diagnose_magic_formula_ineligibility_from_context(
+    *,
+    annuals: tuple[AnnualReport, ...],
+    prices: tuple[PriceBar, ...],
+    shares_outstanding: Optional[float],
+) -> dict:
+    """Explain why Magic Formula raw scoring cannot be computed."""
+    reasons: list[str] = []
+
+    if not annuals:
+        reasons.append("missing_annual_fundamentals")
+        latest = None
+    else:
+        latest = annuals[-1]
+
+    if not prices:
+        reasons.append("missing_price_history")
+        latest_price = None
+    else:
+        latest_price = prices[-1].close
+        if latest_price is None or latest_price <= 0:
+            reasons.append("missing_latest_price")
+
+    if latest is None:
+        return {"eligible": False, "reasons": reasons}
+
+    ebit = latest.ebit
+    if ebit is None:
+        reasons.append("missing_ebit")
+    elif ebit <= 0:
+        reasons.append("non_positive_ebit")
+
+    ca = latest.current_assets or 0.0
+    cl = latest.current_liabilities or 0.0
+    nfa = latest.net_fixed_assets or 0.0
+    invested_capital = max(0.0, ca - cl) + nfa
+    if invested_capital <= 0:
+        reasons.append("non_positive_invested_capital")
+
+    effective_shares = shares_outstanding or latest.shares_outstanding_annual
+    shares_source = (
+        "instrument"
+        if shares_outstanding is not None and shares_outstanding > 0
+        else "fundamentals_annual"
+        if latest.shares_outstanding_annual is not None and latest.shares_outstanding_annual > 0
+        else None
+    )
+    if effective_shares is None or effective_shares <= 0:
+        reasons.append("missing_shares_outstanding")
+
+    ev = None
+    if latest_price is not None and latest_price > 0 and effective_shares is not None and effective_shares > 0:
+        ev = (effective_shares * latest_price) + (latest.total_debt or 0.0) - (latest.cash_and_equivalents or 0.0)
+        if ev <= 0:
+            reasons.append("non_positive_enterprise_value")
+
+    return {
+        "eligible": not reasons,
+        "reasons": reasons,
+        "shares_source": shares_source,
+        "invested_capital": invested_capital,
+        "enterprise_value": ev,
     }
 
 
@@ -395,6 +467,8 @@ def rank_magic_formula_results(
                 "invested_capital": round(item["invested_capital"], 0),
                 "market_cap": round(item["market_cap"], 0),
                 "enterprise_value": round(item["ev"], 0),
+                "shares_outstanding": round(item["shares_outstanding"], 0),
+                "shares_source": item["shares_source"],
                 "roic_rank": roic_rank[inst_id],
                 "ey_rank": ey_rank[inst_id],
                 "combined_rank": item["combined_rank"],

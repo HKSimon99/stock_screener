@@ -20,7 +20,7 @@ import { Display, Kicker } from "@/components/ui/typography";
 import { getPinnedInstruments, type PinnedInstrument } from "@/lib/pinned";
 
 type MarketFilter = "ALL" | "US" | "KR";
-type AssetFilter = "ALL" | "stock" | "etf";
+type AssetFilter = "ALL" | "stock";
 
 function getScopeLabel(market: MarketFilter, asset: AssetFilter) {
   return {
@@ -29,7 +29,6 @@ function getScopeLabel(market: MarketFilter, asset: AssetFilter) {
     marketKr: market === "KR",
     assetAll: asset === "ALL",
     assetStock: asset === "stock",
-    assetEtf: asset === "etf",
   };
 }
 
@@ -128,7 +127,6 @@ export default function SearchScreen() {
             { label: "US", active: scope.marketUs, onPress: () => setMarketFilter("US") },
             { label: "KR", active: scope.marketKr, onPress: () => setMarketFilter("KR") },
             { label: "Stocks", active: scope.assetStock, onPress: () => setAssetFilter("stock") },
-            { label: "ETFs", active: scope.assetEtf, onPress: () => setAssetFilter("etf") },
           ].map((chip) => (
             <Pressable
               key={chip.label}

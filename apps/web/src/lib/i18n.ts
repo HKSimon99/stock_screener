@@ -15,6 +15,7 @@ export type TranslationKey =
   // ── Nav ──────────────────────────────────────────────────────────────────
   | "nav.rankings"
   | "nav.search"
+  | "nav.strategies"
   | "nav.alerts"
   | "nav.regime"
   | "nav.openApp"
@@ -146,7 +147,6 @@ export type TranslationKey =
   | "ui.explore"
   | "ui.allCoverage"
   | "ui.stock"
-  | "ui.etf"
   // ── Conviction levels ─────────────────────────────────────────────────────
   | "conviction.diamond"
   | "conviction.platinum"
@@ -170,6 +170,7 @@ export const translations: Record<Lang, Dictionary> = {
     // Nav
     "nav.rankings":          "Rankings",
     "nav.search":            "Search",
+    "nav.strategies":        "Strategies",
     "nav.alerts":            "Alerts",
     "nav.regime":            "Regime",
     "nav.openApp":           "Open App",
@@ -189,7 +190,7 @@ export const translations: Record<Lang, Dictionary> = {
     "home.cta.methodology":            "Read methodology",
     "home.stats.universe.label":       "Universe",
     "home.stats.universe.value":       "6,500+",
-    "home.stats.universe.sub":         "US + KR equities & ETFs",
+    "home.stats.universe.sub":         "US + KR equities",
     "home.stats.strategies.label":     "Strategies",
     "home.stats.strategies.value":     "3",
     "home.stats.strategies.sub":       "CANSLIM · Piotroski · Magic Formula",
@@ -301,7 +302,6 @@ export const translations: Record<Lang, Dictionary> = {
     "ui.explore":      "Explore",
     "ui.allCoverage":  "All coverage",
     "ui.stock":        "STOCK",
-    "ui.etf":          "ETF",
     // Conviction
     "conviction.diamond":  "Diamond",
     "conviction.platinum": "Platinum",
@@ -323,6 +323,7 @@ export const translations: Record<Lang, Dictionary> = {
     // Nav
     "nav.rankings":          "랭킹",
     "nav.search":            "검색",
+    "nav.strategies":        "전략",
     "nav.alerts":            "알림",
     "nav.regime":            "시장 국면",
     "nav.openApp":           "앱 열기",
@@ -342,7 +343,7 @@ export const translations: Record<Lang, Dictionary> = {
     "home.cta.methodology":            "방법론 읽기",
     "home.stats.universe.label":       "종목 수",
     "home.stats.universe.value":       "6,500+",
-    "home.stats.universe.sub":         "미국 + 한국 주식 및 ETF",
+    "home.stats.universe.sub":         "미국 + 한국 주식",
     "home.stats.strategies.label":     "전략 수",
     "home.stats.strategies.value":     "3",
     "home.stats.strategies.sub":       "CANSLIM · 피오트로스키 · 마법 공식",
@@ -454,7 +455,6 @@ export const translations: Record<Lang, Dictionary> = {
     "ui.explore":      "탐색",
     "ui.allCoverage":  "전체 커버리지",
     "ui.stock":        "주식",
-    "ui.etf":          "ETF",
     // Conviction
     "conviction.diamond":  "다이아몬드",
     "conviction.platinum": "플래티넘",

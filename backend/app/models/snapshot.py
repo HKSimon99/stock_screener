@@ -16,7 +16,7 @@ class ScoringSnapshot(Base):
     id = Column(Integer, primary_key=True)
     snapshot_date = Column(Date, nullable=False)
     market = Column(String(4), nullable=False)
-    asset_type = Column(String(10), nullable=False)  # 'stock' | 'etf'
+    asset_type = Column(String(10), nullable=False)  # active snapshots: 'stock'
     regime_state = Column(String(30))
     rankings_json = Column(JSONB, nullable=False)    # Full ranked list with scores
     metadata_ = Column("metadata", JSONB)            # config_hash, freshness summary, version

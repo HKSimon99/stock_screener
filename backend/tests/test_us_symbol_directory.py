@@ -30,7 +30,7 @@ def test_build_instrument_payload_keeps_supported_exact_symbol():
     assert payload["ticker"] == "TSSI"
 
 
-def test_build_instrument_payload_normalizes_exchange_codes():
+def test_build_instrument_payload_excludes_etfs():
     payload = _build_instrument_payload(
         {
             "ACT Symbol": "AETH",
@@ -42,5 +42,21 @@ def test_build_instrument_payload_normalizes_exchange_codes():
         "otherlisted",
     )
 
+    assert payload is None
+
+
+def test_build_instrument_payload_normalizes_exchange_codes_for_stocks():
+    payload = _build_instrument_payload(
+        {
+            "ACT Symbol": "IBM",
+            "Security Name": "International Business Machines Corporation Common Stock",
+            "Test Issue": "N",
+            "ETF": "N",
+            "Exchange": "N",
+        },
+        "otherlisted",
+    )
+
     assert payload is not None
-    assert payload["exchange"] == "NYSE American"
+    assert payload["asset_type"] == "stock"
+    assert payload["exchange"] == "NYSE"

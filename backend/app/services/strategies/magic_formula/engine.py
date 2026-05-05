@@ -186,7 +186,10 @@ async def run_magic_formula_scoring(
         score_date = date.today()
 
     async with AsyncSessionLocal() as db:
-        inst_stmt = select(Instrument).where(Instrument.is_active == True)
+        inst_stmt = select(Instrument).where(
+            Instrument.is_active == True,
+            Instrument.asset_type == "stock",
+        )
         if market:
             inst_stmt = inst_stmt.where(Instrument.market == market)
         if instrument_ids:
@@ -222,9 +225,10 @@ async def run_magic_formula_scoring(
                     .limit(1)
                 )
                 latest_price = (await db.execute(price_stmt)).scalars().first()
+                shares_outstanding = inst.shares_outstanding or fa.shares_outstanding_annual
                 market_cap = None
-                if latest_price and latest_price.close and inst.shares_outstanding:
-                    market_cap = float(latest_price.close) * float(inst.shares_outstanding)
+                if latest_price and latest_price.close and shares_outstanding:
+                    market_cap = float(latest_price.close) * float(shares_outstanding)
 
                 raw = compute_magic_formula_raw(
                     ebit=float(fa.ebit) if fa.ebit is not None else None,
@@ -234,6 +238,9 @@ async def run_magic_formula_scoring(
                     market_cap=market_cap,
                     total_debt=float(fa.total_debt) if fa.total_debt is not None else None,
                     cash_and_equivalents=float(fa.cash_and_equivalents) if fa.cash_and_equivalents is not None else None,
+                )
+                raw["shares_source"] = (
+                    "instrument" if inst.shares_outstanding else "fundamentals_annual"
                 )
                 raw["instrument_id"] = inst.id
                 raws.append(raw)
@@ -264,7 +271,12 @@ async def run_magic_formula_scoring(
                     "magic_formula_detail": {
                         k: v for k, v in item.get("detail", {}).items()
                         if isinstance(v, (int, float, bool, str, type(None)))
-                    } | {"roic_rank": item.get("roic_rank"), "ey_rank": item.get("ey_rank"), "combined_rank": item.get("combined_rank")},
+                    } | {
+                        "shares_source": item.get("shares_source"),
+                        "roic_rank": item.get("roic_rank"),
+                        "ey_rank": item.get("ey_rank"),
+                        "combined_rank": item.get("combined_rank"),
+                    },
                 }
                 if existing:
                     for k, v in mf_data.items():

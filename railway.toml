@@ -1,4 +1,5 @@
-# Railway monorepo config — three backend services, all rooted at backend/
+# Railway monorepo config — two backend services, rooted at backend/
+# Beat scheduler merged into worker (--beat flag) to save one Railway service.
 # Nixpacks build phases for each service are defined in backend/nixpacks.toml
 
 [[services]]
@@ -9,9 +10,6 @@ startCommand = "sh -c 'uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT'"
 [[services]]
 name = "worker"
 root = "backend"
-startCommand = "uv run celery -A app.tasks.celery_app.celery_app worker --loglevel=info"
-
-[[services]]
-name = "beat"
-root = "backend"
-startCommand = "uv run celery -A app.tasks.celery_app.celery_app beat --loglevel=info"
+# --beat runs the scheduler in the same process.
+# Safe for this workload: 11 nightly tasks, not high-concurrency.
+startCommand = "uv run celery -A app.tasks.celery_app.celery_app worker --beat --loglevel=info"

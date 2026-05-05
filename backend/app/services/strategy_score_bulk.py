@@ -65,6 +65,27 @@ async def bulk_upsert_strategy_scores(db, rows: list[dict]) -> None:
     if not rows:
         return
 
+    field_names, normalized_rows = _normalize_strategy_score_rows(rows)
+
+    stmt = insert(StrategyScore).values(normalized_rows)
+    update_map = {
+        field_name: func.coalesce(
+            getattr(stmt.excluded, field_name),
+            getattr(StrategyScore, field_name),
+        )
+        for field_name in field_names
+    }
+    update_map["computed_at"] = func.now()
+
+    await db.execute(
+        stmt.on_conflict_do_update(
+            constraint="uq_strategy_score_instrument_date",
+            set_=update_map,
+        )
+    )
+
+
+def _normalize_strategy_score_rows(rows: list[dict]) -> tuple[list[str], list[dict]]:
     field_names = sorted(
         {
             key
@@ -85,17 +106,4 @@ async def bulk_upsert_strategy_scores(db, rows: list[dict]) -> None:
                 value = _sanitize_json_value(value)
             normalized[field_name] = value
         normalized_rows.append(normalized)
-
-    stmt = insert(StrategyScore).values(normalized_rows)
-    update_map = {
-        field_name: getattr(stmt.excluded, field_name)
-        for field_name in field_names
-    }
-    update_map["computed_at"] = func.now()
-
-    await db.execute(
-        stmt.on_conflict_do_update(
-            constraint="uq_strategy_score_instrument_date",
-            set_=update_map,
-        )
-    )
+    return field_names, normalized_rows

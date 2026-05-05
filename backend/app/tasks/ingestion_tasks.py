@@ -29,7 +29,7 @@ from app.services.ingestion.kr_price import (
 from app.services.ingestion.us_fundamental import run_us_fundamentals_ingestion
 from app.services.ingestion.us_institutional import ingest_us_institutional
 from app.services.ingestion.kr_investor_flow import ingest_kr_investor_flows
-from app.services.ingestion.us_price import fetch_and_store_prices, sync_instruments
+from app.services.ingestion.us_price import fetch_and_store_prices_batch, sync_instruments
 from app.services.universe import refresh_coverage_summary_for_market_tickers, refresh_instrument_coverage_summary
 from app.tasks.celery_app import celery_app
 
@@ -272,20 +272,24 @@ async def run_us_price_ingestion(
                 market="US",
                 tickers=normalized or None,
                 limit=limit,
-                asset_types=["stock"] if not normalized else None,
+                asset_types=["stock"],
             )
 
-            for instrument_id, ticker in instrument_refs:
-                try:
-                    await fetch_and_store_prices(
-                        session=session,
-                        instrument_id=instrument_id,
-                        ticker=ticker,
-                        days=days,
-                    )
-                    processed_tickers.append(ticker)
-                except Exception:
+            try:
+                price_counts = await fetch_and_store_prices_batch(
+                    session=session,
+                    instrument_refs=instrument_refs,
+                    days=days,
+                )
+                for _instrument_id, ticker in instrument_refs:
+                    if price_counts.get(ticker, 0) > 0:
+                        processed_tickers.append(ticker)
+                    else:
+                        failed_tickers.append(ticker)
+            except Exception:
+                for _instrument_id, ticker in instrument_refs:
                     failed_tickers.append(ticker)
+                raise
     except Exception as exc:
         await _record_source_freshness(
             source_name=US_PRICES_SOURCE,
@@ -373,7 +377,7 @@ async def run_kr_price_ingestion(
                 market="KR",
                 tickers=normalized or None,
                 limit=limit,
-                asset_types=["stock"] if not normalized else None,
+                asset_types=["stock"],
             )
 
             for index, (instrument_id, ticker) in enumerate(instrument_refs):

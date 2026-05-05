@@ -82,7 +82,7 @@ export interface RankingItem {
   name_kr?: string;
   market: "US" | "KR";
   exchange?: string;
-  asset_type?: "stock" | "etf";
+  asset_type?: "stock";
   coverage_state?: CoverageState;
   rank_model_version?: string;
   conviction_level: ConvictionLevel;
@@ -112,7 +112,7 @@ export interface RankingsResponse {
 
 export interface RankingsQueryParams {
   market: "US" | "KR";
-  asset_type?: "stock" | "etf";
+  asset_type?: "stock";
   conviction?: string | string[];
   score_date?: string;
   limit?: number;
@@ -464,7 +464,7 @@ export interface SearchResult {
   name_kr?: string;
   market: "US" | "KR";
   exchange: string;
-  asset_type: "stock" | "etf";
+  asset_type: "stock";
   listing_status: string;
   coverage_state: CoverageState;
   ranking_eligibility: RankingEligibility;
@@ -484,7 +484,7 @@ export interface BrowseResult {
   name_kr?: string;
   market: "US" | "KR";
   exchange: string;
-  asset_type: "stock" | "etf";
+  asset_type: "stock";
   listing_status: string;
   sector?: string;
   industry_group?: string;
@@ -503,7 +503,7 @@ export interface BrowseResponse {
 
 export interface BrowseQueryParams {
   market?: "US" | "KR";
-  asset_type?: "stock" | "etf";
+  asset_type?: "stock";
   coverage_state?: CoverageState;
   exclude_ranked?: boolean;
   limit?: number;
@@ -512,7 +512,7 @@ export interface BrowseQueryParams {
 
 export interface UniverseCoverageBucket {
   market: "US" | "KR";
-  asset_type: "stock" | "etf";
+  asset_type: "stock";
   searchable: number;
   price_ready: number;
   fundamentals_ready: number;
@@ -607,7 +607,7 @@ interface RawRankingItem {
   name_kr?: string | null;
   market: "US" | "KR";
   exchange?: string | null;
-  asset_type?: "stock" | "etf" | null;
+  asset_type?: "stock" | null;
   coverage_state?: CoverageState | null;
   rank_model_version?: string | null;
   conviction_level: ConvictionLevel;
@@ -751,7 +751,7 @@ interface RawInstrumentDetail {
   name: string;
   name_kr?: string | null;
   market: "US" | "KR";
-  asset_type?: "stock" | "etf" | null;
+  asset_type?: "stock" | null;
   score_date: string;
   exchange?: string | null;
   listing_status?: string | null;
@@ -845,7 +845,7 @@ interface RawSearchResult {
   name_kr?: string | null;
   market: "US" | "KR";
   exchange: string;
-  asset_type: "stock" | "etf";
+  asset_type: "stock";
   listing_status: string;
   coverage_state: CoverageState;
   ranking_eligibility: RankingEligibility;
@@ -865,7 +865,7 @@ interface RawBrowseResult {
   name_kr?: string | null;
   market: "US" | "KR";
   exchange: string;
-  asset_type: "stock" | "etf";
+  asset_type: "stock";
   listing_status: string;
   sector?: string | null;
   industry_group?: string | null;
@@ -1608,7 +1608,7 @@ export async function fetchInstrumentChart(
 export async function fetchInstrumentSearch(params: {
   q: string;
   market?: "US" | "KR";
-  asset_type?: "stock" | "etf";
+  asset_type?: "stock";
   limit?: number;
 }): Promise<SearchResponse> {
   const qs = new URLSearchParams();

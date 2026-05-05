@@ -21,7 +21,6 @@ dependencies = [
     "redis>=5.0.0",             # Optional: only needed for production Redis cache
 
     # US data — free
-    "yfinance>=0.2.40",
     "edgartools>=2.25.0",       # SEC EDGAR XBRL
     "fredapi>=0.5.1",           # FRED risk-free rate
 

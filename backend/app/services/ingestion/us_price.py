@@ -6,11 +6,11 @@ from datetime import datetime, timedelta
 
 import httpx
 import pandas as pd
-import yfinance as yf
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.instrument import Instrument
 from app.models.price import Price
@@ -23,6 +23,10 @@ NASDAQ_DIRECTORY_URLS = {
     "nasdaqlisted": "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
     "otherlisted": "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt",
 }
+ALPACA_DATA_BASE_URL = "https://data.alpaca.markets"
+ALPACA_BARS_LIMIT = 10000
+ALPACA_SYMBOL_CHUNK_SIZE = 100
+PRICE_UPSERT_CHUNK_SIZE = 1000
 EXCHANGE_CODE_MAP = {
     "A": "NYSEAMER",
     "N": "NYSE",
@@ -43,13 +47,17 @@ UNSUPPORTED_SECURITY_TOKENS = (
 )
 
 
+class AlpacaPriceError(Exception):
+    """Raised when Alpaca market data cannot be fetched or parsed."""
+
+
 def _normalize_ticker(symbol: str) -> str:
     return symbol.strip().replace("$", "").replace(".", "-")
 
 
 def _is_supported_security(security_name: str, *, etf_flag: str) -> bool:
     if etf_flag == "Y":
-        return True
+        return False
     lowered = f" {security_name.lower()} "
     return not any(token in lowered for token in UNSUPPORTED_SECURITY_TOKENS)
 
@@ -73,7 +81,7 @@ def _build_instrument_payload(row: dict[str, str], source_name: str) -> dict | N
             "name": security_name[:200],
             "market": "US",
             "exchange": normalize_exchange("NASDAQ"),
-            "asset_type": "etf" if etf_flag == "Y" else "stock",
+            "asset_type": "stock",
             "listing_status": "LISTED",
             "sector": normalize_sector(None),
             "industry_group": None,
@@ -104,7 +112,7 @@ def _build_instrument_payload(row: dict[str, str], source_name: str) -> dict | N
         "name": security_name[:200],
         "market": "US",
         "exchange": normalize_exchange(EXCHANGE_CODE_MAP.get(exchange_code, exchange_code or "OTHER")),
-        "asset_type": "etf" if etf_flag == "Y" else "stock",
+        "asset_type": "stock",
         "listing_status": "LISTED",
         "sector": normalize_sector(None),
         "industry_group": None,
@@ -209,68 +217,120 @@ async def sync_instruments(session: AsyncSession):
 
 async def fetch_and_store_prices(
     session: AsyncSession, instrument_id: int, ticker: str, days: int = 730
-):
-    try:
-        dt_end = datetime.now()
-        dt_start = dt_end - timedelta(days=days)
+) -> int:
+    counts = await fetch_and_store_prices_batch(session, [(instrument_id, ticker)], days=days)
+    return counts.get(ticker, 0)
 
-        logger.info("Fetching %s prices...", ticker)
-        ticker_obj = yf.Ticker(ticker)
-        df = await asyncio.to_thread(
-            ticker_obj.history,
-            start=dt_start.strftime("%Y-%m-%d"),
-            end=dt_end.strftime("%Y-%m-%d"),
+
+def _alpaca_headers() -> dict[str, str]:
+    if not settings.alpaca_api_key_id or not settings.alpaca_api_secret_key:
+        raise AlpacaPriceError(
+            "Missing Alpaca credentials. Set ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY."
         )
+    return {
+        "APCA-API-KEY-ID": settings.alpaca_api_key_id,
+        "APCA-API-SECRET-KEY": settings.alpaca_api_secret_key,
+        "User-Agent": "Consensus/1.0",
+    }
 
-        if df.empty:
-            logger.warning("No price data found for %s", ticker)
-            return
 
-        df = df.reset_index()
-        if pd.api.types.is_datetime64_any_dtype(df["Date"]):
-            df["Date"] = df["Date"].dt.date
+def _chunked(values: list, size: int) -> list[list]:
+    return [values[index : index + size] for index in range(0, len(values), size)]
 
-        df.rename(
-            columns={
-                "Date": "trade_date",
-                "Open": "open",
-                "High": "high",
-                "Low": "low",
-                "Close": "close",
-                "Volume": "volume",
-            },
-            inplace=True,
-        )
 
-        needed_cols = ["trade_date", "open", "high", "low", "close", "volume"]
-        for col in needed_cols:
-            if col not in df.columns:
-                logger.warning("Missing column %s for %s", col, ticker)
-                return
+async def _fetch_alpaca_bars(
+    tickers: list[str],
+    *,
+    dt_start: datetime,
+    dt_end: datetime,
+) -> dict[str, pd.DataFrame]:
+    if not tickers:
+        return {}
 
-        df["avg_volume_50d"] = df["volume"].rolling(window=50, min_periods=1).mean()
+    bars_by_ticker: dict[str, list[dict]] = {ticker: [] for ticker in tickers}
+    params = {
+        "symbols": ",".join(tickers),
+        "timeframe": "1Day",
+        "start": dt_start.date().isoformat(),
+        "end": dt_end.date().isoformat(),
+        "adjustment": "all",
+        "feed": settings.alpaca_data_feed or "iex",
+        "limit": ALPACA_BARS_LIMIT,
+    }
 
-        prices_data = []
-        for _, row in df.iterrows():
-            prices_data.append(
-                {
-                    "instrument_id": instrument_id,
-                    "trade_date": row["trade_date"],
-                    "open": float(row["open"]) if pd.notnull(row["open"]) else None,
-                    "high": float(row["high"]) if pd.notnull(row["high"]) else None,
-                    "low": float(row["low"]) if pd.notnull(row["low"]) else None,
-                    "close": float(row["close"]) if pd.notnull(row["close"]) else None,
-                    "volume": int(row["volume"]) if pd.notnull(row["volume"]) else 0,
-                    "avg_volume_50d": int(row["avg_volume_50d"])
-                    if pd.notnull(row["avg_volume_50d"])
-                    else 0,
-                }
+    async with httpx.AsyncClient(headers=_alpaca_headers(), timeout=45.0) as client:
+        page_token: str | None = None
+        while True:
+            request_params = dict(params)
+            if page_token:
+                request_params["page_token"] = page_token
+            response = await client.get(
+                f"{ALPACA_DATA_BASE_URL}/v2/stocks/bars",
+                params=request_params,
             )
+            response.raise_for_status()
+            payload = response.json()
+            raw_bars = payload.get("bars")
+            if not isinstance(raw_bars, dict):
+                raise AlpacaPriceError("Alpaca response did not include a bars object.")
+            for ticker, rows in raw_bars.items():
+                if ticker in bars_by_ticker and isinstance(rows, list):
+                    bars_by_ticker[ticker].extend(rows)
+            page_token = payload.get("next_page_token")
+            if not page_token:
+                break
 
-        if not prices_data:
-            return
+    frames: dict[str, pd.DataFrame] = {}
+    for ticker, rows in bars_by_ticker.items():
+        if not rows:
+            frames[ticker] = pd.DataFrame()
+            continue
+        df = pd.DataFrame(rows)
+        column_map = {
+            "t": "trade_date",
+            "o": "open",
+            "h": "high",
+            "l": "low",
+            "c": "close",
+            "v": "volume",
+        }
+        df = df.rename(columns=column_map)
+        needed_cols = ["trade_date", "open", "high", "low", "close", "volume"]
+        missing = [column for column in needed_cols if column not in df.columns]
+        if missing:
+            raise AlpacaPriceError(f"Alpaca bars for {ticker} missing columns: {missing}")
+        df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
+        frames[ticker] = df[needed_cols].sort_values("trade_date")
+    return frames
 
-        stmt = insert(Price).values(prices_data)
+
+def _price_rows_for_frame(instrument_id: int, df: pd.DataFrame) -> list[dict]:
+    if df.empty:
+        return []
+    df = df.copy()
+    df["avg_volume_50d"] = df["volume"].rolling(window=50, min_periods=1).mean()
+    return [
+        {
+            "instrument_id": instrument_id,
+            "trade_date": row["trade_date"],
+            "open": float(row["open"]) if pd.notnull(row["open"]) else None,
+            "high": float(row["high"]) if pd.notnull(row["high"]) else None,
+            "low": float(row["low"]) if pd.notnull(row["low"]) else None,
+            "close": float(row["close"]) if pd.notnull(row["close"]) else None,
+            "volume": int(row["volume"]) if pd.notnull(row["volume"]) else 0,
+            "avg_volume_50d": int(row["avg_volume_50d"])
+            if pd.notnull(row["avg_volume_50d"])
+            else 0,
+        }
+        for _, row in df.iterrows()
+    ]
+
+
+async def _upsert_price_rows(session: AsyncSession, prices_data: list[dict]) -> None:
+    if not prices_data:
+        return
+    for chunk in _chunked(prices_data, PRICE_UPSERT_CHUNK_SIZE):
+        stmt = insert(Price).values(chunk)
         stmt = stmt.on_conflict_do_update(
             index_elements=["instrument_id", "trade_date"],
             set_={
@@ -283,10 +343,44 @@ async def fetch_and_store_prices(
             },
         )
         await session.execute(stmt)
+
+
+async def fetch_and_store_prices_batch(
+    session: AsyncSession,
+    instrument_refs: list[tuple[int, str]],
+    days: int = 730,
+) -> dict[str, int]:
+    if not instrument_refs:
+        return {}
+
+    dt_end = datetime.now()
+    dt_start = dt_end - timedelta(days=days)
+    counts: dict[str, int] = {ticker: 0 for _, ticker in instrument_refs}
+
+    for refs_chunk in _chunked(instrument_refs, ALPACA_SYMBOL_CHUNK_SIZE):
+        tickers = [ticker for _, ticker in refs_chunk]
+        logger.info(
+            "Fetching %d US tickers from Alpaca (%s to %s)...",
+            len(tickers),
+            dt_start.date(),
+            dt_end.date(),
+        )
+        frames = await _fetch_alpaca_bars(tickers, dt_start=dt_start, dt_end=dt_end)
+        rows_to_upsert: list[dict] = []
+        for instrument_id, ticker in refs_chunk:
+            frame = frames.get(ticker, pd.DataFrame())
+            ticker_rows = _price_rows_for_frame(instrument_id, frame)
+            if not ticker_rows:
+                logger.warning("No Alpaca price data found for %s", ticker)
+                continue
+            counts[ticker] = len(ticker_rows)
+            rows_to_upsert.extend(ticker_rows)
+
+        await _upsert_price_rows(session, rows_to_upsert)
         await session.commit()
-        logger.info("Stored %d days of prices for %s", len(prices_data), ticker)
-    except Exception as exc:
-        logger.error("Error fetching prices for %s: %s", ticker, exc)
+        logger.info("Stored %d US price rows from Alpaca.", len(rows_to_upsert))
+
+    return counts
 
 
 async def test_run():

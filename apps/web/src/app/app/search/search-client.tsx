@@ -18,7 +18,7 @@ import { useT } from "@/hooks/use-t";
 interface SearchClientProps {
   initialQuery: string;
   initialMarket?: "US" | "KR";
-  initialAssetType?: "stock" | "etf";
+  initialAssetType?: "stock";
 }
 
 function coverageTone(state: SearchResult["coverage_state"]): string {
@@ -38,7 +38,7 @@ export function SearchClient({
   const [query, setQuery] = useState(initialQuery);
   const deferredQuery = useDeferredValue(query);
   const [market, setMarket] = useState<"US" | "KR" | "ALL">(initialMarket ?? "ALL");
-  const [assetType, setAssetType] = useState<"stock" | "etf" | "ALL">(initialAssetType ?? "ALL");
+  const [assetType, setAssetType] = useState<"stock" | "ALL">(initialAssetType ?? "ALL");
   const { t } = useT();
   const recentSearches = useUIStore((state) => state.recentSearches);
   const pinned = useUIStore((state) => state.pinnedInstruments);
@@ -108,7 +108,7 @@ export function SearchClient({
             ))}
           </div>
           <div className="flex flex-wrap gap-2">
-            {(["ALL", "stock", "etf"] as const).map((value) => (
+            {(["ALL", "stock"] as const).map((value) => (
               <button
                 key={value}
                 type="button"

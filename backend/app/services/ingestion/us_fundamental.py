@@ -106,6 +106,23 @@ class EdgarFundamentalIngester:
             if value is not None or key in required_keys
         }
 
+    def _maybe_update_instrument_shares(
+        self,
+        instrument: Instrument,
+        prepared_annual_record: Dict[str, Any],
+    ) -> bool:
+        """Backfill instrument-level shares from EDGAR annual facts when available."""
+        shares = prepared_annual_record.get("shares_outstanding_annual")
+        if shares is None or shares <= 0:
+            return False
+
+        current = float(instrument.shares_outstanding) if instrument.shares_outstanding else None
+        if current == float(shares):
+            return False
+
+        instrument.shares_outstanding = shares
+        return True
+
     def _extract_fact(self, df: pd.DataFrame, concept_list: List[str]) -> Optional[float]:
         """Extracts the most canonical value for a list of possible XBRL concept names."""
         for concept in concept_list:
@@ -210,8 +227,11 @@ class EdgarFundamentalIngester:
                         curr['eps_yoy_growth'] = (curr['eps'] - prev['eps']) / abs(prev['eps'])
                         
                 # Upsert into DB
+                shares_updated = 0
                 for rec in annual_records:
                     prepared_rec = self._prepare_annual_record(rec)
+                    if self._maybe_update_instrument_shares(instrument, prepared_rec):
+                        shares_updated += 1
                     # Simple update or create
                     stmt = select(FundamentalAnnual).where(
                         FundamentalAnnual.instrument_id == prepared_rec["instrument_id"],
@@ -228,7 +248,12 @@ class EdgarFundamentalIngester:
                         db.add(new_record)
                         
                 await db.commit()
-                logger.info(f"Successfully processed {len(annual_records)} annual records for {ticker}")
+                logger.info(
+                    "Successfully processed %d annual records for %s; shares_updates=%d",
+                    len(annual_records),
+                    ticker,
+                    shares_updated,
+                )
                         
             except Exception as e:
                 logger.error(f"Error processing 10-K for {ticker}: {e}")

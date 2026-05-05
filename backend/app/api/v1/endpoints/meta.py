@@ -45,6 +45,14 @@ from app.services.backfill_runs import (
 router = APIRouter()
 
 
+def _reject_unsupported_asset_type(asset_type: str | None) -> None:
+    if asset_type and asset_type != "stock":
+        raise HTTPException(
+            status_code=400,
+            detail="ETF asset_type is no longer supported. Only stock snapshots are available.",
+        )
+
+
 # =============================================================================
 # Market Regime
 # =============================================================================
@@ -123,12 +131,14 @@ def _build_snapshot_meta(snap: ScoringSnapshot) -> SnapshotMeta:
             summary="Latest frozen consensus rankings")
 async def get_latest_snapshot(
     market:     str = Query(default="US", pattern="^(US|KR)$"),
-    asset_type: str = Query(default="stock", pattern="^(stock|etf)$"),
+    asset_type: str = Query(default="stock"),
     limit:      int = Query(default=50, ge=1, le=200),
     offset:     int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_read_db),
 ) -> SnapshotResponse:
     """Return the most recent snapshot for a given market + asset_type."""
+    _reject_unsupported_asset_type(asset_type)
+
     q = await db.execute(
         select(ScoringSnapshot)
         .where(ScoringSnapshot.market == market, ScoringSnapshot.asset_type == asset_type)
@@ -153,11 +163,13 @@ async def get_latest_snapshot(
 async def get_snapshot_by_date(
     snapshot_date: date,
     market:     str = Query(default="US", pattern="^(US|KR)$"),
-    asset_type: str = Query(default="stock", pattern="^(stock|etf)$"),
+    asset_type: str = Query(default="stock"),
     limit:      int = Query(default=50, ge=1, le=200),
     offset:     int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_read_db),
 ) -> SnapshotResponse:
+    _reject_unsupported_asset_type(asset_type)
+
     q = await db.execute(
         select(ScoringSnapshot).where(
             ScoringSnapshot.snapshot_date == snapshot_date,

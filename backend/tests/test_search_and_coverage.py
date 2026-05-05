@@ -231,7 +231,7 @@ async def test_chart_endpoint_supports_interval_and_price_fallback(client, db_se
         name="Invesco QQQ",
         market="US",
         exchange="NASDAQ",
-        asset_type="etf",
+        asset_type="stock",
         listing_status="LISTED",
         is_active=True,
     )
@@ -279,11 +279,11 @@ async def test_universe_coverage_endpoint_groups_states(client, db_session):
         is_active=True,
     )
     price_ready = Instrument(
-        ticker="SPY",
-        name="SPDR S&P 500 ETF",
+        ticker="MSFT",
+        name="Microsoft",
         market="US",
         exchange="NYSE",
-        asset_type="etf",
+        asset_type="stock",
         listing_status="LISTED",
         is_active=True,
     )
@@ -359,17 +359,14 @@ async def test_universe_coverage_endpoint_groups_states(client, db_session):
     us_stock = next(
         item for item in payload["items"] if item["market"] == "US" and item["asset_type"] == "stock"
     )
-    us_etf = next(
-        item for item in payload["items"] if item["market"] == "US" and item["asset_type"] == "etf"
-    )
     kr_stock = next(
         item for item in payload["items"] if item["market"] == "KR" and item["asset_type"] == "stock"
     )
 
-    assert us_stock["searchable"] == 1
+    assert us_stock["searchable"] == 2
+    assert us_stock["price_ready"] == 2
+    assert us_stock["fundamentals_ready"] == 1
     assert us_stock["ranked"] == 1
-    assert us_etf["price_ready"] == 1
-    assert us_etf["ranked"] == 0
     assert kr_stock["searchable"] == 1
     assert kr_stock["price_ready"] == 0
 
@@ -678,6 +675,14 @@ async def test_search_endpoint_unknown_symbol_does_not_create_instrument(client,
 
     after_count = await db_session.scalar(select(func.count(Instrument.id)))
     assert after_count == before_count
+
+
+@pytest.mark.asyncio
+async def test_search_endpoint_rejects_etf_asset_type(client):
+    response = await client.get("/api/v1/search?q=SPY&asset_type=etf")
+
+    assert response.status_code == 400
+    assert "ETF asset_type is no longer supported" in response.json()["detail"]
 
 
 @pytest.mark.asyncio

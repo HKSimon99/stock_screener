@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm \"C:/Users/kyusu/vibecoding_projects/claude/apps/web/src/app/app/rankings/page.tsx\")",
+      "Bash(rm \"C:/Users/kyusu/vibecoding_projects/claude/apps/web/src/app/app/rankings/loading.tsx\")",
+      "Bash(rm \"C:/Users/kyusu/vibecoding_projects/claude/apps/web/src/components/regime-banner.tsx\")",
+      "Bash(rm \"C:/Users/kyusu/vibecoding_projects/claude/apps/web/src/components/desk-nav.tsx\")",
+      "Bash(rm \"C:/Users/kyusu/vibecoding_projects/claude/apps/web/src/components/score-bar.tsx\")",
+      "Bash(xargs ls *)",
+      "Bash(npx tsc *)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(./node_modules/.bin/next build *)"
+    ]
+  }
+}

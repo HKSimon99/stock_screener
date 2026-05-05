@@ -13,13 +13,16 @@ Covers:
 from datetime import date
 
 import pytest
+from sqlalchemy import select
 
+from app.models.consensus_score import ConsensusScore
 from app.models.instrument import Instrument
 from app.models.market_regime import MarketRegime
 from app.models.strategy_score import StrategyScore
 from app.services.strategies.consensus import (
     compute_consensus,
     get_latest_regime,
+    run_consensus_scoring,
     score_instrument_consensus,
 )
 
@@ -320,3 +323,79 @@ async def test_score_instrument_consensus_uses_latest_regime_on_or_before_score_
     assert scored["regime_warning"] is True
     assert scored["score_breakdown"]["raw_conviction"] == "PLATINUM"
     assert scored["score_breakdown"]["final_conviction"] == "SILVER"
+    assert set(scored["score_breakdown"]["strategy_weights"]) == {
+        "canslim",
+        "piotroski",
+        "magic_formula",
+    }
+    assert "dual_mom" not in scored["score_breakdown"]["strategy_weights"]
+
+
+@pytest.mark.asyncio
+async def test_run_consensus_scoring_persists_magic_formula_score(db_session, monkeypatch):
+    class _SessionContext:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        "app.services.strategies.consensus.AsyncSessionLocal",
+        lambda: _SessionContext(),
+    )
+
+    instrument = Instrument(
+        ticker="MFIX",
+        name="Magic Fix Co",
+        market="US",
+        exchange="NYSE",
+        asset_type="stock",
+        is_active=True,
+    )
+    db_session.add(instrument)
+    await db_session.flush()
+
+    score_date = date(2026, 5, 5)
+    db_session.add(
+        StrategyScore(
+            instrument_id=instrument.id,
+            score_date=score_date,
+            canslim_score=82.0,
+            piotroski_score=75.0,
+            magic_formula_score=91.0,
+            minervini_score=88.0,
+            weinstein_score=80.0,
+            weinstein_stage="2_mid",
+            technical_composite=78.0,
+        )
+    )
+    db_session.add(
+        MarketRegime(
+            market="US",
+            effective_date=score_date,
+            state="CONFIRMED_UPTREND",
+            prior_state="UPTREND_UNDER_PRESSURE",
+            trigger_reason="Test regime",
+            distribution_day_count=1,
+            follow_through_day=True,
+        )
+    )
+    await db_session.commit()
+
+    results = await run_consensus_scoring(
+        score_date=score_date,
+        market="US",
+        instrument_ids=[instrument.id],
+    )
+
+    assert len(results) == 1
+    row = (
+        await db_session.execute(
+            select(ConsensusScore).where(
+                ConsensusScore.instrument_id == instrument.id,
+                ConsensusScore.score_date == score_date,
+            )
+        )
+    ).scalar_one()
+    assert float(row.magic_formula_score) == pytest.approx(91.0)

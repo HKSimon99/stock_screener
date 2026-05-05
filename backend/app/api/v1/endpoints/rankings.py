@@ -18,7 +18,7 @@ Query parameters
 ----------------
 market          US | KR (default: all)
 conviction      DIAMOND | PLATINUM | GOLD | SILVER | BRONZE | UNRANKED (repeatable)
-asset_type      stock | etf (default: stock)
+asset_type      stock (default: stock)
 score_date      ISO date (default: latest available)
 limit           1-200 (default 50)
 offset          int (default 0)
@@ -209,6 +209,14 @@ def _make_filters_key(filters: dict[str, object]) -> str:
     return "&".join(parts)
 
 
+def _reject_unsupported_asset_type(asset_type: str | None) -> None:
+    if asset_type and asset_type != "stock":
+        raise HTTPException(
+            status_code=400,
+            detail="ETF asset_type is no longer supported. Only stock rankings are available.",
+        )
+
+
 async def _latest_rankings_score_date(
     market: Optional[str],
     asset_type: str,
@@ -267,7 +275,7 @@ async def get_rankings(
     response: Response,
     market: Optional[str] = Query(None, pattern="^(US|KR)$"),
     conviction: list[str] = Query(default=[]),
-    asset_type: str = Query(default="stock", pattern="^(stock|etf)$"),
+    asset_type: str = Query(default="stock"),
     score_date: Optional[date] = Query(None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -306,6 +314,8 @@ async def get_rankings(
     show the gate reason ("capped at SILVER because Stage 1") without
     hitting the instrument-detail endpoint.
     """
+    _reject_unsupported_asset_type(asset_type)
+
     # ── Resolve score_date ──────────────────────────────────────────────────
     if score_date is None:
         score_date = await _latest_rankings_score_date(market, asset_type, db)

@@ -3,17 +3,20 @@
 /**
  * AppNav — authenticated research desk header + mobile bottom nav.
  *
- * Revolut nav-bar pattern applied to the app shell:
- *  - Sticky true-black header, 64px tall, 1px hairline-dark border below.
- *  - Wordmark left → search bar centre → UserButton + pinned count right.
- *  - Sub-nav pills below header bar (sub-nav-pill token: surface-elevated bg, pill shape).
- *  - Mobile: hamburger collapses centre nav; bottom fixed nav-rail (4 icons).
- *  - KO/EN language toggle pill in right cluster.
+ * Layout:
+ *  - Sticky true-black header: Wordmark | Search (md+) | Lang toggle | UserButton
+ *  - Sub-nav pills below header bar (desktop only)
+ *  - Mobile: floating bottom nav-rail (5 tabs), lang toggle in header
+ *
+ * Mobile thumb-zone principle:
+ *  - Bottom nav: primary navigation (thumb zone)
+ *  - Lang toggle: top-right header (reachable, rarely changed)
+ *  - Search: both top-right icon (mobile) and center bar (desktop)
  */
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, Layers3, Radar, Search, Star } from "lucide-react";
+import { Bell, BookOpen, Layers3, Search } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
@@ -24,16 +27,15 @@ export function AppNav() {
   const pathname      = usePathname();
   const router        = useRouter();
   const [query, setQuery] = useState("");
-  const pinnedCount   = useUIStore((state) => state.pinnedInstruments.length);
   const lang          = useUIStore((state) => state.lang);
   const setLang       = useUIStore((state) => state.setLang);
   const { t }         = useT();
 
   const NAV_ITEMS = [
-    { href: "/rankings",          label: t("nav.rankings"),  icon: Layers3 },
-    { href: "/app/search",        label: t("nav.search"),    icon: Search  },
-    { href: "/app/alerts",        label: t("nav.alerts"),    icon: Bell    },
-    { href: "/app/market-regime", label: t("nav.regime"),    icon: Radar   },
+    { href: "/rankings",       label: t("nav.rankings"),   icon: Layers3  },
+    { href: "/app/search",     label: t("nav.search"),     icon: Search   },
+    { href: "/app/strategies", label: t("nav.strategies"), icon: BookOpen },
+    { href: "/app/alerts",     label: t("nav.alerts"),     icon: Bell     },
   ] as const;
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
@@ -53,7 +55,7 @@ export function AppNav() {
           borderBottom: "1px solid rgba(255,255,255,0.08)",
         }}
       >
-        <div className="app-shell flex h-16 items-center gap-4">
+        <div className="app-shell flex h-16 items-center gap-3">
 
           {/* Wordmark */}
           <Link
@@ -64,7 +66,7 @@ export function AppNav() {
             Consensus
           </Link>
 
-          {/* Search bar — grows to fill space */}
+          {/* Search bar — grows to fill space (desktop only) */}
           <form
             onSubmit={submitSearch}
             className="hidden flex-1 md:block"
@@ -90,12 +92,12 @@ export function AppNav() {
             </label>
           </form>
 
-          {/* Right cluster: lang toggle + pinned count + user */}
-          <div className="ml-auto flex items-center gap-3">
+          {/* Right cluster */}
+          <div className="ml-auto flex items-center gap-2">
 
-            {/* KO / EN language toggle */}
+            {/* KO / EN language toggle — visible on all screen sizes */}
             <div
-              className="hidden items-center rounded-full border md:flex"
+              className="flex items-center rounded-full border"
               style={{
                 borderColor: "rgba(255,255,255,0.12)",
                 background:  "#16181a",
@@ -107,43 +109,37 @@ export function AppNav() {
                   key={l}
                   type="button"
                   onClick={() => setLang(l)}
-                  className="rounded-full font-medium transition-colors"
+                  className="rounded-full font-semibold transition-colors"
                   style={{
-                    fontSize:      "0.65rem",
+                    fontSize:      "0.6rem",
                     letterSpacing: "0.12em",
                     textTransform: "uppercase",
-                    padding:       "4px 10px",
+                    padding:       "5px 10px",
+                    minWidth:      36,
                     background:    lang === l ? "#494fdf" : "transparent",
                     color:         lang === l ? "#ffffff" : "rgba(255,255,255,0.45)",
                   }}
                 >
-                  {l === "en" ? t("lang.toggle.en") : t("lang.toggle.ko")}
+                  {l === "en" ? "EN" : "KO"}
                 </button>
               ))}
             </div>
 
-            {pinnedCount > 0 && (
-              <div
-                className="hidden items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium text-white/70 lg:flex"
-                style={{ borderColor: "rgba(255,255,255,0.12)", background: "#16181a" }}
-              >
-                <Star style={{ width: 13, height: 13 }} />
-                {pinnedCount}
-              </div>
-            )}
-            {/* Mobile search link */}
+            {/* Mobile search shortcut */}
             <Link
               href="/app/search"
               className="flex size-9 items-center justify-center rounded-full text-white/60 transition-colors hover:text-white md:hidden"
               style={{ background: "#16181a" }}
+              aria-label="Search"
             >
               <Search style={{ width: 16, height: 16 }} />
             </Link>
+
             <UserButton />
           </div>
         </div>
 
-        {/* ── Sub-nav pills (desktop) — sub-nav-pill Revolut token ── */}
+        {/* ── Sub-nav pills (desktop) ──────────────────────────────── */}
         <div className="app-shell hidden pb-3 md:block">
           <div className="flex flex-wrap gap-1.5">
             {NAV_ITEMS.map((item) => {
@@ -175,10 +171,11 @@ export function AppNav() {
 
       {/* ── Mobile bottom nav-rail ─────────────────────────────────── */}
       <nav
-        className="fixed inset-x-3 bottom-3 z-50 md:hidden"
-        style={{ borderRadius: 20, background: "#16181a", border: "1px solid rgba(255,255,255,0.10)" }}
+        className="fixed inset-x-2 bottom-3 z-50 md:hidden"
+        style={{ borderRadius: 22, background: "#16181a", border: "1px solid rgba(255,255,255,0.10)" }}
+        aria-label="Main navigation"
       >
-        <div className="grid grid-cols-4 gap-0.5 p-1.5">
+        <div className="grid grid-cols-5 p-1.5 gap-0.5">
           {NAV_ITEMS.map((item) => {
             const Icon   = item.icon;
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -187,48 +184,19 @@ export function AppNav() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex flex-col items-center gap-1 rounded-[14px] px-2 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] transition-colors",
+                  "flex flex-col items-center gap-1 rounded-[15px] px-1 py-2.5 transition-colors",
                   active
                     ? "bg-[rgba(73,79,223,0.22)] text-white"
                     : "text-white/45 hover:text-white"
                 )}
               >
-                <Icon style={{ width: 17, height: 17 }} />
-                {item.label}
+                <Icon style={{ width: 18, height: 18 }} />
+                <span style={{ fontSize: "0.55rem", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", lineHeight: 1 }}>
+                  {item.label}
+                </span>
               </Link>
             );
           })}
-        </div>
-
-        {/* Mobile lang toggle inside bottom rail */}
-        <div
-          style={{
-            display:        "flex",
-            justifyContent: "center",
-            paddingBottom:  8,
-            gap:            4,
-          }}
-        >
-          {(["en", "ko"] as const).map((l) => (
-            <button
-              key={l}
-              type="button"
-              onClick={() => setLang(l)}
-              style={{
-                borderRadius:  9999,
-                padding:       "2px 10px",
-                fontSize:      "0.6rem",
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                fontWeight:    600,
-                background:    lang === l ? "#494fdf" : "transparent",
-                color:         lang === l ? "#ffffff" : "rgba(255,255,255,0.40)",
-                transition:    "background 180ms ease, color 180ms ease",
-              }}
-            >
-              {l === "en" ? "EN" : "KO"}
-            </button>
-          ))}
         </div>
       </nav>
     </>

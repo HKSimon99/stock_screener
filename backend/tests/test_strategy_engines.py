@@ -1,3 +1,10 @@
+from datetime import date
+
+from app.services.scoring_context import AnnualReport, PriceBar
+from app.services.scoring_compute import (
+    compute_magic_formula_raw_from_context,
+    diagnose_magic_formula_ineligibility_from_context,
+)
 from app.services.strategies.dual_momentum.engine import compute_dual_momentum
 from app.services.strategies.magic_formula.engine import (
     compute_magic_formula_raw,
@@ -298,3 +305,64 @@ def test_magic_formula_ranking_skips_ineligible_rows():
     assert by_id[1]["score"] is not None
     assert by_id[2]["score"] is None
     assert by_id[2]["roic_rank"] is None
+
+
+def _annual_report(**overrides):
+    base = dict(
+        fiscal_year=2025,
+        report_date=date(2026, 2, 15),
+        revenue=1000.0,
+        gross_profit=600.0,
+        net_income=120.0,
+        eps=1.2,
+        total_assets=900.0,
+        current_assets=300.0,
+        current_liabilities=100.0,
+        long_term_debt=200.0,
+        shares_outstanding_annual=50.0,
+        operating_cash_flow=160.0,
+        ebit=200.0,
+        total_debt=250.0,
+        cash_and_equivalents=50.0,
+        net_fixed_assets=400.0,
+    )
+    base.update(overrides)
+    return AnnualReport(**base)
+
+
+def _price_bar(close=30.0):
+    return PriceBar(
+        trade_date=date(2026, 5, 5),
+        open=close,
+        high=close,
+        low=close,
+        close=close,
+        volume=1_000_000,
+        avg_volume_50d=900_000,
+    )
+
+
+def test_context_magic_formula_uses_annual_shares_when_instrument_shares_missing():
+    raw = compute_magic_formula_raw_from_context(
+        instrument_id=1,
+        annuals=(_annual_report(shares_outstanding_annual=50.0),),
+        prices=(_price_bar(close=30.0),),
+        shares_outstanding=None,
+    )
+
+    assert raw is not None
+    assert raw["market_cap"] == 1500.0
+    assert raw["shares_outstanding"] == 50.0
+    assert raw["shares_source"] == "fundamentals_annual"
+
+
+def test_context_magic_formula_diagnosis_reports_missing_core_inputs():
+    diagnosis = diagnose_magic_formula_ineligibility_from_context(
+        annuals=(_annual_report(ebit=None, shares_outstanding_annual=None),),
+        prices=(_price_bar(close=30.0),),
+        shares_outstanding=None,
+    )
+
+    assert diagnosis["eligible"] is False
+    assert "missing_ebit" in diagnosis["reasons"]
+    assert "missing_shares_outstanding" in diagnosis["reasons"]

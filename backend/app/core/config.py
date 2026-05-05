@@ -258,6 +258,9 @@ class Settings(BaseSettings):
         return self
 
     # US data
+    alpaca_api_key_id: str = ""
+    alpaca_api_secret_key: str = ""
+    alpaca_data_feed: str = "iex"
     fmp_api_key: str = ""
     fred_api_key: str = ""
 

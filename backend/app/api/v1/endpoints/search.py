@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_read_db
@@ -27,14 +27,24 @@ from app.services.universe import (
 router = APIRouter()
 
 
+def _reject_unsupported_asset_type(asset_type: str | None) -> None:
+    if asset_type and asset_type != "stock":
+        raise HTTPException(
+            status_code=400,
+            detail="ETF asset_type is no longer supported. Only stock instruments are searchable.",
+        )
+
+
 @router.get("/search", response_model=SearchResponse, summary="Search covered instruments")
 async def search_symbols(
     q: str = Query(..., min_length=1, max_length=100),
     market: str | None = Query(None, pattern="^(US|KR)$"),
-    asset_type: str | None = Query(None, pattern="^(stock|etf)$"),
+    asset_type: str | None = Query(None),
     limit: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_read_db),
 ) -> SearchResponse:
+    _reject_unsupported_asset_type(asset_type)
+
     instruments = await search_instruments(
         db,
         query=q,
@@ -86,13 +96,15 @@ async def get_universe_coverage(db: AsyncSession = Depends(get_read_db)) -> Univ
 )
 async def browse_universe(
     market: str | None = Query(None, pattern="^(US|KR)$"),
-    asset_type: str | None = Query(None, pattern="^(stock|etf)$"),
+    asset_type: str | None = Query(None),
     coverage_state: str | None = Query(None, max_length=30),
     exclude_ranked: bool = Query(True),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_read_db),
 ) -> BrowseResponse:
+    _reject_unsupported_asset_type(asset_type)
+
     rows, total = await browse_instruments(
         db,
         market=market,

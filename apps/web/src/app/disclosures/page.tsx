@@ -14,7 +14,7 @@ export default function DisclosuresPage() {
       <main className="app-shell pt-6 sm:pt-8">
         <section className="surface-panel rounded-[2rem] px-6 py-7 sm:px-8">
           <div className="section-kicker">Disclosures</div>
-          <h1 className="mt-3 font-heading text-6xl uppercase tracking-[0.03em] text-white">
+          <h1 className="mt-3 font-heading text-4xl sm:text-5xl lg:text-6xl uppercase tracking-[0.03em] text-white break-words">
             Trust is built with limits stated clearly.
           </h1>
           <div className="mt-6 grid gap-4">

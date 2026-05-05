@@ -28,7 +28,7 @@ interface PageProps {
 }
 
 type Market = "US" | "KR";
-type AssetType = "stock" | "etf";
+type AssetType = "stock";
 
 const COVERAGE_STATES = new Set<CoverageState>([
   "ranked",
@@ -57,11 +57,11 @@ function optionalBoolean(value: string | undefined): boolean | undefined {
 export default async function PublicRankingsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const market: Market = sp.market === "KR" ? "KR" : "US";
-  const assetType: AssetType = sp.asset_type === "etf" ? "etf" : "stock";
+  const assetType: AssetType = "stock";
   const conviction = sp.conviction ?? "";
   const coverageState = optionalCoverageState(sp.coverage_state);
   const parsedLimit = sp.limit ? parseInt(sp.limit, 10) : 200;
-  const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 200;
+  const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 500) : 200;
   const initialFilters = {
     market,
     assetType,

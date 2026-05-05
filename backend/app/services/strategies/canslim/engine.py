@@ -52,8 +52,12 @@ M_GATE_VALUES = {
     "MARKET_IN_CORRECTION": 0,
 }
 
-MIN_QUARTERLY_REPORTS = 5
-MIN_ANNUAL_REPORTS = 4
+# Lowered from 5/4 → 3/2 to improve coverage of KR stocks where OpenDART
+# XBRL history is shorter. CANSLIM sub-scorers handle missing individual
+# periods gracefully (return None / partial score), so a 2-year annual window
+# still produces a meaningful signal without the M gate carrying everything.
+MIN_QUARTERLY_REPORTS = 3
+MIN_ANNUAL_REPORTS = 2
 MIN_PRICE_BARS = 50
 RS_LOOKBACK_BARS = 252
 RS_LOOKBACK_WINDOW_DAYS = 450

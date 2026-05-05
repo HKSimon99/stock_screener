@@ -368,6 +368,7 @@ async def run_consensus_scoring(
                 if existing:
                     existing.canslim_score       = scored["canslim_score"]
                     existing.piotroski_score     = scored["piotroski_score"]
+                    existing.magic_formula_score = scored["magic_formula_score"]
                     existing.minervini_score     = scored["minervini_score"]
                     existing.weinstein_score     = scored["weinstein_score"]
                     existing.technical_composite = scored["technical_composite"]
@@ -384,6 +385,7 @@ async def run_consensus_scoring(
                         score_date          = score_date,
                         canslim_score       = scored["canslim_score"],
                         piotroski_score     = scored["piotroski_score"],
+                        magic_formula_score = scored["magic_formula_score"],
                         minervini_score     = scored["minervini_score"],
                         weinstein_score     = scored["weinstein_score"],
                         technical_composite = scored["technical_composite"],

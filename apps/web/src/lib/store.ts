@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 type Market = "US" | "KR";
-type AssetType = "stock" | "etf";
+type AssetType = "stock";
 export type Lang = "en" | "ko";
 
 export interface SavedInstrument {

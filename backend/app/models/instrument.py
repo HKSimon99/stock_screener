@@ -13,7 +13,7 @@ class Instrument(Base):
     name_kr = Column(String(200))                   # Korean name for KR stocks
     market = Column(String(4), nullable=False)       # 'US' | 'KR'
     exchange = Column(String(50), nullable=False)    # 'NYSE'|'NASDAQ'|'NYSE American'|'KOSPI'|'KOSDAQ'
-    asset_type = Column(String(10), nullable=False)  # 'stock' | 'etf'
+    asset_type = Column(String(10), nullable=False)  # active universe: 'stock'
     listing_status = Column(String(20), nullable=False, default="LISTED")
     sector = Column(String(100))
     industry_group = Column(String(100))
@@ -29,7 +29,7 @@ class Instrument(Base):
     corp_code = Column(String(8))                    # OpenDART 8-digit code
     is_chaebol_cross = Column(Boolean, default=False, nullable=False)
 
-    # ETF-specific
+    # Legacy ETF-specific fields retained for existing schema compatibility.
     is_leveraged = Column(Boolean, default=False, nullable=False)
     is_inverse = Column(Boolean, default=False, nullable=False)
     expense_ratio = Column(Numeric(6, 4))

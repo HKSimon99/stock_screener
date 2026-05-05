@@ -1,4 +1,7 @@
 from app.services.strategies.canslim.engine import (
+    MIN_ANNUAL_REPORTS,
+    MIN_PRICE_BARS,
+    MIN_QUARTERLY_REPORTS,
     build_market_rs_lookup_from_history,
     has_minimum_required_data,
 )
@@ -6,13 +9,29 @@ from app.services.strategies.canslim.l_leader import score_l
 
 
 def test_has_minimum_required_data_accepts_complete_core_data():
-    assert has_minimum_required_data(quarterly_count=5, annual_count=4, price_count=50) is True
+    assert has_minimum_required_data(
+        quarterly_count=MIN_QUARTERLY_REPORTS,
+        annual_count=MIN_ANNUAL_REPORTS,
+        price_count=MIN_PRICE_BARS,
+    ) is True
 
 
 def test_has_minimum_required_data_rejects_incomplete_core_data():
-    assert has_minimum_required_data(quarterly_count=4, annual_count=4, price_count=50) is False
-    assert has_minimum_required_data(quarterly_count=5, annual_count=3, price_count=50) is False
-    assert has_minimum_required_data(quarterly_count=5, annual_count=4, price_count=49) is False
+    assert has_minimum_required_data(
+        quarterly_count=MIN_QUARTERLY_REPORTS - 1,
+        annual_count=MIN_ANNUAL_REPORTS,
+        price_count=MIN_PRICE_BARS,
+    ) is False
+    assert has_minimum_required_data(
+        quarterly_count=MIN_QUARTERLY_REPORTS,
+        annual_count=MIN_ANNUAL_REPORTS - 1,
+        price_count=MIN_PRICE_BARS,
+    ) is False
+    assert has_minimum_required_data(
+        quarterly_count=MIN_QUARTERLY_REPORTS,
+        annual_count=MIN_ANNUAL_REPORTS,
+        price_count=MIN_PRICE_BARS - 1,
+    ) is False
 
 
 def test_build_market_rs_lookup_from_history_ranks_returns():

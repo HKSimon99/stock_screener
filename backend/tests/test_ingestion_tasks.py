@@ -171,11 +171,13 @@ def test_run_us_price_ingestion_uses_refs_and_sync(monkeypatch):
         assert market == "US"
         assert tickers == ["AAPL", "NVDA"]
         assert limit is None
-        assert asset_types is None
+        assert asset_types == ["stock"]
         return [(40, "AAPL"), (346, "NVDA")]
 
-    async def fake_fetch(session, instrument_id, ticker, days=730):
-        processed.append((ticker, days, instrument_id))
+    async def fake_fetch_batch(session, instrument_refs, days=730):
+        for instrument_id, ticker in instrument_refs:
+            processed.append((ticker, days, instrument_id))
+        return {ticker: 400 for _instrument_id, ticker in instrument_refs}
 
     async def fake_record(source_name, market, requested_count, processed_count, failed_tickers=None, error=None):
         freshness.update(
@@ -192,7 +194,7 @@ def test_run_us_price_ingestion_uses_refs_and_sync(monkeypatch):
     monkeypatch.setattr(ingestion_tasks, "AsyncSessionLocal", FakeSessionFactory())
     monkeypatch.setattr(ingestion_tasks, "sync_instruments", fake_sync)
     monkeypatch.setattr(ingestion_tasks, "_get_instrument_refs", fake_refs)
-    monkeypatch.setattr(ingestion_tasks, "fetch_and_store_prices", fake_fetch)
+    monkeypatch.setattr(ingestion_tasks, "fetch_and_store_prices_batch", fake_fetch_batch)
     monkeypatch.setattr(ingestion_tasks, "_record_source_freshness", fake_record)
 
     result = ingestion_tasks.run_us_price_batch_task.run(
@@ -271,7 +273,7 @@ def test_run_kr_price_ingestion_uses_refs_and_client(monkeypatch):
         assert market == "KR"
         assert tickers == ["005930", "000660"]
         assert limit is None
-        assert asset_types is None
+        assert asset_types == ["stock"]
         return [(519, "005930"), (520, "000660")]
 
     async def fake_fetch(session, instrument_id, ticker, kis_client, days=730):

@@ -100,7 +100,7 @@ export function TosConsentGate({ children }: { children: React.ReactNode }) {
               advice, a recommendation, or an offer to buy or sell securities.
             </p>
             <p>
-              Data sources include yfinance, SEC EDGAR, OpenDART, and KIS Developers. We do
+              Data sources include Alpaca, SEC EDGAR, OpenDART, and KIS Developers. We do
               our best to keep data fresh and accurate, but we make no warranty of completeness
               or correctness. You alone are responsible for any trading decisions.
             </p>

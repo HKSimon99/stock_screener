@@ -124,9 +124,8 @@ async def _fetch_prices_via_fdr(
         raise InsufficientDataError(f"FinanceDataReader fetch failed for {ticker}: {exc}") from exc
 
 async def fetch_kr_tickers() -> list[dict]:
-    """Fetch official KRX stock listings plus KR ETF listings using FinanceDataReader."""
+    """Fetch official KRX stock listings using FinanceDataReader."""
     instruments = []
-    seen: set[str] = set()
     try:
         krx_df = await asyncio.to_thread(fdr.StockListing, "KRX")
 
@@ -139,7 +138,6 @@ async def fetch_kr_tickers() -> list[dict]:
             if market_raw not in ["KOSPI", "KOSDAQ", "KONEX"]:
                 continue
 
-            seen.add(code)
             instruments.append({
                 "ticker": code,
                 "name": name,
@@ -157,34 +155,6 @@ async def fetch_kr_tickers() -> list[dict]:
                 "is_chaebol_cross": False,
                 "is_leveraged": False,
                 "is_inverse": False
-            })
-
-        etf_df = await asyncio.to_thread(fdr.StockListing, "ETF/KR")
-        for _, row in etf_df.iterrows():
-            symbol = str(row["Symbol"]) if "Symbol" in row else ""
-            name = str(row["Name"]) if "Name" in row else symbol
-            if not symbol or symbol in seen:
-                continue
-
-            lowered_name = name.lower()
-            seen.add(symbol)
-            instruments.append({
-                "ticker": symbol,
-                "name": name,
-                "name_kr": name,
-                "market": "KR",
-                "exchange": normalize_exchange("ETF"),
-                "asset_type": "etf",
-                "listing_status": "LISTED",
-                "sector": normalize_sector(str(row["Category"]) if "Category" in row else None),
-                "industry_group": None,
-                "is_active": True,
-                "is_test_issue": False,
-                "source_provenance": "KRX:ETF:FDR",
-                "source_symbol": symbol,
-                "is_chaebol_cross": False,
-                "is_leveraged": "lever" in lowered_name or "2x" in lowered_name,
-                "is_inverse": "inverse" in lowered_name or "인버스" in name,
             })
     except Exception as e:
         logger.error(f"Error fetching KRX tickers: {e}")

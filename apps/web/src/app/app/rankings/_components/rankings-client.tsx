@@ -8,28 +8,23 @@ import { useAuth } from "@clerk/nextjs";
 import {
   AlertTriangle,
   ArrowUpRight,
-  BarChart3,
   Bookmark,
   ChevronDown,
   Filter,
-  LineChart,
   Loader2,
   Pin,
   RefreshCw,
   Search,
-  ShieldCheck,
-  Sparkles,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   APIError,
   addToWatchlist,
   buildInstrumentPath,
   fetchRankings,
-  fetchUniverseBrowse,
   fetchWatchlist,
   formatSnapshotDate,
   removeFromWatchlist,
-  type BrowseResult,
   type CoverageState,
   type RankingItem,
   type RankingsQueryParams,
@@ -42,7 +37,7 @@ import { cn } from "@/lib/utils";
 import { useT } from "@/hooks/use-t";
 
 type Market = "US" | "KR";
-type AssetType = "stock" | "etf";
+type AssetType = "stock";
 
 interface RankingsFilters {
   market: Market;
@@ -156,7 +151,6 @@ const PRESETS = [
 const SCORE_OPTIONS = ["", "50", "60", "70", "80"] as const;
 const PASS_OPTIONS = ["", "1", "2", "3", "4", "5"] as const;
 const CONVICTION_OPTIONS = ["", "DIAMOND", "PLATINUM", "GOLD", "SILVER", "BRONZE"] as const;
-const LIMIT_OPTIONS = [50, 100, 200] as const;
 
 function parseOptionalNumber(value: string | null, fallback?: number): number | undefined {
   if (value == null || value === "") return fallback;
@@ -178,10 +172,11 @@ function parseBoolean(value: string | null, fallback?: boolean): boolean | undef
 
 function readFilters(params: ParamReader, initial: RankingsFilters): RankingsFilters {
   const market = params.get("market") === "KR" ? "KR" : initial.market;
-  const assetType = params.get("asset_type") === "etf" ? "etf" : initial.assetType;
+  const assetType: AssetType = "stock";
+  // Default limit bumped up — no more artificial cap selector
   const rawLimit = params.get("limit");
   const parsedLimit = rawLimit ? Number.parseInt(rawLimit, 10) : initial.limit;
-  const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 200;
+  const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 500) : 200;
 
   return {
     market,
@@ -236,22 +231,6 @@ function filtersKey(filters: RankingsFilters): string {
   return JSON.stringify(filtersToQuery(filters));
 }
 
-function hasScoreFilters(filters: RankingsFilters): boolean {
-  return Boolean(
-    filters.conviction ||
-      filters.minFinalScore != null ||
-      filters.minConsensusComposite != null ||
-      filters.minTechnicalComposite != null ||
-      filters.minStrategyPassCount != null ||
-      filters.minCanslim != null ||
-      filters.minPiotroski != null ||
-      filters.minMinervini != null ||
-      filters.minWeinstein != null ||
-      filters.minRsRating != null ||
-      filters.rsLineNewHigh != null
-  );
-}
-
 function activeFilterCount(filters: RankingsFilters): number {
   return [
     filters.conviction,
@@ -297,14 +276,12 @@ function coverageTone(state?: CoverageState): string {
 function cleanDisplayName(name: string, market: "US" | "KR"): string {
   if (market !== "US" || !name) return name;
   return name
-    // " - COMMON STOCK", " - CLASS A/B/C …", " - ORDINARY SHARES", " - ADR/ADS/UNITS"
     .replace(/\s*[-–]\s*(common\s+stock|class\s+[a-z][\w\s]*|ordinary\s+shares?|adr|ads|units?)\s*$/i, "")
-    // " COMMON STOCK" (no dash)
     .replace(/\s+(common\s+stock)\s*$/i, "")
     .trim();
 }
 
-function displayName(item: Pick<RankingItem | BrowseResult, "market" | "ticker" | "name" | "name_kr">) {
+function displayName(item: Pick<RankingItem, "market" | "ticker" | "name" | "name_kr">) {
   if (item.market === "KR") {
     return {
       primary: item.name_kr || item.name || item.ticker,
@@ -545,7 +522,7 @@ function RankedCard({ item }: { item: RankingItem }) {
             <div className="mt-3 flex flex-wrap gap-2">
               <CoverageBadge state={item.coverage_state ?? "ranked"} />
               <span className="rounded-full border border-[oklch(0.78_0.03_88)] bg-white/55 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[oklch(0.42_0.02_250)]">
-                {item.strategy_pass_count} strategies
+                {item.strategy_pass_count} {item.strategy_pass_count === 1 ? "strategy" : "strategies"}
               </span>
               {item.technical_composite != null && (
                 <span className="rounded-full border border-[oklch(0.78_0.03_88)] bg-white/55 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[oklch(0.42_0.02_250)]">
@@ -589,7 +566,7 @@ function WatchlistCard({
 }: {
   item: WatchlistItem;
   market: Market;
-  }) {
+}) {
   if (item.market !== market) return null;
   const primaryName =
     item.market === "KR"
@@ -621,120 +598,18 @@ function WatchlistCard({
   );
 }
 
-function BrowseCard({ item, label }: { item: BrowseResult; label: string }) {
-  const names = displayName(item);
-  const reasons = item.ranking_eligibility.reasons.slice(0, 3);
-
-  return (
-    <article className="rounded-[1.45rem] border border-white/10 bg-white/[0.06] p-4 backdrop-blur">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="tiny-label text-white/45">{label}</div>
-          <Link
-            href={buildInstrumentPath(item.ticker, item.market)}
-            className="mt-2 block truncate font-heading text-3xl uppercase leading-none text-white transition-colors hover:text-[oklch(0.85_0.12_84)]"
-          >
-            {names.primary}
-          </Link>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/58">
-            <span>{names.secondary}</span>
-            <span>{item.market}</span>
-            <span>{item.exchange}</span>
-          </div>
-        </div>
-        <PinnedButton
-          ticker={item.ticker}
-          market={item.market}
-          name={names.primary}
-          exchange={item.exchange}
-        />
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        <CoverageBadge state={item.coverage_state} />
-        {item.sector && (
-          <span className="rounded-full border border-white/10 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-white/60">
-            {item.sector}
-          </span>
-        )}
-      </div>
-      {reasons.length > 0 && (
-        <p className="mt-3 text-xs leading-5 text-white/46">
-          {reasons.map((reason) => reason.replaceAll("_", " ")).join(" / ")}
-        </p>
-      )}
-    </article>
-  );
-}
-
-function SectionShell({
-  eyebrow,
-  title,
-  subtitle,
-  children,
-  tone = "dark",
-}: {
-  eyebrow: string;
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-  tone?: "dark" | "light";
-}) {
-  return (
-    <section
-      className={cn(
-        "rounded-[2rem] border p-4 sm:p-5",
-        tone === "light"
-          ? "border-[oklch(0.82_0.03_88)] bg-[oklch(0.94_0.018_88_/_0.82)] text-[oklch(0.2_0.018_250)]"
-          : "border-white/10 bg-[oklch(0.18_0.018_250_/_0.72)]"
-      )}
-    >
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className={cn("tiny-label", tone === "light" && "text-[oklch(0.48_0.02_250)]")}>
-            {eyebrow}
-          </div>
-          <h2
-            className={cn(
-              "mt-2 font-heading text-2xl sm:text-4xl uppercase leading-tight tracking-[-0.04em] break-words",
-              tone === "light" ? "text-[oklch(0.18_0.018_250)]" : "text-white"
-            )}
-          >
-            {title}
-          </h2>
-        </div>
-        {subtitle && (
-          <p className={cn("max-w-xl text-sm leading-6", tone === "light" ? "text-[oklch(0.42_0.02_250)]" : "text-white/54")}>
-            {subtitle}
-          </p>
-        )}
-      </div>
-      {children}
-    </section>
-  );
-}
-
 export function RankingsClient({ initialFilters, initialData }: RankingsClientProps) {
   const { t } = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { getToken, isSignedIn } = useAuth();
   const [isPending, startTransition] = useTransition();
-  const [partialLimit, setPartialLimit] = useState(8);
-  const [exploreLimit, setExploreLimit] = useState(8);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const filters = readFilters(searchParams, initialFilters);
   const key = filtersKey(filters);
   const initialKey = filtersKey(initialFilters);
   const queryParams = filtersToQuery(filters);
-  const scoreFiltersActive = hasScoreFilters(filters);
   const activeFilters = activeFilterCount(filters);
-  const showPartial = !scoreFiltersActive && (!filters.coverageState || filters.coverageState === "needs_scoring");
-  const showExplore =
-    !scoreFiltersActive &&
-    filters.coverageState !== "ranked" &&
-    filters.coverageState !== "needs_scoring";
-  const exploreCoverage =
-    filters.coverageState && filters.coverageState !== "ranked" ? filters.coverageState : undefined;
 
   const rankings = useQuery({
     queryKey: ["rankings", "desk", key],
@@ -743,41 +618,6 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
     staleTime: 30_000,
     retry: (failureCount, queryError) =>
       queryError instanceof APIError && queryError.status >= 500 && failureCount < 2,
-  });
-
-  const partial = useQuery({
-    queryKey: ["universe-browse", "partial", filters.market, filters.assetType, partialLimit],
-    queryFn: () =>
-      fetchUniverseBrowse({
-        market: filters.market,
-        asset_type: filters.assetType,
-        coverage_state: "needs_scoring",
-        exclude_ranked: true,
-        limit: partialLimit,
-      }),
-    enabled: showPartial,
-    staleTime: 60_000,
-  });
-
-  const explore = useQuery({
-    queryKey: [
-      "universe-browse",
-      "explore",
-      filters.market,
-      filters.assetType,
-      exploreCoverage ?? "all",
-      exploreLimit,
-    ],
-    queryFn: () =>
-      fetchUniverseBrowse({
-        market: filters.market,
-        asset_type: filters.assetType,
-        coverage_state: exploreCoverage,
-        exclude_ranked: true,
-        limit: exploreLimit,
-      }),
-    enabled: showExplore,
-    staleTime: 60_000,
   });
 
   const watchlist = useQuery({
@@ -793,7 +633,6 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
 
   const pinnedInstruments = useUIStore((state) => state.pinnedInstruments);
   const watchlistItems: WatchlistItem[] = watchlist.data?.items ?? [];
-  // Merge: prefer backend items when signed in, else show local pins as stub items
   const watchlistDisplay: WatchlistItem[] =
     isSignedIn && watchlistItems.length > 0
       ? watchlistItems.filter((item) => item.market === filters.market)
@@ -815,10 +654,6 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
       ? rankedItems.reduce((sum, item) => sum + item.final_score, 0) / rankedItems.length
       : 0;
   const topScore = rankedItems[0]?.final_score ?? 0;
-  const partialItems = partial.data?.items ?? [];
-  const exploreItems = (explore.data?.items ?? []).filter(
-    (item) => exploreCoverage || item.coverage_state !== "needs_scoring"
-  );
   const currentPreset = PRESETS.find((preset) => preset.id === filters.preset) ?? PRESETS[0];
 
   function replaceParams(updates: Record<string, string | number | boolean | null | undefined>) {
@@ -831,7 +666,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
       }
     }
     startTransition(() => {
-      router.replace(`/app/rankings?${params.toString()}`, { scroll: false });
+      router.replace(`/rankings?${params.toString()}`, { scroll: false });
     });
   }
 
@@ -854,312 +689,286 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
   }
 
   return (
-    <div className="app-shell py-4 sm:py-6">
-      <section className="relative isolate overflow-hidden rounded-[2.4rem] border border-[oklch(0.76_0.04_88)] bg-[oklch(0.94_0.018_88)] px-4 py-5 text-[oklch(0.2_0.018_250)] shadow-[0_30px_120px_oklch(0.08_0.015_250_/_0.34)] sm:px-6 sm:py-7">
-        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_12%_12%,oklch(0.82_0.13_82_/_0.22),transparent_28%),radial-gradient(circle_at_82%_8%,oklch(0.7_0.08_195_/_0.18),transparent_25%),linear-gradient(135deg,transparent,oklch(0.99_0.012_88_/_0.72))]" />
-        <div className="absolute inset-x-0 top-0 -z-10 h-24 bg-[repeating-linear-gradient(90deg,oklch(0.25_0.02_250_/_0.08)_0_1px,transparent_1px_54px)] opacity-60" />
+    <div className="app-shell py-3 sm:py-5">
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(22rem,0.7fr)] xl:items-end">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-[oklch(0.78_0.04_88)] bg-white/55 px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-[oklch(0.42_0.02_250)]">
-              <Sparkles className="size-3.5" />
-              {t("rankings.kicker")}
+      {/* ── Compact control bar ─────────────────────────────────────────── */}
+      <div className="surface-panel rounded-[1.65rem] px-4 py-3 sm:px-5">
+            {/* Row 1: Market toggle + inline stats */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Market toggle */}
+            <div className="flex gap-1 rounded-[1rem] border border-white/8 bg-black/16 p-1">
+              {(["US", "KR"] as const).map((market) => (
+                <button
+                  key={market}
+                  type="button"
+                  onClick={() => replaceParams({ market })}
+                  className={cn(
+                    "rounded-[0.75rem] px-4 py-1.5 text-sm font-semibold transition-colors",
+                    filters.market === market
+                      ? "bg-white text-[oklch(0.18_0.018_250)]"
+                      : "text-faint hover:text-white"
+                  )}
+                >
+                  {market === "US" ? t("rankings.controls.usMarket") : t("rankings.controls.krMarket")}
+                </button>
+              ))}
             </div>
-            <h1 className="mt-4 max-w-5xl font-heading text-[clamp(4rem,10vw,8rem)] uppercase leading-[0.82] tracking-[-0.07em] text-[oklch(0.16_0.018_250)]">
-              {t("rankings.headline")}
-            </h1>
-            <p className="mt-5 max-w-3xl text-sm leading-7 text-[oklch(0.38_0.02_250)] sm:text-base">
-              {t("rankings.sub")}
-            </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-            <div className="rounded-[1.5rem] border border-[oklch(0.8_0.03_88)] bg-white/58 p-4">
-              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[oklch(0.48_0.02_250)]">
-                {t("rankings.stat.loaded")}
-              </div>
-              <div className="mt-2 font-heading text-4xl uppercase tracking-[-0.04em]">
-                {rankedItems.length}/{data?.total ?? 0}
-              </div>
-              <div className="mt-1 text-xs text-[oklch(0.46_0.02_250)]">
-                {t("rankings.controls.top")} {filters.limit} {t("rankings.stat.requested")}
-              </div>
-            </div>
-            <div className="rounded-[1.5rem] border border-[oklch(0.8_0.03_88)] bg-white/58 p-4">
-              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[oklch(0.48_0.02_250)]">
-                {t("rankings.stat.topScore")}
-              </div>
-              <div className={cn("mt-2 font-heading text-4xl uppercase tracking-[-0.04em]", scoreTone(topScore))}>
-                {topScore ? topScore.toFixed(1) : "--"}
-              </div>
-              <div className="mt-1 text-xs text-[oklch(0.46_0.02_250)]">
-                {t("rankings.stat.average")} {averageScore ? averageScore.toFixed(1) : "--"}
-              </div>
-            </div>
-            <div className="rounded-[1.5rem] border border-[oklch(0.8_0.03_88)] bg-white/58 p-4">
-              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[oklch(0.48_0.02_250)]">
-                {t("rankings.stat.freshness")}
-              </div>
-              <div className="mt-2 text-lg font-semibold">
-                {data?.score_date ? formatSnapshotDate(data.score_date) : "Waiting"}
-              </div>
-              <div className="mt-1 text-xs text-[oklch(0.46_0.02_250)]">
-                {rankings.isFetching || isPending
-                  ? t("rankings.stat.refreshing")
-                  : `${activeFilters} ${t("rankings.stat.activeFilters")}`}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.42fr)]">
-        <div className="surface-panel rounded-[2rem] px-4 py-4 sm:px-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="tiny-label">{t("rankings.controls.kicker")}</div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {(["US", "KR"] as const).map((market) => (
-                  <button
-                    key={market}
-                    type="button"
-                    onClick={() => replaceParams({ market })}
-                    className="filter-chip px-4 py-2 text-sm font-semibold"
-                    data-active={filters.market === market}
-                  >
-                    {market === "US" ? t("rankings.controls.usMarket") : t("rankings.controls.krMarket")}
-                  </button>
-                ))}
-                {(["stock", "etf"] as const).map((assetType) => (
-                  <button
-                    key={assetType}
-                    type="button"
-                    onClick={() => replaceParams({ asset_type: assetType })}
-                    className="filter-chip px-4 py-2 text-sm font-semibold"
-                    data-active={filters.assetType === assetType}
-                  >
-                    {assetType.toUpperCase()}
-                  </button>
-                ))}
-              </div>
+          {/* Right: stats + filter toggle */}
+          <div className="flex items-center gap-3">
+            {/* Inline stats */}
+            <div className="hidden items-center gap-4 text-xs sm:flex">
+              {data?.score_date && (
+                <span className="text-faint">{formatSnapshotDate(data.score_date)}</span>
+              )}
+              {topScore > 0 && (
+                <span className="font-medium text-white/70">
+                  <span className={cn("font-bold", scoreTone(topScore))}>{topScore.toFixed(0)}</span>
+                  <span className="mx-1 text-faint">/</span>
+                  <span className="text-faint">{averageScore.toFixed(0)} avg</span>
+                </span>
+              )}
+              <span className="text-faint">
+                {rankings.isFetching || isPending ? (
+                  <Loader2 className="inline size-3 animate-spin" />
+                ) : (
+                  `${rankedItems.length} of ${data?.total ?? 0}`
+                )}
+              </span>
             </div>
 
-            <div>
-              <div className="tiny-label lg:text-right">{t("rankings.controls.resultCount")}</div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {LIMIT_OPTIONS.map((limit) => (
-                  <button
-                    key={limit}
-                    type="button"
-                    onClick={() => replaceParams({ limit })}
-                    className="filter-chip px-4 py-2 text-sm font-semibold"
-                    data-active={filters.limit === limit}
-                  >
-                    {t("rankings.controls.top")} {limit}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="surface-panel rounded-[2rem] px-4 py-4 sm:px-5">
-          <div className="tiny-label">{t("rankings.lens.kicker")}</div>
-          <div className="mt-3 flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-2xl border border-white/10 bg-black/14">
-              <Filter className="size-5 text-white" />
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-white">{currentPreset.label}</div>
-              <div className="text-xs leading-5 text-faint">{currentPreset.description}</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="mt-5 surface-panel rounded-[2rem] px-4 py-4 sm:px-5">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="tiny-label">{t("rankings.presets.kicker")}</div>
-              <h2 className="mt-2 font-heading text-2xl sm:text-4xl uppercase tracking-[-0.04em] leading-tight text-white break-words">
-                {t("rankings.presets.headline")}
-              </h2>
-            </div>
+            {/* Filter toggle button */}
             <button
               type="button"
-              onClick={clearFilters}
-              className="inline-flex items-center gap-2 self-start rounded-full border border-white/10 px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-faint transition-colors hover:text-white sm:self-auto"
+              onClick={() => setShowAdvanced((v) => !v)}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.12em] transition-colors",
+                showAdvanced || activeFilters > 0
+                  ? "border-[oklch(0.78_0.11_84_/_0.48)] bg-[oklch(0.8_0.11_84_/_0.14)] text-white"
+                  : "border-white/10 text-faint hover:text-white"
+              )}
             >
-              <RefreshCw className="size-3.5" />
-              {t("rankings.presets.reset")}
+              <SlidersHorizontal className="size-3.5" />
+              {activeFilters > 0 ? `${activeFilters} ${t("rankings.stat.activeFilters")}` : t("rankings.presets.advanced")}
             </button>
           </div>
-
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6">
-            {PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => applyPreset(preset)}
-                className={cn(
-                  "rounded-[1.35rem] border px-4 py-4 text-left transition-all",
-                  filters.preset === preset.id
-                    ? "border-[oklch(0.78_0.11_84_/_0.48)] bg-[oklch(0.8_0.11_84_/_0.14)] text-white"
-                    : "border-white/8 bg-black/10 text-faint hover:border-white/16 hover:text-white"
-                )}
-              >
-                <div className="text-sm font-semibold">{preset.label}</div>
-                <div className="mt-2 text-xs leading-5 opacity-76">{preset.description}</div>
-              </button>
-            ))}
-          </div>
-
-          <details className="group rounded-[1.6rem] border border-white/10 bg-black/12">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 text-sm font-semibold text-white">
-              <span className="inline-flex items-center gap-2">
-                <Search className="size-4" />
-                {t("rankings.presets.advanced")}
-              </span>
-              <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="grid gap-3 border-t border-white/8 px-4 py-4 md:grid-cols-2 xl:grid-cols-4">
-              <FilterSelect
-                label={t("rankings.filters.conviction")}
-                value={filters.conviction}
-                onChange={(value) => setFilter("conviction", value || null)}
-              >
-                {CONVICTION_OPTIONS.map((option) => (
-                  <option key={option || "all"} value={option}>
-                    {option || t("rankings.filters.anyConviction")}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
-                label={t("rankings.filters.coverage")}
-                value={filters.coverageState ?? ""}
-                onChange={(value) => setFilter("coverage_state", value || null)}
-              >
-                <option value="">{t("rankings.filters.anyCoverage")}</option>
-                {[...COVERAGE_STATES].map((state) => (
-                  <option key={state} value={state}>
-                    {coverageLabel(state)}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
-                label={t("rankings.filters.finalScore")}
-                value={filters.minFinalScore?.toString() ?? ""}
-                onChange={(value) => setFilter("min_final_score", value || null)}
-              >
-                {SCORE_OPTIONS.map((option) => (
-                  <option key={option || "all"} value={option}>
-                    {option ? `${option}+` : t("rankings.filters.noMinimum")}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
-                label={t("rankings.filters.strategyCount")}
-                value={filters.minStrategyPassCount?.toString() ?? ""}
-                onChange={(value) => setFilter("min_strategy_pass_count", value || null)}
-              >
-                {PASS_OPTIONS.map((option) => (
-                  <option key={option || "all"} value={option}>
-                    {option ? `${option}+ passing` : t("rankings.filters.noPassing")}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
-                label={t("rankings.filters.technical")}
-                value={filters.minTechnicalComposite?.toString() ?? ""}
-                onChange={(value) => setFilter("min_technical_composite", value || null)}
-              >
-                {SCORE_OPTIONS.map((option) => (
-                  <option key={option || "all"} value={option}>
-                    {option ? `${option}+` : t("rankings.filters.noMinimum")}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
-                label="CANSLIM"
-                value={filters.minCanslim?.toString() ?? ""}
-                onChange={(value) => setFilter("min_canslim", value || null)}
-              >
-                {SCORE_OPTIONS.map((option) => (
-                  <option key={option || "all"} value={option}>
-                    {option ? `${option}+` : "No minimum"}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
-                label="Piotroski"
-                value={filters.minPiotroski?.toString() ?? ""}
-                onChange={(value) => setFilter("min_piotroski", value || null)}
-              >
-                {SCORE_OPTIONS.map((option) => (
-                  <option key={option || "all"} value={option}>
-                    {option ? `${option}+` : "No minimum"}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
-                label="Minervini"
-                value={filters.minMinervini?.toString() ?? ""}
-                onChange={(value) => setFilter("min_minervini", value || null)}
-              >
-                {SCORE_OPTIONS.map((option) => (
-                  <option key={option || "all"} value={option}>
-                    {option ? `${option}+` : "No minimum"}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
-                label="Weinstein"
-                value={filters.minWeinstein?.toString() ?? ""}
-                onChange={(value) => setFilter("min_weinstein", value || null)}
-              >
-                {SCORE_OPTIONS.map((option) => (
-                  <option key={option || "all"} value={option}>
-                    {option ? `${option}+` : "No minimum"}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
-                label="RS Rating"
-                value={filters.minRsRating?.toString() ?? ""}
-                onChange={(value) => setFilter("min_rs_rating", value || null)}
-              >
-                {SCORE_OPTIONS.map((option) => (
-                  <option key={option || "all"} value={option}>
-                    {option ? `${option}+` : "No minimum"}
-                  </option>
-                ))}
-              </FilterSelect>
-              <FilterSelect
-                label={t("rankings.filters.rsNewHigh")}
-                value={filters.rsLineNewHigh == null ? "" : String(filters.rsLineNewHigh)}
-                onChange={(value) => setFilter("rs_line_new_high", value || null)}
-              >
-                <option value="">{t("rankings.filters.any")}</option>
-                <option value="true">{t("rankings.filters.required")}</option>
-                <option value="false">{t("rankings.filters.exclude")}</option>
-              </FilterSelect>
-            </div>
-          </details>
         </div>
-      </section>
 
+        {/* Row 2 (mobile): inline stats */}
+        <div className="mt-2 flex items-center gap-3 text-xs sm:hidden">
+          {data?.score_date && (
+            <span className="text-faint">{formatSnapshotDate(data.score_date)}</span>
+          )}
+          <span className="text-faint">
+            {rankings.isFetching || isPending ? (
+              <Loader2 className="inline size-3 animate-spin" />
+            ) : (
+              `${rankedItems.length} of ${data?.total ?? 0} ranked`
+            )}
+          </span>
+          {topScore > 0 && (
+            <span>
+              <span className={cn("font-bold", scoreTone(topScore))}>{topScore.toFixed(0)}</span>
+              <span className="text-faint"> top</span>
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Filter panel (collapsible) ─────────────────────────────────── */}
+      {showAdvanced && (
+        <div className="mt-3 surface-panel rounded-[1.65rem] px-4 py-4 sm:px-5">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="tiny-label">{t("rankings.presets.kicker")}</div>
+                <h2 className="mt-1 font-heading text-xl sm:text-2xl uppercase tracking-[-0.04em] leading-tight text-white">
+                  {t("rankings.presets.headline")}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-faint transition-colors hover:text-white"
+              >
+                <RefreshCw className="size-3" />
+                {t("rankings.presets.reset")}
+              </button>
+            </div>
+
+            {/* Preset pills — scrollable on mobile */}
+            <div className="flex gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-3 xl:grid-cols-6 md:overflow-x-visible md:pb-0">
+              {PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => applyPreset(preset)}
+                  className={cn(
+                    "shrink-0 rounded-[1.2rem] border px-4 py-3 text-left transition-all md:shrink",
+                    filters.preset === preset.id
+                      ? "border-[oklch(0.78_0.11_84_/_0.48)] bg-[oklch(0.8_0.11_84_/_0.14)] text-white"
+                      : "border-white/8 bg-black/10 text-faint hover:border-white/16 hover:text-white"
+                  )}
+                  style={{ minWidth: "9rem" }}
+                >
+                  <div className="text-sm font-semibold">{preset.label}</div>
+                  <div className="mt-1 text-[0.7rem] leading-4 opacity-76">{preset.description}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* Advanced filter grid */}
+            <details className="group rounded-[1.4rem] border border-white/10 bg-black/12">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-sm font-semibold text-white">
+                <span className="inline-flex items-center gap-2">
+                  <Search className="size-4" />
+                  {t("rankings.presets.advanced")}
+                </span>
+                <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="grid gap-3 border-t border-white/8 px-4 py-4 md:grid-cols-2 xl:grid-cols-4">
+                <FilterSelect
+                  label={t("rankings.filters.conviction")}
+                  value={filters.conviction}
+                  onChange={(value) => setFilter("conviction", value || null)}
+                >
+                  {CONVICTION_OPTIONS.map((option) => (
+                    <option key={option || "all"} value={option}>
+                      {option || t("rankings.filters.anyConviction")}
+                    </option>
+                  ))}
+                </FilterSelect>
+                <FilterSelect
+                  label={t("rankings.filters.finalScore")}
+                  value={filters.minFinalScore?.toString() ?? ""}
+                  onChange={(value) => setFilter("min_final_score", value || null)}
+                >
+                  {SCORE_OPTIONS.map((option) => (
+                    <option key={option || "all"} value={option}>
+                      {option ? `${option}+` : t("rankings.filters.noMinimum")}
+                    </option>
+                  ))}
+                </FilterSelect>
+                <FilterSelect
+                  label={t("rankings.filters.strategyCount")}
+                  value={filters.minStrategyPassCount?.toString() ?? ""}
+                  onChange={(value) => setFilter("min_strategy_pass_count", value || null)}
+                >
+                  {PASS_OPTIONS.map((option) => (
+                    <option key={option || "all"} value={option}>
+                      {option ? `${option}+ passing` : t("rankings.filters.noPassing")}
+                    </option>
+                  ))}
+                </FilterSelect>
+                <FilterSelect
+                  label={t("rankings.filters.technical")}
+                  value={filters.minTechnicalComposite?.toString() ?? ""}
+                  onChange={(value) => setFilter("min_technical_composite", value || null)}
+                >
+                  {SCORE_OPTIONS.map((option) => (
+                    <option key={option || "all"} value={option}>
+                      {option ? `${option}+` : t("rankings.filters.noMinimum")}
+                    </option>
+                  ))}
+                </FilterSelect>
+                <FilterSelect
+                  label="CANSLIM"
+                  value={filters.minCanslim?.toString() ?? ""}
+                  onChange={(value) => setFilter("min_canslim", value || null)}
+                >
+                  {SCORE_OPTIONS.map((option) => (
+                    <option key={option || "all"} value={option}>
+                      {option ? `${option}+` : "No minimum"}
+                    </option>
+                  ))}
+                </FilterSelect>
+                <FilterSelect
+                  label="Piotroski"
+                  value={filters.minPiotroski?.toString() ?? ""}
+                  onChange={(value) => setFilter("min_piotroski", value || null)}
+                >
+                  {SCORE_OPTIONS.map((option) => (
+                    <option key={option || "all"} value={option}>
+                      {option ? `${option}+` : "No minimum"}
+                    </option>
+                  ))}
+                </FilterSelect>
+                <FilterSelect
+                  label="Minervini"
+                  value={filters.minMinervini?.toString() ?? ""}
+                  onChange={(value) => setFilter("min_minervini", value || null)}
+                >
+                  {SCORE_OPTIONS.map((option) => (
+                    <option key={option || "all"} value={option}>
+                      {option ? `${option}+` : "No minimum"}
+                    </option>
+                  ))}
+                </FilterSelect>
+                <FilterSelect
+                  label="Weinstein"
+                  value={filters.minWeinstein?.toString() ?? ""}
+                  onChange={(value) => setFilter("min_weinstein", value || null)}
+                >
+                  {SCORE_OPTIONS.map((option) => (
+                    <option key={option || "all"} value={option}>
+                      {option ? `${option}+` : "No minimum"}
+                    </option>
+                  ))}
+                </FilterSelect>
+                <FilterSelect
+                  label="RS Rating"
+                  value={filters.minRsRating?.toString() ?? ""}
+                  onChange={(value) => setFilter("min_rs_rating", value || null)}
+                >
+                  {SCORE_OPTIONS.map((option) => (
+                    <option key={option || "all"} value={option}>
+                      {option ? `${option}+` : "No minimum"}
+                    </option>
+                  ))}
+                </FilterSelect>
+                <FilterSelect
+                  label={t("rankings.filters.rsNewHigh")}
+                  value={filters.rsLineNewHigh == null ? "" : String(filters.rsLineNewHigh)}
+                  onChange={(value) => setFilter("rs_line_new_high", value || null)}
+                >
+                  <option value="">{t("rankings.filters.any")}</option>
+                  <option value="true">{t("rankings.filters.required")}</option>
+                  <option value="false">{t("rankings.filters.exclude")}</option>
+                </FilterSelect>
+              </div>
+            </details>
+
+            {/* Active lens summary */}
+            <div className="flex items-center gap-3 rounded-[1.2rem] border border-white/8 bg-black/10 px-4 py-3">
+              <Filter className="size-4 text-faint" />
+              <div>
+                <div className="text-sm font-semibold text-white">{currentPreset.label}</div>
+                <div className="text-xs leading-5 text-faint">{currentPreset.description}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Regime warning ─────────────────────────────────────────────── */}
       {(data?.regime_warning_count ?? 0) > 0 && (
-        <div className="mt-5 flex items-center gap-3 rounded-[1.65rem] border border-[oklch(0.78_0.18_55_/_0.35)] bg-[oklch(0.35_0.07_55_/_0.15)] px-5 py-3 text-sm text-[oklch(0.9_0.06_75)]">
+        <div className="mt-3 flex items-center gap-3 rounded-[1.4rem] border border-[oklch(0.78_0.18_55_/_0.35)] bg-[oklch(0.35_0.07_55_/_0.15)] px-5 py-3 text-sm text-[oklch(0.9_0.06_75)]">
           <AlertTriangle className="size-4 shrink-0" />
           {data!.regime_warning_count} {t("rankings.regime.warning")}
         </div>
       )}
 
-      <div className="mt-5 grid gap-5">
+      <div className="mt-3 grid gap-4">
+        {/* ── Watchlist ──────────────────────────────────────────────── */}
         {watchlistDisplay.length > 0 && (
-          <SectionShell eyebrow={t("rankings.watchlist.eyebrow")} title={t("rankings.watchlist.title")} tone="light">
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          <section className="rounded-[1.8rem] border border-[oklch(0.82_0.03_88)] bg-[oklch(0.94_0.018_88_/_0.82)] px-4 py-4 text-[oklch(0.2_0.018_250)] sm:px-5">
+            <div className="tiny-label text-[oklch(0.48_0.02_250)]">{t("rankings.watchlist.eyebrow")}</div>
+            <h2 className="mt-1 font-heading text-xl uppercase tracking-[-0.03em] text-[oklch(0.18_0.018_250)] sm:text-2xl">
+              {t("rankings.watchlist.title")}
+            </h2>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {watchlistDisplay.map((item) => (
                 <WatchlistCard
                   key={`wl-${item.market}-${item.ticker}`}
@@ -1168,28 +977,28 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
                 />
               ))}
             </div>
-            {watchlistDisplay.length === 0 && (
-              <p className="text-sm text-[oklch(0.46_0.02_250)]">
-                {t("rankings.watchlist.empty")}
-              </p>
-            )}
             {!isSignedIn && (
               <p className="mt-3 text-xs text-[oklch(0.52_0.02_250)]">
                 <Bookmark className="mr-1 inline size-3" />
                 {t("rankings.watchlist.signIn")}
               </p>
             )}
-          </SectionShell>
+          </section>
         )}
 
-        <SectionShell
-          eyebrow={t("rankings.leaderboard.eyebrow")}
-          title={`${filters.market} ${filters.assetType === "etf" ? "ETF" : t("ui.stock").toLowerCase()} leaderboard`}
-          subtitle={t("rankings.leaderboard.subtitle")}
-          tone="light"
-        >
+        {/* ── Leaderboard ────────────────────────────────────────────── */}
+        <section className="rounded-[1.8rem] border border-[oklch(0.82_0.03_88)] bg-[oklch(0.94_0.018_88_/_0.82)] px-4 py-4 text-[oklch(0.2_0.018_250)] sm:px-5">
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <div className="tiny-label text-[oklch(0.48_0.02_250)]">{t("rankings.leaderboard.eyebrow")}</div>
+              <h2 className="mt-1 font-heading text-xl uppercase tracking-[-0.03em] text-[oklch(0.18_0.018_250)] sm:text-2xl break-words">
+                {filters.market} {t("ui.stock").toLowerCase()} leaderboard
+              </h2>
+            </div>
+          </div>
+
           {rankings.error && (
-            <div className="rounded-[1.4rem] border border-[oklch(0.68_0.18_28_/_0.3)] bg-[oklch(0.96_0.04_28_/_0.54)] px-5 py-4 text-sm text-[oklch(0.42_0.12_28)]">
+            <div className="rounded-[1.2rem] border border-[oklch(0.68_0.18_28_/_0.3)] bg-[oklch(0.96_0.04_28_/_0.54)] px-5 py-4 text-sm text-[oklch(0.42_0.12_28)]">
               {rankings.error instanceof APIError
                 ? rankings.error.detail ?? t("rankings.leaderboard.error")
                 : t("rankings.leaderboard.error")}
@@ -1197,7 +1006,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
           )}
 
           {!rankings.error && rankedItems.length === 0 && !rankings.isFetching && (
-            <div className="rounded-[1.4rem] border border-[oklch(0.8_0.03_88)] bg-white/55 px-5 py-8 text-center text-sm text-[oklch(0.42_0.02_250)]">
+            <div className="rounded-[1.2rem] border border-[oklch(0.8_0.03_88)] bg-white/55 px-5 py-8 text-center text-sm text-[oklch(0.42_0.02_250)]">
               {t("rankings.leaderboard.empty")}
             </div>
           )}
@@ -1216,89 +1025,20 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
                   {t("rankings.leaderboard.refreshing")}
                 </span>
               ) : (
-                `${t("rankings.leaderboard.showing")} ${rankedItems.length} of ${data?.total ?? 0} ranked rows`
+                `${t("rankings.leaderboard.showing")} ${rankedItems.length} of ${data?.total ?? 0} ranked`
               )}
             </div>
-            {data?.pagination.has_more && filters.limit < 200 && (
+            {data?.pagination.has_more && (
               <button
                 type="button"
-                onClick={() => replaceParams({ limit: Math.min(filters.limit + 50, 200) })}
+                onClick={() => replaceParams({ limit: Math.min(filters.limit + 100, 500) })}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-[oklch(0.18_0.018_250)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[oklch(0.28_0.03_250)]"
               >
                 {t("rankings.leaderboard.loadMore")}
-                <BarChart3 className="size-4" />
               </button>
             )}
           </div>
-        </SectionShell>
-
-        {showPartial && (
-          <SectionShell
-            eyebrow={t("rankings.partial.eyebrow")}
-            title={t("rankings.partial.title")}
-            subtitle={t("rankings.partial.subtitle")}
-          >
-            {partial.error ? (
-              <div className="rounded-[1.35rem] border border-white/10 bg-black/12 px-4 py-4 text-sm text-faint">
-                {t("rankings.partial.error")}
-              </div>
-            ) : partialItems.length === 0 && !partial.isFetching ? (
-              <div className="rounded-[1.35rem] border border-white/10 bg-black/12 px-4 py-5 text-sm text-faint">
-                {t("rankings.partial.empty")}
-              </div>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {partialItems.map((item) => (
-                  <BrowseCard key={`partial-${item.market}-${item.ticker}`} item={item} label={t("ui.needsScoring")} />
-                ))}
-              </div>
-            )}
-            {partial.data?.pagination.has_more && (
-              <button
-                type="button"
-                onClick={() => setPartialLimit((value) => Math.min(value + 8, 200))}
-                className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-faint transition-colors hover:text-white"
-              >
-                {t("rankings.partial.loadMore")}
-                <LineChart className="size-4" />
-              </button>
-            )}
-          </SectionShell>
-        )}
-
-        {showExplore && (
-          <SectionShell
-            eyebrow={t("rankings.explore.eyebrow")}
-            title={t("rankings.explore.title")}
-            subtitle={t("rankings.explore.subtitle")}
-          >
-            {explore.error ? (
-              <div className="rounded-[1.35rem] border border-white/10 bg-black/12 px-4 py-4 text-sm text-faint">
-                {t("rankings.explore.error")}
-              </div>
-            ) : exploreItems.length === 0 && !explore.isFetching ? (
-              <div className="rounded-[1.35rem] border border-white/10 bg-black/12 px-4 py-5 text-sm text-faint">
-                {t("rankings.explore.empty")}
-              </div>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {exploreItems.map((item) => (
-                  <BrowseCard key={`explore-${item.market}-${item.ticker}`} item={item} label={t("ui.explore")} />
-                ))}
-              </div>
-            )}
-            {explore.data?.pagination.has_more && (
-              <button
-                type="button"
-                onClick={() => setExploreLimit((value) => Math.min(value + 8, 200))}
-                className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/10 px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-faint transition-colors hover:text-white"
-              >
-                {t("rankings.explore.loadMore")}
-                <ShieldCheck className="size-4" />
-              </button>
-            )}
-          </SectionShell>
-        )}
+        </section>
       </div>
     </div>
   );

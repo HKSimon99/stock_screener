@@ -1,0 +1,43 @@
+{
+  "date": "2026-05-03",
+  "window": "7d",
+  "metrics": {
+    "commits": 20,
+    "contributors": 1,
+    "prs_merged": 0,
+    "insertions": 4659,
+    "deletions": 1107,
+    "net_loc": 3552,
+    "test_loc": 244,
+    "test_ratio": 0.05,
+    "active_days": 3,
+    "sessions": 7,
+    "deep_sessions": 1,
+    "avg_session_minutes": 26,
+    "loc_per_session_hour": 2100,
+    "feat_pct": 0.45,
+    "fix_pct": 0.35,
+    "peak_hour": 21,
+    "ai_assisted_commits": 15
+  },
+  "authors": {
+    "Consensus Platform": {
+      "commits": 20,
+      "insertions": 4659,
+      "deletions": 1107,
+      "test_ratio": 0.05,
+      "top_area": "apps/web/"
+    }
+  },
+  "version_range": ["unknown", "unknown"],
+  "streak_days": 3,
+  "focus_score": 0.65,
+  "focus_area": "apps/web/",
+  "tweetable": "May 1-3: 20 commits, +4.7k LOC, 75% AI-assisted | Magic Formula + Revolut UI + KO/EN toggle shipped | Streak: 3d",
+  "test_health": {
+    "total_test_files": 5,
+    "tests_added_this_period": 244,
+    "regression_test_commits": 0,
+    "test_files_changed": 3
+  }
+}

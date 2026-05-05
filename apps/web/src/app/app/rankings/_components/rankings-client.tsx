@@ -293,6 +293,17 @@ function coverageTone(state?: CoverageState): string {
   return "border-[oklch(0.55_0.02_248_/_0.28)] bg-white/45 text-[oklch(0.38_0.02_248)]";
 }
 
+/** Strip legal boilerplate suffixes from US stock names for cleaner display. */
+function cleanDisplayName(name: string, market: "US" | "KR"): string {
+  if (market !== "US" || !name) return name;
+  return name
+    // " - COMMON STOCK", " - CLASS A/B/C …", " - ORDINARY SHARES", " - ADR/ADS/UNITS"
+    .replace(/\s*[-–]\s*(common\s+stock|class\s+[a-z][\w\s]*|ordinary\s+shares?|adr|ads|units?)\s*$/i, "")
+    // " COMMON STOCK" (no dash)
+    .replace(/\s+(common\s+stock)\s*$/i, "")
+    .trim();
+}
+
 function displayName(item: Pick<RankingItem | BrowseResult, "market" | "ticker" | "name" | "name_kr">) {
   if (item.market === "KR") {
     return {
@@ -300,8 +311,9 @@ function displayName(item: Pick<RankingItem | BrowseResult, "market" | "ticker" 
       secondary: item.name_kr ? `${item.ticker} / ${item.name}` : item.ticker,
     };
   }
+  const clean = cleanDisplayName(item.name || item.ticker, "US");
   return {
-    primary: item.name || item.ticker,
+    primary: clean,
     secondary: item.ticker,
   };
 }
@@ -452,74 +464,119 @@ function RankedCard({ item }: { item: RankingItem }) {
   ] as const;
 
   return (
-    <article className="group relative overflow-hidden rounded-[1.6rem] border border-[oklch(0.8_0.03_88)] bg-[oklch(0.985_0.012_88_/_0.92)] p-4 shadow-[0_18px_60px_oklch(0.18_0.025_250_/_0.12)] transition-transform duration-300 hover:-translate-y-0.5 sm:p-5">
+    <article className="group relative overflow-hidden rounded-[1.4rem] border border-[oklch(0.8_0.03_88)] bg-[oklch(0.985_0.012_88_/_0.92)] transition-transform duration-300 md:shadow-[0_18px_60px_oklch(0.18_0.025_250_/_0.12)] md:hover:-translate-y-0.5">
       <div className="absolute inset-y-0 left-0 w-1 bg-[linear-gradient(180deg,oklch(0.78_0.13_82),oklch(0.62_0.12_190))]" />
-      <div className="grid gap-4 xl:grid-cols-[auto_minmax(0,1fr)_minmax(15rem,0.65fr)_auto] xl:items-center">
-        <div className="flex items-start justify-between gap-3 xl:block">
-          <div className="font-heading text-4xl uppercase leading-none tracking-[-0.06em] text-[oklch(0.28_0.02_250)]">
-            #{item.rank}
+
+      {/* ── Mobile compact row (< md) ── */}
+      <Link
+        href={buildInstrumentPath(item.ticker, item.market)}
+        className="md:hidden flex items-center gap-3 pl-5 pr-4 py-3.5 active:bg-black/5 transition-colors"
+      >
+        {/* Rank */}
+        <div className="w-7 shrink-0 text-right">
+          <span className="text-[0.6rem] font-semibold uppercase text-faint leading-none">#{item.rank}</span>
+        </div>
+
+        {/* Name + mini bars */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-semibold text-sm text-[oklch(0.18_0.018_250)] shrink-0 tabular-nums">{item.ticker}</span>
+            <ConvictionBadge level={item.conviction_level} size="sm" />
           </div>
-          <div className={cn("font-heading text-5xl leading-none tracking-[-0.06em] xl:mt-4", scoreTone(score))}>
-            {score.toFixed(0)}
+          <div className="mt-0.5 truncate text-[0.72rem] text-faint leading-snug">{names.primary}</div>
+          <div className="mt-2 flex gap-2">
+            {strategyScores.map(([label, value]) => (
+              <div key={label} className="flex-1 min-w-0">
+                <div className="text-[0.5rem] uppercase tracking-wide text-faint text-center leading-none mb-0.5">{label}</div>
+                <div className="h-[3px] bg-[oklch(0.86_0.02_88)] rounded-full overflow-hidden">
+                  <div
+                    className={cn("h-full rounded-full", scoreBarTone(Math.min(100, value)))}
+                    style={{ width: `${Math.min(100, value)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
+        {/* Score + arrow */}
+        <div className="shrink-0 flex items-center gap-1.5">
+          <span className={cn("font-mono text-lg font-bold leading-none tabular-nums", scoreTone(score))}>
+            {score.toFixed(0)}
+          </span>
+          <ArrowUpRight className="size-3.5 text-faint" />
+        </div>
+      </Link>
+
+      {/* ── Desktop full card (md+) ── */}
+      <div className="hidden md:block p-5">
+        <div className="grid gap-4 xl:grid-cols-[auto_minmax(0,1fr)_minmax(15rem,0.65fr)_auto] xl:items-center">
+          <div className="flex items-start justify-between gap-3 xl:block">
+            <div className="font-heading text-4xl uppercase leading-none tracking-[-0.06em] text-[oklch(0.28_0.02_250)]">
+              #{item.rank}
+            </div>
+            <div className={cn("font-heading text-5xl leading-none tracking-[-0.06em] xl:mt-4", scoreTone(score))}>
+              {score.toFixed(0)}
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={buildInstrumentPath(item.ticker, item.market)}
+                className="font-heading text-[clamp(1.6rem,3.5vw,2.8rem)] uppercase leading-[1.05] tracking-[-0.04em] text-[oklch(0.18_0.018_250)] transition-colors hover:text-[oklch(0.5_0.12_82)] line-clamp-2"
+              >
+                {names.primary}
+              </Link>
+              <ConvictionBadge level={item.conviction_level} size="sm" />
+              {item.regime_warning && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-[oklch(0.74_0.14_55_/_0.34)] bg-[oklch(0.92_0.08_55_/_0.28)] px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[oklch(0.44_0.08_52)]">
+                  <AlertTriangle className="size-3" />
+                  Regime
+                </span>
+              )}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[oklch(0.46_0.02_250)]">
+              <span className="font-semibold">{names.secondary}</span>
+              <span>{item.market}</span>
+              {item.exchange && <span>{item.exchange}</span>}
+              {item.asset_type && <span>{item.asset_type.toUpperCase()}</span>}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <CoverageBadge state={item.coverage_state ?? "ranked"} />
+              <span className="rounded-full border border-[oklch(0.78_0.03_88)] bg-white/55 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[oklch(0.42_0.02_250)]">
+                {item.strategy_pass_count} strategies
+              </span>
+              {item.technical_composite != null && (
+                <span className="rounded-full border border-[oklch(0.78_0.03_88)] bg-white/55 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[oklch(0.42_0.02_250)]">
+                  Tech {item.technical_composite.toFixed(0)}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-2">
+            {strategyScores.map(([label, value]) => (
+              <ScoreMeter key={label} label={label} value={value} />
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 xl:flex-col xl:items-end">
+            <PinnedButton
+              ticker={item.ticker}
+              market={item.market}
+              name={names.primary}
+              exchange={item.exchange}
+              light
+            />
             <Link
               href={buildInstrumentPath(item.ticker, item.market)}
-              className="font-heading text-[clamp(1.9rem,5vw,3.1rem)] uppercase leading-[0.9] tracking-[-0.04em] text-[oklch(0.18_0.018_250)] transition-colors hover:text-[oklch(0.5_0.12_82)]"
+              className="inline-flex items-center gap-2 rounded-full bg-[oklch(0.18_0.018_250)] px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[oklch(0.28_0.03_250)]"
             >
-              {names.primary}
+              Open
+              <ArrowUpRight className="size-3.5" />
             </Link>
-            <ConvictionBadge level={item.conviction_level} size="sm" />
-            {item.regime_warning && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-[oklch(0.74_0.14_55_/_0.34)] bg-[oklch(0.92_0.08_55_/_0.28)] px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[oklch(0.44_0.08_52)]">
-                <AlertTriangle className="size-3" />
-                Regime
-              </span>
-            )}
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[oklch(0.46_0.02_250)]">
-            <span className="font-semibold">{names.secondary}</span>
-            <span>{item.market}</span>
-            {item.exchange && <span>{item.exchange}</span>}
-            {item.asset_type && <span>{item.asset_type.toUpperCase()}</span>}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <CoverageBadge state={item.coverage_state ?? "ranked"} />
-            <span className="rounded-full border border-[oklch(0.78_0.03_88)] bg-white/55 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[oklch(0.42_0.02_250)]">
-              {item.strategy_pass_count} strategies
-            </span>
-            {item.technical_composite != null && (
-              <span className="rounded-full border border-[oklch(0.78_0.03_88)] bg-white/55 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[oklch(0.42_0.02_250)]">
-                Tech {item.technical_composite.toFixed(0)}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-2">
-          {strategyScores.map(([label, value]) => (
-            <ScoreMeter key={label} label={label} value={value} />
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between gap-3 xl:flex-col xl:items-end">
-          <PinnedButton
-            ticker={item.ticker}
-            market={item.market}
-            name={names.primary}
-            exchange={item.exchange}
-            light
-          />
-          <Link
-            href={buildInstrumentPath(item.ticker, item.market)}
-            className="inline-flex items-center gap-2 rounded-full bg-[oklch(0.18_0.018_250)] px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[oklch(0.28_0.03_250)]"
-          >
-            Open
-            <ArrowUpRight className="size-3.5" />
-          </Link>
         </div>
       </div>
     </article>
@@ -639,7 +696,7 @@ function SectionShell({
           </div>
           <h2
             className={cn(
-              "mt-2 font-heading text-4xl uppercase leading-none tracking-[-0.04em]",
+              "mt-2 font-heading text-2xl sm:text-4xl uppercase leading-tight tracking-[-0.04em] break-words",
               tone === "light" ? "text-[oklch(0.18_0.018_250)]" : "text-white"
             )}
           >
@@ -925,7 +982,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <div className="tiny-label">{t("rankings.presets.kicker")}</div>
-              <h2 className="mt-2 font-heading text-4xl uppercase tracking-[-0.04em] text-white">
+              <h2 className="mt-2 font-heading text-2xl sm:text-4xl uppercase tracking-[-0.04em] leading-tight text-white break-words">
                 {t("rankings.presets.headline")}
               </h2>
             </div>
@@ -1145,7 +1202,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
             </div>
           )}
 
-          <div className="grid gap-3">
+          <div className="grid gap-1 md:gap-3">
             {rankedItems.map((item) => (
               <RankedCard key={`${item.market}-${item.ticker}-${item.rank}`} item={item} />
             ))}

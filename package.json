@@ -15,10 +15,6 @@
     "node": ">=20",
     "pnpm": ">=10"
   },
-  "dependencies": {
-    "@tanstack/react-query-devtools": "",
-    "apps/web": "apps/web"
-  },
   "workspaces": [
     "apps/*",
     "packages/*"

@@ -1,286 +1,251 @@
 """
-US Institutional Ownership Ingestion — Step 4.1
-================================================
-Parses SEC EDGAR 13F bulk data via edgartools to extract institutional
-ownership metrics per instrument:
+US Institutional Ownership — Live yfinance Fetcher
+====================================================
+Fetches institutional holder data from Yahoo Finance at **scoring time**.
+No DB writes — same architecture as kr_kis_finance.py.
 
-  - num_institutional_owners   : count of 13F filers holding the stock
-  - institutional_pct          : institutional shares / shares_outstanding
-  - qoq_owner_change           : net new filers vs prior quarter
-  - top_fund_quality_score     : avg RS-like performance rank of top-10 holders
+Design principle
+----------------
+Institutional ownership counts change every quarter and Yahoo Finance makes
+this data freely available on demand.  There is no reason to persist it;
+fetching live during the nightly scoring run is fast enough (~1 HTTP call
+per ticker) and always returns the latest data.
 
-Data flow:
-  1. Pull the most recent 13F-HR filings for each quarter from SEC EDGAR
-  2. For each instrument (matched by ticker), aggregate holdings across all filers
-  3. Compute metrics and upsert into institutional_ownership
+yfinance endpoints used
+-----------------------
+  yf.Ticker(t).institutional_holders
+      DataFrame: Holder | Shares | Date Reported | % Out | Value
 
-Notes:
-  - 13F bulk XML from SEC EDGAR has no API key requirement
-  - Filings are quarterly (Q1/Q2/Q3/Q4), ~45-day lag after period end
-  - edgartools Company.get_filings(form="13F-HR") accesses this
+  yf.Ticker(t).major_holders
+      DataFrame: Value | Breakdown  (% held by institutions, % by insiders)
+
+Rate limits
+-----------
+Yahoo Finance is undocumented but tolerant.  Semaphore(15) keeps us
+within safe concurrency bounds.
+
+Usage
+-----
+    from app.services.ingestion.us_institutional import bulk_fetch_us_institutional
+
+    data = await bulk_fetch_us_institutional(tickers=["AAPL", "MSFT"])
+    # data["AAPL"].num_institutional_owners → int
+    # data["AAPL"].institutional_pct         → float (0–1)
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
 
-from edgar import set_identity, Company, get_filings
-from sqlalchemy import select, desc
-
-from app.core.database import AsyncSessionLocal
-from app.models.instrument import Instrument
-from app.models.fundamental import FundamentalAnnual
-from app.models.institutional import InstitutionalOwnership
+import pandas as pd
+import yfinance as yf
 
 logger = logging.getLogger(__name__)
 
-# SEC requires identity disclosure for bulk access
-set_identity("ConsensusApp consensus@example.com")
+# ── Fund quality heuristic ────────────────────────────────────────────────────
+# Well-known institutional investors get a higher quality score (0–100).
+# This is a lightweight proxy — a full implementation would track historical returns.
 
-# Top institutional holders to use for quality score computation
-TOP_N_FUNDS = 10
-
-# Quality proxies: well-known high-performing fund managers get higher scores.
-# This is a lightweight heuristic — a full implementation would track fund
-# historical returns. Values are 0-100.
-FUND_QUALITY_MAP: dict[str, float] = {
-    "VANGUARD": 72,
-    "BLACKROCK": 74,
-    "FIDELITY": 78,
-    "T. ROWE PRICE": 82,
-    "CAPITAL RESEARCH": 80,
-    "WELLINGTON": 81,
-    "BAILLIE GIFFORD": 85,
-    "PRIMECAP": 88,
-    "Polen CAPITAL": 87,
-    "ARTISAN": 84,
-    "BROWN ADVISORY": 83,
-    "AMERICAN FUNDS": 79,
-    "SOROS": 80,
-    "TIGER": 83,
-    "DUQUESNE": 85,
-    "BERKSHIRE": 90,
+_FUND_QUALITY_MAP: dict[str, float] = {
+    "VANGUARD":          72,
+    "BLACKROCK":         74,
+    "FIDELITY":          78,
+    "T. ROWE PRICE":     82,
+    "CAPITAL RESEARCH":  80,
+    "WELLINGTON":        81,
+    "BAILLIE GIFFORD":   85,
+    "PRIMECAP":          88,
+    "POLEN CAPITAL":     87,
+    "ARTISAN":           84,
+    "BROWN ADVISORY":    83,
+    "AMERICAN FUNDS":    79,
+    "BERKSHIRE":         90,
+    "TIGER":             83,
+    "DUQUESNE":          85,
+    "SOROS":             80,
 }
 
 
-def _fund_quality_score(filer_name: str) -> float:
-    """Return a quality score for a 13F filer based on name heuristics."""
-    name_upper = filer_name.upper()
-    for key, score in FUND_QUALITY_MAP.items():
-        if key in name_upper:
+def _fund_quality(name: str) -> float:
+    n = name.upper()
+    for key, score in _FUND_QUALITY_MAP.items():
+        if key in n:
             return score
-    return 65.0  # default neutral score
+    return 65.0  # neutral default
 
 
-def _parse_13f_holdings(filing) -> dict[str, float]:
-    """
-    Extract a {ticker: shares_held} dict from a single 13F-HR filing object.
-    Returns an empty dict on any parse error.
-    """
-    holdings: dict[str, float] = {}
+# ── Data containers ───────────────────────────────────────────────────────────
+
+@dataclass
+class HolderRecord:
+    institution_name: str
+    shares: float
+    pct_out: Optional[float] = None
+
+
+@dataclass
+class UsInstitutionalData:
+    ticker: str
+    report_date: Optional[date] = None
+    num_institutional_owners: Optional[int] = None
+    institutional_pct: Optional[float] = None
+    top_fund_quality_score: Optional[float] = None
+    holders: list[HolderRecord] = field(default_factory=list)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _safe_float(val) -> Optional[float]:
     try:
-        obj = filing.obj()
-        if obj is None:
-            return holdings
-        # edgartools returns a ThirteenF object with .infotable attribute
-        if hasattr(obj, "infotable") and obj.infotable is not None:
-            for row in obj.infotable.itertuples():
-                ticker = getattr(row, "ticker", None) or getattr(row, "cusip", None)
-                shares = getattr(row, "value", None) or getattr(row, "sshPrnamt", None)
-                if ticker and shares:
-                    try:
-                        holdings[str(ticker).upper()] = float(shares)
-                    except (ValueError, TypeError):
-                        pass
-    except Exception as exc:
-        logger.debug("Could not parse 13F filing: %s", exc)
-    return holdings
+        v = float(val)
+        return v if pd.notna(v) else None
+    except (TypeError, ValueError):
+        return None
 
 
-async def ingest_us_institutional(
-    tickers: Optional[list[str]] = None,
-    report_date: Optional[date] = None,
-    max_filers: int = 200,
-) -> dict:
+def _parse_holders(holders_df: pd.DataFrame) -> tuple[list[HolderRecord], Optional[date], Optional[float]]:
     """
-    Ingest institutional ownership for a list of US tickers.
-
-    Args:
-        tickers:     List of tickers to process. None = all active US stocks.
-        report_date: Override the report date (defaults to today / most recent quarter).
-        max_filers:  Max number of 13F filers to scan (performance guard).
-
-    Returns:
-        Summary dict with counts of processed/skipped instruments.
+    Parse yfinance institutional_holders DataFrame.
+    Returns (holders, latest_report_date, total_institutional_pct).
     """
-    if report_date is None:
-        report_date = date.today()
+    holders: list[HolderRecord] = []
+    latest_date: Optional[date] = None
+    total_pct: Optional[float] = None
 
-    async with AsyncSessionLocal() as db:
-        # Fetch instruments
-        stmt = (
-            select(Instrument)
-            .where(
-                Instrument.market == "US",
-                Instrument.asset_type == "stock",
-                Instrument.is_active.is_(True),
-            )
-            .order_by(Instrument.ticker.asc())
-        )
-        if tickers:
-            tickers_upper = [t.upper() for t in tickers]
-            stmt = stmt.where(Instrument.ticker.in_(tickers_upper))
+    if holders_df is None or holders_df.empty:
+        return holders, latest_date, total_pct
 
-        result = await db.execute(stmt)
-        instruments = result.scalars().all()
+    pct_sum = 0.0
+    pct_count = 0
 
-        if not instruments:
-            logger.warning("No active US instruments found for institutional ingestion.")
-            return {"processed": 0, "skipped": 0}
+    for _, row in holders_df.iterrows():
+        # Column names vary slightly across yfinance versions
+        name   = str(row.get("Holder") or row.get("Institution") or "").strip()
+        shares = _safe_float(row.get("Shares") or row.get("Value"))
 
-        ticker_to_inst: dict[str, Instrument] = {inst.ticker: inst for inst in instruments}
-        target_tickers = set(ticker_to_inst.keys())
+        # Date Reported
+        dr = row.get("Date Reported") or row.get("dateReported")
+        if dr is not None:
+            try:
+                d = pd.Timestamp(dr).date()
+                if latest_date is None or d > latest_date:
+                    latest_date = d
+            except Exception:
+                pass
 
-        logger.info(
-            "Starting 13F institutional ingestion for %d instruments", len(instruments)
-        )
+        # % Out
+        pct = _safe_float(row.get("% Out") or row.get("pctHeld"))
 
-        # ── Aggregate holdings across all recent 13F filers ─────────────────
-        # holdings_agg[ticker] = {filer_name: shares}
-        holdings_agg: dict[str, dict[str, float]] = defaultdict(dict)
+        if name and shares:
+            holders.append(HolderRecord(institution_name=name, shares=shares, pct_out=pct))
+            if pct is not None:
+                pct_sum   += pct
+                pct_count += 1
 
+    if pct_count:
+        total_pct = min(1.0, pct_sum)
+
+    return holders, latest_date, total_pct
+
+
+def _parse_major_holders(major_df: pd.DataFrame) -> Optional[float]:
+    """
+    Try to extract total institutional % from major_holders DataFrame.
+    Returns a value in [0, 1] or None.
+    """
+    if major_df is None or major_df.empty:
+        return None
+    try:
+        # yfinance may return rows labelled "% of Shares Held by Institutions" etc.
+        for col in major_df.columns:
+            if "institution" in str(col).lower():
+                val = _safe_float(major_df.iloc[0][col])
+                if val is not None:
+                    return min(1.0, val)
+        # Alternative layout: rows with "Breakdown" column
+        if "Breakdown" in major_df.columns:
+            for _, row in major_df.iterrows():
+                desc = str(row.get("Breakdown") or "").lower()
+                if "institution" in desc:
+                    val = _safe_float(row.get("Value") or row.get("value"))
+                    if val is not None:
+                        return min(1.0, val)
+    except Exception:
+        pass
+    return None
+
+
+# ── Single-ticker fetch ───────────────────────────────────────────────────────
+
+async def _fetch_one(ticker: str, semaphore: asyncio.Semaphore) -> UsInstitutionalData:
+    async with semaphore:
         try:
-            # Get the most recent quarterly 13F-HR filings
-            filings = get_filings(form="13F-HR", date=str(report_date))
-            filer_count = 0
-
-            for filing in filings:
-                if filer_count >= max_filers:
-                    break
-                filer_name = getattr(filing, "company", "") or ""
-                parsed = _parse_13f_holdings(filing)
-
-                for ticker, shares in parsed.items():
-                    if ticker in target_tickers:
-                        holdings_agg[ticker][filer_name] = shares
-
-                filer_count += 1
-                if filer_count % 25 == 0:
-                    logger.info("Scanned %d 13F filers...", filer_count)
-
+            t = await asyncio.to_thread(yf.Ticker, ticker)
+            holders_df = await asyncio.to_thread(lambda: t.institutional_holders)
+            major_df   = await asyncio.to_thread(lambda: t.major_holders)
         except Exception as exc:
-            logger.error("Failed to fetch 13F filings: %s", exc)
-            return {"processed": 0, "skipped": len(instruments), "error": str(exc)}
+            logger.debug("yfinance institutional fetch failed for %s: %s", ticker, exc)
+            return UsInstitutionalData(ticker=ticker)
 
-        logger.info(
-            "Scanned %d filers. Found holdings for %d/%d tickers",
-            filer_count,
-            len(holdings_agg),
-            len(target_tickers),
-        )
+    data = UsInstitutionalData(ticker=ticker)
 
-        # ── Compute per-ticker metrics ───────────────────────────────────────
-        processed = 0
-        skipped = 0
+    holders, report_date, holders_pct = _parse_holders(holders_df)
+    data.holders                = holders
+    data.num_institutional_owners = len(holders) if holders else None
+    data.report_date            = report_date
+    data.institutional_pct      = holders_pct
 
-        for ticker, inst in ticker_to_inst.items():
-            filer_holdings = holdings_agg.get(ticker, {})
-            num_owners = len(filer_holdings)
+    # major_holders gives a more reliable total institutional %
+    major_pct = _parse_major_holders(major_df)
+    if major_pct is not None:
+        data.institutional_pct = major_pct
 
-            if num_owners == 0:
-                # No 13F data found; skip rather than store 0s
-                skipped += 1
-                continue
+    # Top-10 quality score
+    top10 = sorted(holders, key=lambda h: h.shares, reverse=True)[:10]
+    if top10:
+        data.top_fund_quality_score = sum(
+            _fund_quality(h.institution_name) for h in top10
+        ) / len(top10)
 
-            # Total institutional shares
-            total_inst_shares = sum(filer_holdings.values())
-
-            # shares_outstanding from most recent annual fundamental
-            shares_out_q = await db.execute(
-                select(FundamentalAnnual.shares_outstanding_annual)
-                .where(FundamentalAnnual.instrument_id == inst.id)
-                .order_by(desc(FundamentalAnnual.report_date))
-                .limit(1)
-            )
-            shares_out_row = shares_out_q.scalar_one_or_none()
-            shares_outstanding = float(shares_out_row) if shares_out_row else None
-
-            # institutional_pct
-            if shares_outstanding and shares_outstanding > 0:
-                institutional_pct = min(1.0, total_inst_shares / shares_outstanding)
-            else:
-                # Fall back to instrument-level shares_outstanding
-                inst_shares = float(inst.shares_outstanding) if inst.shares_outstanding else None
-                institutional_pct = (
-                    min(1.0, total_inst_shares / inst_shares) if inst_shares else None
-                )
-
-            # Top-10 fund quality score
-            top_filers = sorted(filer_holdings.items(), key=lambda x: x[1], reverse=True)[:TOP_N_FUNDS]
-            if top_filers:
-                quality_scores = [_fund_quality_score(name) for name, _ in top_filers]
-                top_fund_quality_score = sum(quality_scores) / len(quality_scores)
-            else:
-                top_fund_quality_score = None
-
-            # QoQ owner change: compare with prior quarter's row
-            prior_q = await db.execute(
-                select(InstitutionalOwnership.num_institutional_owners)
-                .where(
-                    InstitutionalOwnership.instrument_id == inst.id,
-                    InstitutionalOwnership.report_date < report_date,
-                )
-                .order_by(desc(InstitutionalOwnership.report_date))
-                .limit(1)
-            )
-            prior_owners = prior_q.scalar_one_or_none()
-            qoq_change = (num_owners - prior_owners) if prior_owners is not None else None
-
-            # Upsert
-            existing_q = await db.execute(
-                select(InstitutionalOwnership).where(
-                    InstitutionalOwnership.instrument_id == inst.id,
-                    InstitutionalOwnership.report_date == report_date,
-                )
-            )
-            existing = existing_q.scalars().first()
-
-            if existing:
-                existing.num_institutional_owners = num_owners
-                existing.institutional_pct = institutional_pct
-                existing.top_fund_quality_score = top_fund_quality_score
-                existing.qoq_owner_change = qoq_change
-                existing.data_source = "SEC_13F"
-            else:
-                db.add(InstitutionalOwnership(
-                    instrument_id=inst.id,
-                    report_date=report_date,
-                    num_institutional_owners=num_owners,
-                    institutional_pct=institutional_pct,
-                    top_fund_quality_score=top_fund_quality_score,
-                    qoq_owner_change=qoq_change,
-                    data_source="SEC_13F",
-                ))
-
-            processed += 1
-
-        await db.commit()
-        logger.info(
-            "US institutional ingestion complete: %d processed, %d skipped",
-            processed,
-            skipped,
-        )
-
-    return {"processed": processed, "skipped": skipped}
+    return data
 
 
-if __name__ == "__main__":
-    import sys
-    logging.basicConfig(level=logging.INFO)
-    tickers_arg = sys.argv[1:] or None
-    result = asyncio.run(ingest_us_institutional(tickers=tickers_arg))
-    print(result)
+# ── Public API ────────────────────────────────────────────────────────────────
+
+async def bulk_fetch_us_institutional(
+    tickers: list[str],
+    *,
+    concurrency: int = 15,
+) -> dict[str, UsInstitutionalData]:
+    """
+    Batch-fetch live institutional ownership data for a list of US tickers.
+
+    Uses a semaphore to stay within Yahoo Finance rate limits.
+    Returns dict[ticker → UsInstitutionalData].  Tickers that fail are omitted.
+    """
+    if not tickers:
+        return {}
+
+    semaphore = asyncio.Semaphore(concurrency)
+    fetched = await asyncio.gather(
+        *[_fetch_one(t, semaphore) for t in tickers],
+        return_exceptions=True,
+    )
+
+    out: dict[str, UsInstitutionalData] = {}
+    for item in fetched:
+        if isinstance(item, Exception):
+            logger.debug("Institutional gather error: %s", item)
+            continue
+        out[item.ticker] = item
+
+    logger.info(
+        "US institutional fetch: %d/%d tickers returned holder data",
+        sum(1 for v in out.values() if v.num_institutional_owners),
+        len(tickers),
+    )
+    return out

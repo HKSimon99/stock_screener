@@ -180,6 +180,42 @@ async def _resolve_target_instruments(
         return rows.all()
 
 
+async def _load_us_live_institutional_data(target_ids: list[int]) -> "dict[int, Any]":
+    """
+    Fetch live yfinance institutional ownership data for all US instruments and
+    return a dict keyed by instrument_id.
+
+    Called once at pipeline start — data lives in memory for the scoring run
+    and is never written to the database.
+    """
+    from app.services.ingestion.us_institutional import bulk_fetch_us_institutional  # noqa: PLC0415
+
+    if not target_ids:
+        return {}
+
+    async with AsyncTaskSessionLocal() as db:
+        rows = await db.execute(
+            select(Instrument.id, Instrument.ticker)
+            .where(
+                Instrument.id.in_(target_ids),
+                Instrument.market == "US",
+                Instrument.is_active == True,
+            )
+        )
+        us_pairs = rows.fetchall()
+
+    if not us_pairs:
+        return {}
+
+    id_by_ticker = {ticker: iid for iid, ticker in us_pairs}
+    tickers = list(id_by_ticker.keys())
+
+    inst_by_ticker = await bulk_fetch_us_institutional(tickers)
+
+    # Re-key by instrument_id
+    return {id_by_ticker[ticker]: data for ticker, data in inst_by_ticker.items()}
+
+
 async def _load_kr_live_kis_data(target_ids: list[int]) -> "dict[int, Any]":
     """
     Fetch live KIS financial ratio data for all KR instruments and return a
@@ -366,17 +402,24 @@ async def _run_context_full_scoring_pipeline(
             risk_free_by_market,
             rs_lookup_by_market,
             rs_4w_lookup_by_market,
-        ), kis_live_by_id = await asyncio.gather(
+        ), kis_live_by_id, us_inst_live_by_id = await asyncio.gather(
             _load_market_inputs(markets=target_markets, score_date=parsed_date),
             # Live KIS financial data (quarterly/annual EPS) — fetched fresh,
             # never stored in DB.  Only runs when KR is in scope.
             _load_kr_live_kis_data(target_ids) if "KR" in target_markets else _empty_dict(),
+            # Live yfinance institutional data — fetched fresh, never stored in DB.
+            # Only runs when US is in scope.
+            _load_us_live_institutional_data(target_ids) if "US" in target_markets else _empty_dict(),
         )
         _accumulate_stage_metric(
             stage_metrics,
             name="market_inputs",
             duration_ms=(perf_counter() - market_inputs_started_at) * 1000,
-            extra={"markets_loaded": len(target_markets), "kis_live_loaded": len(kis_live_by_id)},
+            extra={
+                "markets_loaded": len(target_markets),
+                "kis_live_loaded": len(kis_live_by_id),
+                "us_inst_live_loaded": len(us_inst_live_by_id),
+            },
         )
 
         chunk_size = 100
@@ -585,12 +628,33 @@ async def _run_context_full_scoring_pipeline(
                         effective_quarterlies = ctx.quarterlies
                         effective_annuals = ctx.annuals
 
+                    # For US stocks, build InstitutionalSnapshot from live yfinance data.
+                    # This replaces the DB-based institutional data (which is no longer
+                    # written) with a fresh fetch every scoring run.
+                    effective_institutional = ctx.institutional  # default: DB data (used for KR)
+                    if ctx.instrument.market == "US":
+                        us_inst_live = us_inst_live_by_id.get(inst_id)
+                        if us_inst_live and us_inst_live.num_institutional_owners is not None:
+                            from app.services.scoring_context import InstitutionalSnapshot  # noqa: PLC0415
+                            from datetime import date as _date  # noqa: PLC0415
+                            effective_institutional = InstitutionalSnapshot(
+                                report_date=us_inst_live.report_date or parsed_date,
+                                num_institutional_owners=us_inst_live.num_institutional_owners,
+                                institutional_pct=us_inst_live.institutional_pct,
+                                top_fund_quality_score=us_inst_live.top_fund_quality_score,
+                                qoq_owner_change=None,      # not available from yfinance
+                                is_buyback_active=None,
+                                foreign_ownership_pct=None,
+                                foreign_net_buy_30d=None,
+                                institutional_net_buy_30d=None,
+                            )
+
                     result = compute_canslim_from_context(
                         instrument=ctx.instrument,
                         quarterlies=effective_quarterlies,
                         annuals=effective_annuals,
                         prices=ctx.prices,
-                        institutional=ctx.institutional,
+                        institutional=effective_institutional,
                         regime=batch_context.regimes_by_market.get(ctx.instrument.market),
                         score_date=parsed_date,
                         rs_lookup=rs_lookup_by_market.get(ctx.instrument.market, {}),

@@ -17,7 +17,6 @@ from app.services.ingestion.freshness import (
     KR_INVESTOR_FLOWS_SOURCE,
     KR_PRICES_SOURCE,
     US_FUNDAMENTALS_SOURCE,
-    US_INSTITUTIONAL_SOURCE,
     US_PRICES_SOURCE,
     record_data_freshness,
 )
@@ -27,8 +26,9 @@ from app.services.ingestion.kr_price import (
     sync_kr_instruments,
 )
 from app.services.ingestion.us_fundamental import run_us_fundamentals_ingestion
-from app.services.ingestion.us_institutional import ingest_us_institutional
 from app.services.ingestion.kr_investor_flow import ingest_kr_investor_flows
+# us_institutional is now a live yfinance fetcher (no DB writes); it is called
+# from scoring_tasks.py at scoring time, not from the ingestion pipeline.
 from app.services.ingestion.us_price import fetch_and_store_prices_batch, sync_instruments
 from app.services.universe import refresh_coverage_summary_for_market_tickers, refresh_instrument_coverage_summary
 from app.tasks.celery_app import celery_app
@@ -597,37 +597,6 @@ def run_kr_price_batch_task(
         )
     )
 
-
-@celery_app.task(name="app.tasks.ingestion.run_us_institutional")
-@TASK_RETRY_DECORATOR
-def run_us_institutional_task(
-    tickers: Optional[list[str]] = None,
-    report_date: Optional[str] = None,
-    max_filers: int = 200,
-) -> dict:
-    """
-    Ingest US institutional ownership data from SEC 13F filings.
-    report_date: ISO date string (YYYY-MM-DD) or None for today.
-    """
-    from datetime import date as _date
-    parsed_date = _date.fromisoformat(report_date) if report_date else None
-    result = asyncio.run(
-        ingest_us_institutional(
-            tickers=tickers,
-            report_date=parsed_date,
-            max_filers=max_filers,
-        )
-    )
-    asyncio.run(
-        _record_source_freshness(
-            source_name=US_INSTITUTIONAL_SOURCE,
-            market="US",
-            requested_count=(result.get("processed", 0) + result.get("skipped", 0)),
-            processed_count=result.get("processed", 0),
-            error=result.get("error"),
-        )
-    )
-    return result
 
 
 @celery_app.task(name="app.tasks.ingestion.run_kr_investor_flows")

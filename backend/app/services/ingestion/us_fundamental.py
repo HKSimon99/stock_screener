@@ -1,336 +1,333 @@
+"""
+US Fundamental Ingestion (yfinance)
+=====================================
+Fetches quarterly and annual fundamentals using yfinance.  One call per
+statement type per ticker returns ALL available history at once.
+
+Replaces the previous EDGAR edgartools implementation which required one
+HTTP call per filing (20–30 calls/ticker) and slow XBRL XML parsing.
+
+Speed: ~4 calls per ticker vs 20–30.  No XBRL parsing overhead.
+Cost: free (Yahoo Finance, no API key needed).
+Rate limits: yfinance hits undocumented Yahoo endpoints; Semaphore(10)
+keeps concurrent calls within typical rate-limit windows (~0.1–0.2 s/call).
+"""
+
+from __future__ import annotations
+
 import asyncio
 import logging
-from datetime import date
-from typing import Optional, List, Dict, Any
 import math
+from datetime import date
+from typing import Optional
 
 import pandas as pd
-from edgar import set_identity, Company
-from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception
+import yfinance as yf
+from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.fundamental import FundamentalAnnual, FundamentalQuarterly
 from app.models.instrument import Instrument
-from sqlalchemy import select, String, cast
 
 logger = logging.getLogger(__name__)
 
-# Must set identity for SEC EDGAR access
-set_identity('ConsensusApp consensus@example.com')
+# ── helpers ───────────────────────────────────────────────────────────────────
 
-def is_rate_limit_error(exc: Exception) -> bool:
-    """Check if exception is from EDGAR rate limiting (429/503)."""
-    # edgartools wraps HTTPStatusError from requests/httpx
-    exc_str = str(exc)
-    return '429' in exc_str or '503' in exc_str
+def _col(df: pd.DataFrame, col, *row_names: str) -> Optional[float]:
+    """Pull a single finite float from (row_name, col) in a yfinance statement DataFrame."""
+    if df.empty or col not in df.columns:
+        return None
+    for name in row_names:
+        if name in df.index:
+            val = df.loc[name, col]
+            if pd.notnull(val):
+                try:
+                    v = float(val)
+                    return v if math.isfinite(v) else None
+                except (TypeError, ValueError):
+                    pass
+    return None
 
-class EdgarFundamentalIngester:
-    def __init__(self):
-        # Mappings of our standard attributes to possible SEC XBRL concepts
-        self.annual_concept_map = {
-            'net_income': ['NetIncomeLoss'],
-            'total_assets': ['Assets'],
-            'total_liabilities': ['Liabilities'],
-            'current_assets': ['AssetsCurrent'],
-            'current_liabilities': ['LiabilitiesCurrent'],
-            'operating_cash_flow': ['NetCashProvidedByUsedInOperatingActivities'],
-            'long_term_debt': ['LongTermDebt', 'LongTermDebtNoncurrent'],
-            'gross_profit': ['GrossProfit'],
-            'revenue': ['Revenues', 'SalesRevenueNet', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'RevenuesNetOfYear2015To2016'],
-            'shares_outstanding': ['CommonStockSharesOutstanding', 'EntityCommonStockSharesOutstanding'],
-            'eps': ['EarningsPerShareBasic', 'EarningsPerShareDiluted'],
-            # Magic Formula fields
-            'ebit': ['OperatingIncomeLoss'],
-            'short_term_debt': ['ShortTermBorrowings', 'NotesPayableCurrent', 'LongTermDebtCurrent'],
-            'cash_and_equivalents': ['CashAndCashEquivalentsAtCarryingValue', 'CashCashEquivalentsAndShortTermInvestments', 'Cash'],
-        }
-        
-        self.quarterly_concept_map = {
-            'net_income': ['NetIncomeLoss'],
-            'revenue': ['Revenues', 'SalesRevenueNet', 'RevenueFromContractWithCustomerExcludingAssessedTax'],
-            'eps': ['EarningsPerShareBasic', 'EarningsPerShareDiluted']
-        }
 
-    def _prepare_annual_record(self, record_dict: Dict[str, Any]) -> Dict[str, Any]:
-        prepared = {
-            "instrument_id": record_dict["instrument_id"],
-            "fiscal_year": record_dict["fiscal_year"],
-            "report_date": record_dict["report_date"],
-            "revenue": record_dict.get("revenue"),
-            "gross_profit": record_dict.get("gross_profit"),
-            "net_income": record_dict.get("net_income"),
-            "eps": record_dict.get("eps"),
-            "eps_yoy_growth": record_dict.get("eps_yoy_growth"),
-            "total_assets": record_dict.get("total_assets"),
-            "current_assets": record_dict.get("current_assets"),
-            "current_liabilities": record_dict.get("current_liabilities"),
-            "long_term_debt": record_dict.get("long_term_debt"),
-            "shares_outstanding_annual": record_dict.get("shares_outstanding"),
-            "operating_cash_flow": record_dict.get("operating_cash_flow"),
-            "data_source": "EDGAR",
-            # Magic Formula fields
-            "ebit": record_dict.get("ebit"),
-            "cash_and_equivalents": record_dict.get("cash_and_equivalents"),
-        }
-
-        total_assets = prepared.get("total_assets")
-        current_assets = prepared.get("current_assets")
-        revenue = prepared.get("revenue")
-        current_liabilities = prepared.get("current_liabilities")
-
-        if prepared.get("net_income") is not None and total_assets:
-            prepared["roa"] = prepared["net_income"] / total_assets
-        if current_assets is not None and current_liabilities:
-            prepared["current_ratio"] = current_assets / current_liabilities
-        if prepared.get("gross_profit") is not None and revenue:
-            prepared["gross_margin"] = prepared["gross_profit"] / revenue
-        if revenue is not None and total_assets:
-            prepared["asset_turnover"] = revenue / total_assets
-        if prepared.get("long_term_debt") is not None and total_assets:
-            prepared["leverage_ratio"] = prepared["long_term_debt"] / total_assets
-
-        # total_debt = long_term_debt + short_term_debt (pop short_term_debt; not a model column)
-        short_term_debt = record_dict.get("short_term_debt")
-        long_term_debt = prepared.get("long_term_debt") or 0
-        if short_term_debt is not None or long_term_debt:
-            prepared["total_debt"] = (long_term_debt or 0) + (short_term_debt or 0)
-
-        # net_fixed_assets = total_assets - current_assets (proxy for PP&E net)
-        if total_assets is not None and current_assets is not None:
-            prepared["net_fixed_assets"] = max(0, total_assets - current_assets)
-
-        required_keys = {"instrument_id", "fiscal_year", "report_date", "data_source"}
-        return {
-            key: value
-            for key, value in prepared.items()
-            if value is not None or key in required_keys
-        }
-
-    def _maybe_update_instrument_shares(
-        self,
-        instrument: Instrument,
-        prepared_annual_record: Dict[str, Any],
-    ) -> bool:
-        """Backfill instrument-level shares from EDGAR annual facts when available."""
-        shares = prepared_annual_record.get("shares_outstanding_annual")
-        if shares is None or shares <= 0:
-            return False
-
-        current = float(instrument.shares_outstanding) if instrument.shares_outstanding else None
-        if current == float(shares):
-            return False
-
-        instrument.shares_outstanding = shares
-        return True
-
-    def _extract_fact(self, df: pd.DataFrame, concept_list: List[str]) -> Optional[float]:
-        """Extracts the most canonical value for a list of possible XBRL concept names."""
-        for concept in concept_list:
-            subset = df[df['concept'].str.endswith(':' + concept, na=False)]
-            if not subset.empty:
-                # Fallback filter for dimensions to get the primary consolidated value
-                if 'is_dimensioned' in subset.columns:
-                    # Filter for non-dimensioned facts
-                    primary = subset[subset['is_dimensioned'] == False]
-                    if not primary.empty:
-                        subset = primary
-                    elif 'dimension' in subset.columns:
-                        # Fallback for old style dimension checks
-                        primary = subset[subset['dimension'].isna() | (subset['dimension'] == '')]
-                        if not primary.empty:
-                            subset = primary
-
-                if not subset.empty:
-                    # Sort by the end period to get the most relevant
-                    if 'period_end' in subset.columns and not subset['period_end'].isna().all():
-                        subset = subset.sort_values(by='period_end', ascending=False)
-                    elif 'period_instant' in subset.columns and not subset['period_instant'].isna().all():
-                        subset = subset.sort_values(by='period_instant', ascending=False)
-                    
-                    val = subset.iloc[0]['value']
-                    try:
-                        return float(val) if not pd.isna(val) else None
-                    except (ValueError, TypeError):
-                        return None
+def _date_key(ts) -> Optional[date]:
+    try:
+        return pd.Timestamp(ts).date()
+    except Exception:
         return None
 
-    @retry(
-        wait=wait_exponential(multiplier=1, min=2, max=60),
-        stop=stop_after_attempt(3),
-        retry=retry_if_exception(is_rate_limit_error),
-        reraise=True
-    )
-    async def ingest_fundamentals(self, ticker: str, years: int = 5):
-        """Fetches 10-K and 10-Q for the specified ticker and upserts into database.
 
-        Retries automatically on 429 (Too Many Requests) or 503 (Service Unavailable)
-        with exponential backoff (2s, 4s, 8s... max 60s).
-        """
-        logger.info(f"Starting US Fundamental ingestion for {ticker} over {years} years")
-        
-        async with AsyncSessionLocal() as db:
-            # 1. Verify instrument exists
-            stmt = select(Instrument).where(Instrument.ticker == ticker, Instrument.market == "US")
-            result = await db.execute(stmt)
-            instrument = result.scalars().first()
-            
-            if not instrument:
-                logger.error(f"Cannot ingest fundamentals: Instrument {ticker} not found in DB.")
-                return
+def _quarter_from_date(d: date) -> int:
+    return (d.month - 1) // 3 + 1
 
-            try:
-                c = Company(ticker)
-            except Exception as e:
-                logger.error(f"Failed to initialize edgartools Company for {ticker}: {e}")
-                return
 
-            # --- Annual Fundamentals (10-K)
-            logger.info(f"Fetching 10-K filings for {ticker}")
-            try:
-                filings_10k_list = c.get_filings(form="10-K").head(years)
-                
-                annual_records = []
-                for filing in filings_10k_list:
-                    try:
-                        df = filing.xbrl().facts.to_dataframe()
+# ── single-ticker fetch ───────────────────────────────────────────────────────
 
-                        record_dict = {
-                            "instrument_id": instrument.id,
-                            "fiscal_year": filing.filing_date.year, # Approximate fiscal year by filing date
-                            "report_date": filing.filing_date
-                        }
+async def _fetch_yf_frames(ticker: str, semaphore: asyncio.Semaphore) -> dict:
+    """
+    Fetch all yfinance statement DataFrames for one ticker under a semaphore.
+    Returns dict of DataFrames; empty DataFrames on failure.
+    """
+    empty = {k: pd.DataFrame() for k in
+             ["income_q", "balance_q", "income_a", "balance_a", "cashflow_a"]}
+    async with semaphore:
+        try:
+            t = await asyncio.to_thread(yf.Ticker, ticker)
+            income_q   = await asyncio.to_thread(lambda: t.quarterly_income_stmt)
+            balance_q  = await asyncio.to_thread(lambda: t.quarterly_balance_sheet)
+            income_a   = await asyncio.to_thread(lambda: t.income_stmt)
+            balance_a  = await asyncio.to_thread(lambda: t.balance_sheet)
+            cashflow_a = await asyncio.to_thread(lambda: t.cashflow)
+            return {
+                "income_q":   income_q   if income_q   is not None else pd.DataFrame(),
+                "balance_q":  balance_q  if balance_q  is not None else pd.DataFrame(),
+                "income_a":   income_a   if income_a   is not None else pd.DataFrame(),
+                "balance_a":  balance_a  if balance_a  is not None else pd.DataFrame(),
+                "cashflow_a": cashflow_a if cashflow_a is not None else pd.DataFrame(),
+            }
+        except Exception as exc:
+            logger.debug("yfinance fetch failed for %s: %s", ticker, exc)
+            return empty
 
-                        for attr, concepts in self.annual_concept_map.items():
-                            val = self._extract_fact(df, concepts)
-                            # Handle infinites or NaN
-                            if val is not None and math.isfinite(val):
-                                record_dict[attr] = val
 
-                        annual_records.append(record_dict)
-                    except Exception as e:
-                        logger.warning(f"Error parsing 10-K {filing.accession_no} for {ticker}: {e}")
-                    finally:
-                        # Rate limiting: stay under 10 req/sec to avoid 429
-                        await asyncio.sleep(0.1)
-                
-                # Compute YoY for Annual
-                annual_records = sorted(annual_records, key=lambda x: x['report_date'])
-                for i in range(1, len(annual_records)):
-                    prev = annual_records[i-1]
-                    curr = annual_records[i]
-                    
-                    if curr.get('revenue') and prev.get('revenue') and prev['revenue'] > 0:
-                        curr['revenue_yoy_growth'] = (curr['revenue'] - prev['revenue']) / prev['revenue']
-                        
-                    if curr.get('eps') and prev.get('eps') and prev['eps'] != 0:
-                        # EPS growth calculation (handle negative appropriately if needed, simple approach here)
-                        curr['eps_yoy_growth'] = (curr['eps'] - prev['eps']) / abs(prev['eps'])
-                        
-                # Upsert into DB
-                shares_updated = 0
-                for rec in annual_records:
-                    prepared_rec = self._prepare_annual_record(rec)
-                    if self._maybe_update_instrument_shares(instrument, prepared_rec):
-                        shares_updated += 1
-                    # Simple update or create
-                    stmt = select(FundamentalAnnual).where(
-                        FundamentalAnnual.instrument_id == prepared_rec["instrument_id"],
-                        FundamentalAnnual.fiscal_year == prepared_rec["fiscal_year"]
-                    )
-                    existing_result = await db.execute(stmt)
-                    existing = existing_result.scalars().first()
-                    
-                    if existing:
-                        for k, v in prepared_rec.items():
-                            setattr(existing, k, v)
-                    else:
-                        new_record = FundamentalAnnual(**prepared_rec)
-                        db.add(new_record)
-                        
-                await db.commit()
-                logger.info(
-                    "Successfully processed %d annual records for %s; shares_updates=%d",
-                    len(annual_records),
-                    ticker,
-                    shares_updated,
-                )
-                        
-            except Exception as e:
-                logger.error(f"Error processing 10-K for {ticker}: {e}")
+# ── record builders ───────────────────────────────────────────────────────────
 
-            # --- Quarterly Fundamentals (10-Q)
-            logger.info(f"Fetching 10-Q filings for {ticker}")
-            try:
-                filings_10q_list = c.get_filings(form="10-Q").head(years * 4) # 4 quarters per year
-                quarterly_records = []
-                for filing in filings_10q_list:
-                    try:
-                        df = filing.xbrl().facts.to_dataframe()
+def _build_quarterly_records(instrument_id: int, frames: dict) -> list[dict]:
+    income_q = frames.get("income_q", pd.DataFrame())
+    if income_q.empty:
+        return []
 
-                        # Approximating Quarter by month
-                        month = filing.filing_date.month
-                        quarter = (month - 1) // 3 + 1
+    records: list[dict] = []
+    for col in income_q.columns:
+        d = _date_key(col)
+        if d is None:
+            continue
+        records.append({
+            "instrument_id":  instrument_id,
+            "fiscal_year":    d.year,
+            "fiscal_quarter": _quarter_from_date(d),
+            "report_date":    d,
+            "revenue":    _col(income_q, col, "Total Revenue"),
+            "net_income": _col(income_q, col, "Net Income", "Net Income Common Stockholders"),
+            "eps":        _col(income_q, col, "Basic EPS", "Diluted EPS"),
+            "data_source": "YFINANCE",
+        })
 
-                        record_dict = {
-                            "instrument_id": instrument.id,
-                            "fiscal_year": filing.filing_date.year,
-                            "fiscal_quarter": quarter,
-                            "report_date": filing.filing_date
-                        }
+    # Sort oldest-first, then compute YoY growth (Q(t) vs Q(t-4))
+    records.sort(key=lambda r: r["report_date"])
+    for i in range(4, len(records)):
+        prev, curr = records[i - 4], records[i]
+        if curr.get("revenue") and prev.get("revenue") and prev["revenue"] != 0:
+            curr["revenue_yoy_growth"] = (curr["revenue"] - prev["revenue"]) / abs(prev["revenue"])
+        if curr.get("eps") and prev.get("eps") and prev["eps"] != 0:
+            curr["eps_yoy_growth"] = (curr["eps"] - prev["eps"]) / abs(prev["eps"])
 
-                        for attr, concepts in self.quarterly_concept_map.items():
-                            val = self._extract_fact(df, concepts)
-                            if val is not None and math.isfinite(val):
-                                record_dict[attr] = val
+    return records
 
-                        quarterly_records.append(record_dict)
-                    except Exception as e:
-                        logger.warning(f"Error parsing 10-Q {filing.accession_no} for {ticker}: {e}")
-                    finally:
-                        # Rate limiting: stay under 10 req/sec to avoid 429
-                        await asyncio.sleep(0.1)
-                        
-                # Compute YoY for Quarterly (Compare Q(t) with Q(t-4))
-                quarterly_records = sorted(quarterly_records, key=lambda x: x['report_date'])
-                for i in range(4, len(quarterly_records)):
-                    prev = quarterly_records[i-4]
-                    curr = quarterly_records[i]
-                    
-                    if curr.get('revenue') and prev.get('revenue') and prev['revenue'] > 0:
-                        curr['revenue_yoy_growth'] = (curr['revenue'] - prev['revenue']) / prev['revenue']
-                        
-                    if curr.get('eps') and prev.get('eps') and prev['eps'] != 0:
-                        curr['eps_yoy_growth'] = (curr['eps'] - prev['eps']) / abs(prev['eps'])
-                        
-                # Upsert into DB
-                for rec in quarterly_records:
-                    stmt = select(FundamentalQuarterly).where(
-                        FundamentalQuarterly.instrument_id == rec["instrument_id"],
-                        FundamentalQuarterly.fiscal_year == rec["fiscal_year"],
-                        FundamentalQuarterly.fiscal_quarter == rec["fiscal_quarter"]
-                    )
-                    existing_result = await db.execute(stmt)
-                    existing = existing_result.scalars().first()
-                    
-                    if existing:
-                        for k, v in rec.items():
-                            setattr(existing, k, v)
-                    else:
-                        new_record = FundamentalQuarterly(**rec)
-                        db.add(new_record)
-                        
-                await db.commit()
-                logger.info(f"Successfully processed {len(quarterly_records)} quarterly records for {ticker}")
 
-            except Exception as e:
-                logger.error(f"Error processing 10-Q for {ticker}: {e}")
+def _build_annual_records(instrument_id: int, frames: dict) -> list[dict]:
+    income_a   = frames.get("income_a",   pd.DataFrame())
+    balance_a  = frames.get("balance_a",  pd.DataFrame())
+    cashflow_a = frames.get("cashflow_a", pd.DataFrame())
 
-async def run_us_fundamentals_ingestion(symbol: str, years: int = 5):
-    ingester = EdgarFundamentalIngester()
-    await ingester.ingest_fundamentals(symbol, years=years)
+    if income_a.empty:
+        return []
+
+    records: list[dict] = []
+    for col in income_a.columns:
+        d = _date_key(col)
+        if d is None:
+            continue
+
+        revenue      = _col(income_a, col, "Total Revenue")
+        gross_profit = _col(income_a, col, "Gross Profit")
+        net_income   = _col(income_a, col, "Net Income", "Net Income Common Stockholders")
+        eps          = _col(income_a, col, "Basic EPS", "Diluted EPS")
+        ebit         = _col(income_a, col, "EBIT", "Operating Income")
+
+        total_assets        = _col(balance_a, col, "Total Assets")
+        current_assets      = _col(balance_a, col, "Current Assets")
+        current_liabilities = _col(balance_a, col, "Current Liabilities")
+        long_term_debt      = _col(balance_a, col, "Long Term Debt")
+        short_term_debt     = _col(balance_a, col, "Current Debt", "Short Long Term Debt")
+        cash                = _col(balance_a, col, "Cash And Cash Equivalents", "Cash Financial")
+        shares              = _col(balance_a, col, "Ordinary Shares Number", "Share Issued")
+
+        operating_cf = _col(cashflow_a, col, "Operating Cash Flow")
+
+        rec: dict = {
+            "instrument_id":             instrument_id,
+            "fiscal_year":               d.year,
+            "report_date":               d,
+            "revenue":                   revenue,
+            "gross_profit":              gross_profit,
+            "net_income":                net_income,
+            "eps":                       eps,
+            "ebit":                      ebit,
+            "total_assets":              total_assets,
+            "current_assets":            current_assets,
+            "current_liabilities":       current_liabilities,
+            "long_term_debt":            long_term_debt,
+            "shares_outstanding_annual": shares,
+            "operating_cash_flow":       operating_cf,
+            "cash_and_equivalents":      cash,
+            "data_source":               "YFINANCE",
+        }
+
+        # Derived fields
+        ltd = long_term_debt or 0
+        std = short_term_debt or 0
+        if ltd or std:
+            rec["total_debt"] = ltd + std
+
+        if total_assets is not None and current_assets is not None:
+            rec["net_fixed_assets"] = max(0.0, total_assets - current_assets)
+
+        if net_income is not None and total_assets:
+            rec["roa"] = net_income / total_assets
+
+        if current_assets is not None and current_liabilities:
+            rec["current_ratio"] = current_assets / current_liabilities
+
+        if gross_profit is not None and revenue:
+            rec["gross_margin"] = gross_profit / revenue
+
+        if revenue is not None and total_assets:
+            rec["asset_turnover"] = revenue / total_assets
+
+        if long_term_debt is not None and total_assets:
+            rec["leverage_ratio"] = long_term_debt / total_assets
+
+        records.append(rec)
+
+    # Sort oldest-first, compute YoY growth
+    records.sort(key=lambda r: r["report_date"])
+    for i in range(1, len(records)):
+        prev, curr = records[i - 1], records[i]
+        if curr.get("revenue") and prev.get("revenue") and prev["revenue"] != 0:
+            curr["revenue_yoy_growth"] = (curr["revenue"] - prev["revenue"]) / abs(prev["revenue"])
+        if curr.get("eps") and prev.get("eps") and prev["eps"] != 0:
+            curr["eps_yoy_growth"] = (curr["eps"] - prev["eps"]) / abs(prev["eps"])
+
+    return records
+
+
+# ── DB upsert helpers ─────────────────────────────────────────────────────────
+
+_QUARTERLY_REQUIRED = {"instrument_id", "fiscal_year", "fiscal_quarter", "report_date", "data_source"}
+_ANNUAL_REQUIRED    = {"instrument_id", "fiscal_year", "report_date", "data_source"}
+
+
+async def _upsert_quarterly(db, records: list[dict]) -> None:
+    for rec in records:
+        result = await db.execute(
+            select(FundamentalQuarterly).where(
+                FundamentalQuarterly.instrument_id  == rec["instrument_id"],
+                FundamentalQuarterly.fiscal_year    == rec["fiscal_year"],
+                FundamentalQuarterly.fiscal_quarter == rec["fiscal_quarter"],
+            )
+        )
+        existing = result.scalars().first()
+        if existing:
+            for k, v in rec.items():
+                if v is not None:
+                    setattr(existing, k, v)
+        else:
+            db.add(FundamentalQuarterly(
+                **{k: v for k, v in rec.items() if v is not None or k in _QUARTERLY_REQUIRED}
+            ))
+
+
+async def _upsert_annual(db, records: list[dict]) -> None:
+    for rec in records:
+        result = await db.execute(
+            select(FundamentalAnnual).where(
+                FundamentalAnnual.instrument_id == rec["instrument_id"],
+                FundamentalAnnual.fiscal_year   == rec["fiscal_year"],
+            )
+        )
+        existing = result.scalars().first()
+        if existing:
+            for k, v in rec.items():
+                if v is not None:
+                    setattr(existing, k, v)
+        else:
+            db.add(FundamentalAnnual(
+                **{k: v for k, v in rec.items() if v is not None or k in _ANNUAL_REQUIRED}
+            ))
+
+
+# ── public API ────────────────────────────────────────────────────────────────
+
+async def run_us_fundamentals_ingestion(
+    symbol: str,
+    years: int = 5,
+    semaphore: Optional[asyncio.Semaphore] = None,
+) -> None:
+    """
+    Fetch and persist quarterly + annual fundamentals for one US ticker.
+    `years` is accepted for API compatibility but ignored — yfinance returns
+    all available history in a single call.
+    """
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(10)
+
+    logger.info("Fetching yfinance fundamentals for %s", symbol)
+    frames = await _fetch_yf_frames(symbol, semaphore)
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Instrument).where(
+                Instrument.ticker == symbol,
+                Instrument.market == "US",
+            )
+        )
+        instrument = result.scalars().first()
+        if not instrument:
+            logger.error("Instrument %s not found in DB — skipping.", symbol)
+            return
+
+        q_records = _build_quarterly_records(instrument.id, frames)
+        a_records = _build_annual_records(instrument.id, frames)
+
+        if q_records:
+            await _upsert_quarterly(db, q_records)
+        if a_records:
+            await _upsert_annual(db, a_records)
+
+        await db.commit()
+        logger.info(
+            "%s: persisted %d quarterly + %d annual records",
+            symbol, len(q_records), len(a_records),
+        )
+
+
+async def run_us_fundamentals_batch(
+    tickers: list[str],
+    *,
+    concurrency: int = 10,
+) -> dict:
+    """
+    Batch-ingest fundamentals for multiple US tickers with bounded concurrency.
+    """
+    semaphore = asyncio.Semaphore(concurrency)
+    processed, failed = 0, 0
+
+    async def _one(ticker: str) -> None:
+        nonlocal processed, failed
+        try:
+            await run_us_fundamentals_ingestion(ticker, semaphore=semaphore)
+            processed += 1
+        except Exception as exc:
+            logger.warning("Fundamentals failed for %s: %s", ticker, exc)
+            failed += 1
+
+    await asyncio.gather(*[_one(t) for t in tickers])
+    return {"processed": processed, "failed": failed, "total": len(tickers)}
+
 
 if __name__ == "__main__":
     import sys
-    logging.basicConfig(level=logging.INFO)
-    ticker = sys.argv[1] if len(sys.argv) > 1 else 'AAPL'
-    asyncio.run(run_us_fundamentals_ingestion(ticker))
+    import logging as _logging
+    _logging.basicConfig(level=_logging.INFO)
+    _ticker = sys.argv[1] if len(sys.argv) > 1 else "AAPL"
+    asyncio.run(run_us_fundamentals_ingestion(_ticker))

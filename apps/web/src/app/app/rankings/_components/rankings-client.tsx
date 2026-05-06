@@ -77,6 +77,8 @@ const COVERAGE_STATES = new Set<CoverageState>([
   "stale",
 ]);
 
+const RANKINGS_LIMIT_MAX = 200;
+
 const THRESHOLD_KEYS = [
   "conviction",
   "coverage_state",
@@ -177,7 +179,9 @@ function readFilters(params: ParamReader, initial: RankingsFilters): RankingsFil
   const assetType: AssetType = "stock";
   const rawLimit = params.get("limit");
   const parsedLimit = rawLimit ? Number.parseInt(rawLimit, 10) : initial.limit;
-  const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 500) : 200;
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(Math.max(parsedLimit, 1), RANKINGS_LIMIT_MAX)
+    : RANKINGS_LIMIT_MAX;
 
   return {
     market,
@@ -1208,7 +1212,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
             {data?.pagination.has_more && (
               <button
                 type="button"
-                onClick={() => replaceParams({ limit: Math.min(filters.limit + 100, 500) })}
+                onClick={() => replaceParams({ limit: Math.min(filters.limit + 100, RANKINGS_LIMIT_MAX) })}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-[oklch(0.18_0.018_250)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[oklch(0.28_0.03_250)]"
               >
                 {t("rankings.leaderboard.loadMore")}

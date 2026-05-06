@@ -30,6 +30,8 @@ interface PageProps {
 type Market = "US" | "KR";
 type AssetType = "stock";
 
+const RANKINGS_LIMIT_MAX = 200;
+
 const COVERAGE_STATES = new Set<CoverageState>([
   "ranked",
   "needs_price",
@@ -60,8 +62,10 @@ export default async function PublicRankingsPage({ searchParams }: PageProps) {
   const assetType: AssetType = "stock";
   const conviction = sp.conviction ?? "";
   const coverageState = optionalCoverageState(sp.coverage_state);
-  const parsedLimit = sp.limit ? parseInt(sp.limit, 10) : 200;
-  const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 500) : 200;
+  const parsedLimit = sp.limit ? parseInt(sp.limit, 10) : RANKINGS_LIMIT_MAX;
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(Math.max(parsedLimit, 1), RANKINGS_LIMIT_MAX)
+    : RANKINGS_LIMIT_MAX;
   const initialFilters = {
     market,
     assetType,

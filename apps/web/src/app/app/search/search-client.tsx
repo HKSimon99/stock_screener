@@ -21,6 +21,22 @@ interface SearchClientProps {
   initialAssetType?: "stock";
 }
 
+function SearchResultSkeleton() {
+  return (
+    <div className="animate-pulse surface-panel-soft flex flex-col gap-4 rounded-[1.45rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="h-8 w-20 rounded bg-white/10" />
+          <div className="h-5 w-24 rounded-full bg-white/8" />
+        </div>
+        <div className="mt-2 h-4 w-48 rounded bg-white/8" />
+        <div className="mt-2 h-3 w-16 rounded bg-white/6" />
+      </div>
+      <div className="h-8 w-16 shrink-0 rounded-full bg-white/8" />
+    </div>
+  );
+}
+
 function coverageTone(state: SearchResult["coverage_state"]): string {
   if (state === "ranked") return "text-[oklch(0.92_0.04_150)]";
   if (state === "needs_scoring") return "text-[oklch(0.94_0.04_88)]";
@@ -183,6 +199,12 @@ export function SearchClient({
               <Sparkles className="size-5" />
               {t("search.startPrompt")}
             </div>
+          </div>
+        ) : isFetching && !data ? (
+          <div className="mt-5 grid gap-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <SearchResultSkeleton key={i} />
+            ))}
           </div>
         ) : data && data.items.length === 0 ? (
           <div className="mt-5 rounded-[1.4rem] border border-white/10 bg-black/14 px-5 py-6 text-sm text-quiet">

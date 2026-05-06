@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
+  X,
 } from "lucide-react";
 import {
   APIError,
@@ -33,6 +34,7 @@ import {
 } from "@/lib/api";
 import { ConvictionBadge } from "@/components/conviction-badge";
 import { useUIStore } from "@/lib/store";
+import type { TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useT } from "@/hooks/use-t";
 
@@ -173,7 +175,6 @@ function parseBoolean(value: string | null, fallback?: boolean): boolean | undef
 function readFilters(params: ParamReader, initial: RankingsFilters): RankingsFilters {
   const market = params.get("market") === "KR" ? "KR" : initial.market;
   const assetType: AssetType = "stock";
-  // Default limit bumped up — no more artificial cap selector
   const rawLimit = params.get("limit");
   const parsedLimit = rawLimit ? Number.parseInt(rawLimit, 10) : initial.limit;
   const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 500) : 200;
@@ -355,7 +356,7 @@ function ScoreMeter({ label, value }: { label: string; value: number }) {
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-[oklch(0.86_0.02_88)]">
         <div
-          className={cn("h-full rounded-full", scoreBarTone(clamped))}
+          className={cn("h-full rounded-full transition-[width] duration-700 ease-out", scoreBarTone(clamped))}
           style={{ width: `${clamped}%` }}
         />
       </div>
@@ -430,7 +431,75 @@ function PinnedButton({
   );
 }
 
-function RankedCard({ item }: { item: RankingItem }) {
+// ── Skeleton ────────────────────────────────────────────────────────────────
+
+function RankedCardSkeleton({ index }: { index: number }) {
+  return (
+    <div
+      className="animate-pulse overflow-hidden rounded-[1.4rem] border border-[oklch(0.8_0.03_88)] bg-[oklch(0.985_0.012_88_/_0.92)]"
+      style={{ animationDelay: `${index * 80}ms` }}
+    >
+      {/* Mobile skeleton (< md) */}
+      <div className="md:hidden flex items-center gap-3 pl-5 pr-4 py-3.5">
+        <div className="w-7 shrink-0 flex justify-end">
+          <div className="h-2.5 w-5 rounded bg-[oklch(0.88_0.02_88)]" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-12 rounded bg-[oklch(0.88_0.02_88)]" />
+            <div className="h-4 w-14 rounded-full bg-[oklch(0.9_0.02_88)]" />
+          </div>
+          <div className="mt-1.5 h-3 w-2/3 rounded bg-[oklch(0.92_0.015_88)]" />
+          <div className="mt-2 flex gap-2">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex-1">
+                <div className="h-[3px] rounded-full bg-[oklch(0.88_0.02_88)]" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="h-8 w-10 shrink-0 rounded bg-[oklch(0.88_0.02_88)]" />
+      </div>
+
+      {/* Desktop skeleton (md+) */}
+      <div className="hidden md:block p-5">
+        <div className="grid gap-4 xl:grid-cols-[auto_minmax(0,1fr)_minmax(15rem,0.65fr)_auto] xl:items-center">
+          <div className="flex items-start justify-between gap-3 xl:block">
+            <div className="h-9 w-12 rounded bg-[oklch(0.88_0.02_88)]" />
+            <div className="h-12 w-12 rounded bg-[oklch(0.9_0.02_88)] xl:mt-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="h-9 w-52 rounded bg-[oklch(0.88_0.02_88)]" />
+            <div className="mt-2 h-4 w-36 rounded bg-[oklch(0.92_0.015_88)]" />
+            <div className="mt-3 flex gap-2">
+              <div className="h-6 w-20 rounded-full bg-[oklch(0.88_0.02_88)]" />
+              <div className="h-6 w-18 rounded-full bg-[oklch(0.92_0.015_88)]" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-2">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i}>
+                <div className="mb-1 flex items-center justify-between">
+                  <div className="h-2.5 w-8 rounded bg-[oklch(0.9_0.02_88)]" />
+                  <div className="h-2.5 w-6 rounded bg-[oklch(0.9_0.02_88)]" />
+                </div>
+                <div className="h-1.5 rounded-full bg-[oklch(0.88_0.02_88)]" />
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-3 xl:flex-col xl:items-end">
+            <div className="h-9 w-20 rounded-full bg-[oklch(0.88_0.02_88)]" />
+            <div className="h-9 w-20 rounded-full bg-[oklch(0.9_0.02_88)]" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Ranked Card ──────────────────────────────────────────────────────────────
+
+function RankedCard({ item, index }: { item: RankingItem; index: number }) {
   const names = displayName(item);
   const score = Math.max(0, Math.min(100, item.final_score));
   const strategyScores = [
@@ -441,7 +510,10 @@ function RankedCard({ item }: { item: RankingItem }) {
   ] as const;
 
   return (
-    <article className="group relative overflow-hidden rounded-[1.4rem] border border-[oklch(0.8_0.03_88)] bg-[oklch(0.985_0.012_88_/_0.92)] transition-transform duration-300 md:shadow-[0_18px_60px_oklch(0.18_0.025_250_/_0.12)] md:hover:-translate-y-0.5">
+    <article
+      className="animate-rise group relative overflow-hidden rounded-[1.4rem] border border-[oklch(0.8_0.03_88)] bg-[oklch(0.985_0.012_88_/_0.92)] transition-transform duration-300 md:shadow-[0_18px_60px_oklch(0.18_0.025_250_/_0.12)] md:hover:-translate-y-0.5"
+      style={{ animationDelay: `${Math.min(index * 35, 300)}ms` }}
+    >
       <div className="absolute inset-y-0 left-0 w-1 bg-[linear-gradient(180deg,oklch(0.78_0.13_82),oklch(0.62_0.12_190))]" />
 
       {/* ── Mobile compact row (< md) ── */}
@@ -467,7 +539,7 @@ function RankedCard({ item }: { item: RankingItem }) {
                 <div className="text-[0.5rem] uppercase tracking-wide text-faint text-center leading-none mb-0.5">{label}</div>
                 <div className="h-[3px] bg-[oklch(0.86_0.02_88)] rounded-full overflow-hidden">
                   <div
-                    className={cn("h-full rounded-full", scoreBarTone(Math.min(100, value)))}
+                    className={cn("h-full rounded-full transition-[width] duration-700 ease-out", scoreBarTone(Math.min(100, value)))}
                     style={{ width: `${Math.min(100, value)}%` }}
                   />
                 </div>
@@ -598,6 +670,200 @@ function WatchlistCard({
   );
 }
 
+// ── Filter panel content (shared between mobile sheet + desktop panel) ───────
+
+interface FilterPanelContentProps {
+  filters: RankingsFilters;
+  currentPreset: (typeof PRESETS)[number];
+  clearFilters: () => void;
+  applyPreset: (preset: (typeof PRESETS)[number]) => void;
+  setFilter: (key: string, value: string | number | boolean | null | undefined) => void;
+  t: (key: TranslationKey) => string;
+}
+
+function FilterPanelContent({
+  filters,
+  currentPreset,
+  clearFilters,
+  applyPreset,
+  setFilter,
+  t,
+}: FilterPanelContentProps) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="tiny-label">{t("rankings.presets.kicker")}</div>
+          <h2 className="mt-1 font-heading text-xl sm:text-2xl uppercase tracking-[-0.04em] leading-tight text-white">
+            {t("rankings.presets.headline")}
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={clearFilters}
+          className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-faint transition-colors hover:text-white"
+        >
+          <RefreshCw className="size-3" />
+          {t("rankings.presets.reset")}
+        </button>
+      </div>
+
+      {/* Preset pills */}
+      <div className="flex gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-3 xl:grid-cols-6 md:overflow-x-visible md:pb-0">
+        {PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            type="button"
+            onClick={() => applyPreset(preset)}
+            className={cn(
+              "shrink-0 rounded-[1.2rem] border px-4 py-3 text-left transition-all md:shrink",
+              filters.preset === preset.id
+                ? "border-[oklch(0.78_0.11_84_/_0.48)] bg-[oklch(0.8_0.11_84_/_0.14)] text-white"
+                : "border-white/8 bg-black/10 text-faint hover:border-white/16 hover:text-white"
+            )}
+            style={{ minWidth: "9rem" }}
+          >
+            <div className="text-sm font-semibold">{preset.label}</div>
+            <div className="mt-1 text-[0.7rem] leading-4 opacity-76">{preset.description}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* Advanced filter grid */}
+      <details className="group rounded-[1.4rem] border border-white/10 bg-black/12">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-sm font-semibold text-white">
+          <span className="inline-flex items-center gap-2">
+            <Search className="size-4" />
+            {t("rankings.presets.advanced")}
+          </span>
+          <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="grid gap-3 border-t border-white/8 px-4 py-4 md:grid-cols-2 xl:grid-cols-4">
+          <FilterSelect
+            label={t("rankings.filters.conviction")}
+            value={filters.conviction}
+            onChange={(value) => setFilter("conviction", value || null)}
+          >
+            {CONVICTION_OPTIONS.map((option) => (
+              <option key={option || "all"} value={option}>
+                {option || t("rankings.filters.anyConviction")}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label={t("rankings.filters.finalScore")}
+            value={filters.minFinalScore?.toString() ?? ""}
+            onChange={(value) => setFilter("min_final_score", value || null)}
+          >
+            {SCORE_OPTIONS.map((option) => (
+              <option key={option || "all"} value={option}>
+                {option ? `${option}+` : t("rankings.filters.noMinimum")}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label={t("rankings.filters.strategyCount")}
+            value={filters.minStrategyPassCount?.toString() ?? ""}
+            onChange={(value) => setFilter("min_strategy_pass_count", value || null)}
+          >
+            {PASS_OPTIONS.map((option) => (
+              <option key={option || "all"} value={option}>
+                {option ? `${option}+ passing` : t("rankings.filters.noPassing")}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label={t("rankings.filters.technical")}
+            value={filters.minTechnicalComposite?.toString() ?? ""}
+            onChange={(value) => setFilter("min_technical_composite", value || null)}
+          >
+            {SCORE_OPTIONS.map((option) => (
+              <option key={option || "all"} value={option}>
+                {option ? `${option}+` : t("rankings.filters.noMinimum")}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label="CANSLIM"
+            value={filters.minCanslim?.toString() ?? ""}
+            onChange={(value) => setFilter("min_canslim", value || null)}
+          >
+            {SCORE_OPTIONS.map((option) => (
+              <option key={option || "all"} value={option}>
+                {option ? `${option}+` : "No minimum"}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label="Piotroski"
+            value={filters.minPiotroski?.toString() ?? ""}
+            onChange={(value) => setFilter("min_piotroski", value || null)}
+          >
+            {SCORE_OPTIONS.map((option) => (
+              <option key={option || "all"} value={option}>
+                {option ? `${option}+` : "No minimum"}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label="Minervini"
+            value={filters.minMinervini?.toString() ?? ""}
+            onChange={(value) => setFilter("min_minervini", value || null)}
+          >
+            {SCORE_OPTIONS.map((option) => (
+              <option key={option || "all"} value={option}>
+                {option ? `${option}+` : "No minimum"}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label="Weinstein"
+            value={filters.minWeinstein?.toString() ?? ""}
+            onChange={(value) => setFilter("min_weinstein", value || null)}
+          >
+            {SCORE_OPTIONS.map((option) => (
+              <option key={option || "all"} value={option}>
+                {option ? `${option}+` : "No minimum"}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label="RS Rating"
+            value={filters.minRsRating?.toString() ?? ""}
+            onChange={(value) => setFilter("min_rs_rating", value || null)}
+          >
+            {SCORE_OPTIONS.map((option) => (
+              <option key={option || "all"} value={option}>
+                {option ? `${option}+` : "No minimum"}
+              </option>
+            ))}
+          </FilterSelect>
+          <FilterSelect
+            label={t("rankings.filters.rsNewHigh")}
+            value={filters.rsLineNewHigh == null ? "" : String(filters.rsLineNewHigh)}
+            onChange={(value) => setFilter("rs_line_new_high", value || null)}
+          >
+            <option value="">{t("rankings.filters.any")}</option>
+            <option value="true">{t("rankings.filters.required")}</option>
+            <option value="false">{t("rankings.filters.exclude")}</option>
+          </FilterSelect>
+        </div>
+      </details>
+
+      {/* Active lens summary */}
+      <div className="flex items-center gap-3 rounded-[1.2rem] border border-white/8 bg-black/10 px-4 py-3">
+        <Filter className="size-4 text-faint" />
+        <div>
+          <div className="text-sm font-semibold text-white">{currentPreset.label}</div>
+          <div className="text-xs leading-5 text-faint">{currentPreset.description}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export function RankingsClient({ initialFilters, initialData }: RankingsClientProps) {
   const { t } = useT();
   const router = useRouter();
@@ -649,6 +915,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
 
   const data = rankings.data;
   const rankedItems = data?.items ?? [];
+  const isLoading = rankings.isFetching || isPending;
   const averageScore =
     rankedItems.length > 0
       ? rankedItems.reduce((sum, item) => sum + item.final_score, 0) / rankedItems.length
@@ -688,12 +955,59 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
     });
   }
 
+  const filterPanelProps: FilterPanelContentProps = {
+    filters,
+    currentPreset,
+    clearFilters,
+    applyPreset,
+    setFilter,
+    t,
+  };
+
+  // Show skeletons when no items yet and loading
+  const showSkeletons = isLoading && rankedItems.length === 0;
+
   return (
     <div className="app-shell py-3 sm:py-5">
 
+      {/* ── Mobile bottom sheet overlay (< md only) ─────────────────────── */}
+      {showAdvanced && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowAdvanced(false)}
+          />
+          {/* Sheet */}
+          <div className="md:hidden fixed inset-x-0 bottom-0 z-50 rounded-t-[1.8rem] bg-[oklch(0.22_0.025_250)] shadow-[0_-20px_60px_oklch(0.1_0.02_250_/_0.4)]">
+            {/* Handle pill */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="h-1 w-10 rounded-full bg-white/20" />
+            </div>
+            {/* Sheet header */}
+            <div className="flex items-center justify-between px-5 py-3">
+              <span className="font-heading text-lg uppercase tracking-[-0.03em] text-white">
+                {t("rankings.presets.headline")}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(false)}
+                className="inline-flex size-8 items-center justify-center rounded-full border border-white/10 text-faint transition-colors hover:text-white"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            {/* Scrollable filter content */}
+            <div className="overflow-y-auto px-5 pb-[calc(5.5rem+env(safe-area-inset-bottom))]" style={{ maxHeight: "72vh" }}>
+              <FilterPanelContent {...filterPanelProps} />
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ── Compact control bar ─────────────────────────────────────────── */}
       <div className="surface-panel rounded-[1.65rem] px-4 py-3 sm:px-5">
-            {/* Row 1: Market toggle + inline stats */}
+        {/* Row 1: Market toggle + inline stats */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {/* Market toggle */}
@@ -731,7 +1045,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
                 </span>
               )}
               <span className="text-faint">
-                {rankings.isFetching || isPending ? (
+                {isLoading ? (
                   <Loader2 className="inline size-3 animate-spin" />
                 ) : (
                   `${rankedItems.length} of ${data?.total ?? 0}`
@@ -762,7 +1076,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
             <span className="text-faint">{formatSnapshotDate(data.score_date)}</span>
           )}
           <span className="text-faint">
-            {rankings.isFetching || isPending ? (
+            {isLoading ? (
               <Loader2 className="inline size-3 animate-spin" />
             ) : (
               `${rankedItems.length} of ${data?.total ?? 0} ranked`
@@ -777,178 +1091,10 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
         </div>
       </div>
 
-      {/* ── Filter panel (collapsible) ─────────────────────────────────── */}
+      {/* ── Desktop filter panel (collapsible, md+ only) ─────────────────── */}
       {showAdvanced && (
-        <div className="mt-3 surface-panel rounded-[1.65rem] px-4 py-4 sm:px-5">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="tiny-label">{t("rankings.presets.kicker")}</div>
-                <h2 className="mt-1 font-heading text-xl sm:text-2xl uppercase tracking-[-0.04em] leading-tight text-white">
-                  {t("rankings.presets.headline")}
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-faint transition-colors hover:text-white"
-              >
-                <RefreshCw className="size-3" />
-                {t("rankings.presets.reset")}
-              </button>
-            </div>
-
-            {/* Preset pills — scrollable on mobile */}
-            <div className="flex gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-3 xl:grid-cols-6 md:overflow-x-visible md:pb-0">
-              {PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => applyPreset(preset)}
-                  className={cn(
-                    "shrink-0 rounded-[1.2rem] border px-4 py-3 text-left transition-all md:shrink",
-                    filters.preset === preset.id
-                      ? "border-[oklch(0.78_0.11_84_/_0.48)] bg-[oklch(0.8_0.11_84_/_0.14)] text-white"
-                      : "border-white/8 bg-black/10 text-faint hover:border-white/16 hover:text-white"
-                  )}
-                  style={{ minWidth: "9rem" }}
-                >
-                  <div className="text-sm font-semibold">{preset.label}</div>
-                  <div className="mt-1 text-[0.7rem] leading-4 opacity-76">{preset.description}</div>
-                </button>
-              ))}
-            </div>
-
-            {/* Advanced filter grid */}
-            <details className="group rounded-[1.4rem] border border-white/10 bg-black/12">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-sm font-semibold text-white">
-                <span className="inline-flex items-center gap-2">
-                  <Search className="size-4" />
-                  {t("rankings.presets.advanced")}
-                </span>
-                <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
-              </summary>
-              <div className="grid gap-3 border-t border-white/8 px-4 py-4 md:grid-cols-2 xl:grid-cols-4">
-                <FilterSelect
-                  label={t("rankings.filters.conviction")}
-                  value={filters.conviction}
-                  onChange={(value) => setFilter("conviction", value || null)}
-                >
-                  {CONVICTION_OPTIONS.map((option) => (
-                    <option key={option || "all"} value={option}>
-                      {option || t("rankings.filters.anyConviction")}
-                    </option>
-                  ))}
-                </FilterSelect>
-                <FilterSelect
-                  label={t("rankings.filters.finalScore")}
-                  value={filters.minFinalScore?.toString() ?? ""}
-                  onChange={(value) => setFilter("min_final_score", value || null)}
-                >
-                  {SCORE_OPTIONS.map((option) => (
-                    <option key={option || "all"} value={option}>
-                      {option ? `${option}+` : t("rankings.filters.noMinimum")}
-                    </option>
-                  ))}
-                </FilterSelect>
-                <FilterSelect
-                  label={t("rankings.filters.strategyCount")}
-                  value={filters.minStrategyPassCount?.toString() ?? ""}
-                  onChange={(value) => setFilter("min_strategy_pass_count", value || null)}
-                >
-                  {PASS_OPTIONS.map((option) => (
-                    <option key={option || "all"} value={option}>
-                      {option ? `${option}+ passing` : t("rankings.filters.noPassing")}
-                    </option>
-                  ))}
-                </FilterSelect>
-                <FilterSelect
-                  label={t("rankings.filters.technical")}
-                  value={filters.minTechnicalComposite?.toString() ?? ""}
-                  onChange={(value) => setFilter("min_technical_composite", value || null)}
-                >
-                  {SCORE_OPTIONS.map((option) => (
-                    <option key={option || "all"} value={option}>
-                      {option ? `${option}+` : t("rankings.filters.noMinimum")}
-                    </option>
-                  ))}
-                </FilterSelect>
-                <FilterSelect
-                  label="CANSLIM"
-                  value={filters.minCanslim?.toString() ?? ""}
-                  onChange={(value) => setFilter("min_canslim", value || null)}
-                >
-                  {SCORE_OPTIONS.map((option) => (
-                    <option key={option || "all"} value={option}>
-                      {option ? `${option}+` : "No minimum"}
-                    </option>
-                  ))}
-                </FilterSelect>
-                <FilterSelect
-                  label="Piotroski"
-                  value={filters.minPiotroski?.toString() ?? ""}
-                  onChange={(value) => setFilter("min_piotroski", value || null)}
-                >
-                  {SCORE_OPTIONS.map((option) => (
-                    <option key={option || "all"} value={option}>
-                      {option ? `${option}+` : "No minimum"}
-                    </option>
-                  ))}
-                </FilterSelect>
-                <FilterSelect
-                  label="Minervini"
-                  value={filters.minMinervini?.toString() ?? ""}
-                  onChange={(value) => setFilter("min_minervini", value || null)}
-                >
-                  {SCORE_OPTIONS.map((option) => (
-                    <option key={option || "all"} value={option}>
-                      {option ? `${option}+` : "No minimum"}
-                    </option>
-                  ))}
-                </FilterSelect>
-                <FilterSelect
-                  label="Weinstein"
-                  value={filters.minWeinstein?.toString() ?? ""}
-                  onChange={(value) => setFilter("min_weinstein", value || null)}
-                >
-                  {SCORE_OPTIONS.map((option) => (
-                    <option key={option || "all"} value={option}>
-                      {option ? `${option}+` : "No minimum"}
-                    </option>
-                  ))}
-                </FilterSelect>
-                <FilterSelect
-                  label="RS Rating"
-                  value={filters.minRsRating?.toString() ?? ""}
-                  onChange={(value) => setFilter("min_rs_rating", value || null)}
-                >
-                  {SCORE_OPTIONS.map((option) => (
-                    <option key={option || "all"} value={option}>
-                      {option ? `${option}+` : "No minimum"}
-                    </option>
-                  ))}
-                </FilterSelect>
-                <FilterSelect
-                  label={t("rankings.filters.rsNewHigh")}
-                  value={filters.rsLineNewHigh == null ? "" : String(filters.rsLineNewHigh)}
-                  onChange={(value) => setFilter("rs_line_new_high", value || null)}
-                >
-                  <option value="">{t("rankings.filters.any")}</option>
-                  <option value="true">{t("rankings.filters.required")}</option>
-                  <option value="false">{t("rankings.filters.exclude")}</option>
-                </FilterSelect>
-              </div>
-            </details>
-
-            {/* Active lens summary */}
-            <div className="flex items-center gap-3 rounded-[1.2rem] border border-white/8 bg-black/10 px-4 py-3">
-              <Filter className="size-4 text-faint" />
-              <div>
-                <div className="text-sm font-semibold text-white">{currentPreset.label}</div>
-                <div className="text-xs leading-5 text-faint">{currentPreset.description}</div>
-              </div>
-            </div>
-          </div>
+        <div className="hidden md:block mt-3 surface-panel rounded-[1.65rem] px-4 py-4 sm:px-5">
+          <FilterPanelContent {...filterPanelProps} />
         </div>
       )}
 
@@ -1005,21 +1151,52 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
             </div>
           )}
 
-          {!rankings.error && rankedItems.length === 0 && !rankings.isFetching && (
-            <div className="rounded-[1.2rem] border border-[oklch(0.8_0.03_88)] bg-white/55 px-5 py-8 text-center text-sm text-[oklch(0.42_0.02_250)]">
-              {t("rankings.leaderboard.empty")}
+          {/* Empty state with icon + CTA */}
+          {!rankings.error && rankedItems.length === 0 && !isLoading && (
+            <div className="flex flex-col items-center gap-4 rounded-[1.2rem] border border-[oklch(0.8_0.03_88)] bg-white/55 px-5 py-10 text-center">
+              <div className="flex size-14 items-center justify-center rounded-full bg-[oklch(0.92_0.02_88)]">
+                <Search className="size-6 text-[oklch(0.52_0.04_250)]" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[oklch(0.28_0.02_250)]">
+                  {t("rankings.leaderboard.empty")}
+                </p>
+                <p className="mt-1 text-xs text-[oklch(0.52_0.02_250)]">
+                  Try adjusting or resetting your filters to see more results.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-2 rounded-full border border-[oklch(0.78_0.03_88)] bg-white px-4 py-2.5 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[oklch(0.28_0.02_250)] transition-colors hover:border-[oklch(0.65_0.08_82)]"
+              >
+                <RefreshCw className="size-3.5" />
+                Reset filters
+              </button>
             </div>
           )}
 
-          <div className="grid gap-1 md:gap-3">
-            {rankedItems.map((item) => (
-              <RankedCard key={`${item.market}-${item.ticker}-${item.rank}`} item={item} />
-            ))}
-          </div>
+          {/* Skeleton cards while loading */}
+          {showSkeletons && (
+            <div className="grid gap-1 md:gap-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <RankedCardSkeleton key={i} index={i} />
+              ))}
+            </div>
+          )}
+
+          {/* Ranked cards */}
+          {!showSkeletons && (
+            <div className="grid gap-1 md:gap-3">
+              {rankedItems.map((item, i) => (
+                <RankedCard key={`${item.market}-${item.ticker}-${item.rank}`} item={item} index={i} />
+              ))}
+            </div>
+          )}
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-[oklch(0.42_0.02_250)]">
-              {rankings.isFetching || isPending ? (
+              {isLoading ? (
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="size-4 animate-spin" />
                   {t("rankings.leaderboard.refreshing")}

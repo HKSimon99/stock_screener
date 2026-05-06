@@ -16,7 +16,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, BookOpen, Layers3, Search } from "lucide-react";
+import { Bell, Layers3, Search } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
@@ -32,10 +32,9 @@ export function AppNav() {
   const { t }         = useT();
 
   const NAV_ITEMS = [
-    { href: "/rankings",       label: t("nav.rankings"),   icon: Layers3  },
-    { href: "/app/search",     label: t("nav.search"),     icon: Search   },
-    { href: "/app/strategies", label: t("nav.strategies"), icon: BookOpen },
-    { href: "/app/alerts",     label: t("nav.alerts"),     icon: Bell     },
+    { href: "/rankings",   label: t("nav.rankings"), icon: Layers3 },
+    { href: "/app/search", label: t("nav.search"),   icon: Search  },
+    { href: "/app/alerts", label: t("nav.alerts"),   icon: Bell    },
   ] as const;
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
@@ -175,7 +174,7 @@ export function AppNav() {
         style={{ borderRadius: 22, background: "#16181a", border: "1px solid rgba(255,255,255,0.10)" }}
         aria-label="Main navigation"
       >
-        <div className="grid grid-cols-5 p-1.5 gap-0.5">
+        <div className="grid grid-cols-3 p-1.5 gap-0.5">
           {NAV_ITEMS.map((item) => {
             const Icon   = item.icon;
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);

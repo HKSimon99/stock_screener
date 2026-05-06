@@ -253,20 +253,6 @@ function compactMoney(value: number | undefined, market: "US" | "KR") {
   return `${sign}$${abs.toLocaleString("en-US")}`;
 }
 
-function compactShares(value: number | undefined, market: "US" | "KR") {
-  if (typeof value !== "number" || !Number.isFinite(value)) return missingLabel(market);
-  const abs = Math.abs(value);
-  if (market === "KR") {
-    if (abs >= 100_000_000) return `${(abs / 100_000_000).toFixed(1)}억주`;
-    if (abs >= 10_000) return `${(abs / 10_000).toFixed(1)}만주`;
-    return `${abs.toLocaleString("ko-KR")}주`;
-  }
-  if (abs >= 1_000_000_000) return `${(abs / 1_000_000_000).toFixed(1)}B sh`;
-  if (abs >= 1_000_000) return `${(abs / 1_000_000).toFixed(1)}M sh`;
-  if (abs >= 1_000) return `${(abs / 1_000).toFixed(1)}K sh`;
-  return `${abs.toLocaleString("en-US")} sh`;
-}
-
 function compactCount(value: number | undefined, market: "US" | "KR") {
   if (typeof value !== "number" || !Number.isFinite(value)) return missingLabel(market);
   return new Intl.NumberFormat(market === "KR" ? "ko-KR" : "en-US", {
@@ -367,6 +353,7 @@ export function InstrumentDetailClient({
   initialData,
   initialChartData,
 }: InstrumentDetailClientProps) {
+  const [activeTab, setActiveTab] = useState<"overview" | "strategies" | "chart" | "fundamentals">("overview");
   const [chartInterval, setChartInterval] = useState<ChartInterval>("1d");
   const [chartRangeDays, setChartRangeDays] = useState<ChartRangeDays>(365);
   const [hydrationQueued, setHydrationQueued] = useState(false);
@@ -498,12 +485,6 @@ export function InstrumentDetailClient({
   const annual = data.annual_metrics;
   const marketMetrics = data.market_metrics;
   const ownership = data.ownership_metrics;
-  const changeTone =
-    typeof price.change === "number" && price.change > 0
-      ? "up"
-      : typeof price.change === "number" && price.change < 0
-        ? "down"
-        : "neutral";
   const labels = market === "KR"
     ? {
         investorMetrics: "투자 지표",
@@ -718,7 +699,6 @@ export function InstrumentDetailClient({
               const jobStatus = hydrationJob?.status;
               const isActive = jobStatus === "queued" || jobStatus === "running";
               const isDone = jobStatus === "completed";
-              const isFailed = jobStatus === "failed";
               const buttonLabel = isQueuing
                 ? "…"
                 : isActive
@@ -758,288 +738,331 @@ export function InstrumentDetailClient({
         </div>
       )}
 
-      <div className="surface-panel rounded-[1.65rem] px-5 py-5">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="tiny-label">{labels.investorMetrics}</div>
-            <div className="mt-2 text-sm text-quiet">
-              Only sourced backend fields are shown. Missing metrics stay explicit until provider data is reliable.
+      {/* ── Tab bar ─────────────────────────────────────────────────── */}
+      <div className="sticky top-[4.5rem] z-30 -mx-4 px-4 py-2 sm:-mx-6 sm:px-6"
+        style={{ background: "rgba(0,0,0,0.72)", backdropFilter: "blur(12px)" }}
+      >
+        <div className="flex gap-1 overflow-x-auto">
+          {(
+            [
+              { id: "overview",      label: market === "KR" ? "개요"     : "Overview"      },
+              { id: "strategies",    label: market === "KR" ? "전략"     : "Strategies"    },
+              { id: "chart",         label: market === "KR" ? "차트"     : "Chart"         },
+              { id: "fundamentals",  label: market === "KR" ? "재무"     : "Fundamentals"  },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "shrink-0 rounded-full border px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.12em] transition-colors",
+                activeTab === tab.id
+                  ? "border-[oklch(0.78_0.11_84_/_0.48)] bg-[oklch(0.8_0.11_84_/_0.18)] text-white"
+                  : "border-white/10 text-faint hover:text-white"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Overview tab ────────────────────────────────────────────── */}
+      {activeTab === "overview" && (
+        <div className="surface-panel rounded-[1.65rem] px-5 py-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="tiny-label">{labels.investorMetrics}</div>
+              <div className="mt-2 text-sm text-quiet">
+                Only sourced backend fields are shown. Missing metrics stay explicit until provider data is reliable.
+              </div>
+            </div>
+            <div className="text-xs text-faint">
+              {labels.fundamentalsDate}: {formatDate(quarterly?.report_date ?? annual?.report_date, market)}
             </div>
           </div>
-          <div className="text-xs text-faint">
-            {labels.fundamentalsDate}: {formatDate(quarterly?.report_date ?? annual?.report_date, market)}
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <MetricCard
+              market={market}
+              label={labels.latestClose}
+              value={formatPrice(price.close, market)}
+              note={formatDate(price.trade_date, market)}
+            />
+            <MetricCard
+              market={market}
+              label={labels.marketCap}
+              value={compactMoney(marketMetrics?.market_cap, market)}
+              note={marketMetrics?.share_count_source ?? missingLabel(market)}
+            />
+            <MetricCard
+              market={market}
+              label={labels.trailingPe}
+              value={formatRatio(marketMetrics?.trailing_pe_ratio, market)}
+              note={marketMetrics?.trailing_eps_source ?? missingLabel(market)}
+            />
+            <MetricCard
+              market={market}
+              label={market === "KR" ? labels.foreignOwnership : labels.institutionalOwnership}
+              value={
+                market === "KR"
+                  ? formatPercent(ownership?.foreign_ownership_pct, market)
+                  : formatPercent(ownership?.institutional_pct, market)
+              }
+              note={ownership?.data_source ?? missingLabel(market)}
+            />
+            <MetricCard
+              market={market}
+              label={market === "KR" ? labels.institutionalFlow : labels.thirteenFOwners}
+              value={
+                market === "KR"
+                  ? compactCount(ownership?.institutional_net_buy_30d, market)
+                  : compactCount(ownership?.num_institutional_owners, market)
+              }
+              note={
+                market === "KR"
+                  ? `${labels.fundamentalsDate}: ${formatDate(ownership?.report_date, market)}`
+                  : ownership?.qoq_owner_change != null
+                    ? `QoQ ${ownership.qoq_owner_change > 0 ? "+" : ""}${ownership.qoq_owner_change}`
+                    : missingLabel(market)
+              }
+            />
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <MetricSection
+              title={labels.priceLiquidity}
+              subtitle={`${labels.latestClose}: ${formatDate(price.trade_date, market)}`}
+            >
+              <MetricRow label={labels.close} value={formatPrice(price.close, market)} />
+              <MetricRow label={labels.previousClose} value={formatPrice(price.previous_close, market)} />
+              <MetricRow label={labels.change} value={formatPrice(price.change, market)} />
+              <MetricRow label={labels.changePercent} value={formatPercent(price.change_percent, market, "points")} />
+              <MetricRow label={labels.volume} value={compactCount(price.volume, market)} />
+              <MetricRow label={labels.avgVolume} value={compactCount(price.avg_volume_50d, market)} />
+            </MetricSection>
+
+            <MetricSection
+              title={labels.ownershipFlow}
+              subtitle={ownership?.report_date ? formatDate(ownership.report_date, market) : missingLabel(market)}
+              defaultOpen={false}
+            >
+              <MetricRow label={labels.institutionalOwnership} value={formatPercent(ownership?.institutional_pct, market)} />
+              <MetricRow label={labels.foreignOwnership} value={formatPercent(ownership?.foreign_ownership_pct, market)} />
+              <MetricRow label={labels.thirteenFOwners} value={compactCount(ownership?.num_institutional_owners, market)} />
+              <MetricRow label={labels.institutionalFlow} value={compactCount(ownership?.institutional_net_buy_30d, market)} />
+              <MetricRow label={labels.foreignFlow} value={compactCount(ownership?.foreign_net_buy_30d, market)} />
+              <MetricRow label="Individual 30D Net Buy" value={compactCount(ownership?.individual_net_buy_30d, market)} />
+              <MetricRow label="Top Fund Quality" value={formatRatio(ownership?.top_fund_quality_score, market)} />
+              <MetricRow label="QoQ Owner Change" value={plainValue(ownership?.qoq_owner_change, market)} />
+              <MetricRow label={labels.buyback} value={ownership?.is_buyback_active == null ? missingLabel(market) : ownership.is_buyback_active ? labels.yes : labels.no} />
+              <MetricRow label="Source" value={plainValue(ownership?.data_source, market)} />
+            </MetricSection>
           </div>
         </div>
+      )}
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <MetricCard
-            market={market}
-            label={labels.latestClose}
-            value={formatPrice(price.close, market)}
-            note={formatDate(price.trade_date, market)}
-          />
-          <MetricCard
-            market={market}
-            label={labels.marketCap}
-            value={compactMoney(marketMetrics?.market_cap, market)}
-            note={marketMetrics?.share_count_source ?? missingLabel(market)}
-          />
-          <MetricCard
-            market={market}
-            label={labels.trailingPe}
-            value={formatRatio(marketMetrics?.trailing_pe_ratio, market)}
-            note={marketMetrics?.trailing_eps_source ?? missingLabel(market)}
-          />
-          <MetricCard
-            market={market}
-            label={market === "KR" ? labels.foreignOwnership : labels.institutionalOwnership}
-            value={
-              market === "KR"
-                ? formatPercent(ownership?.foreign_ownership_pct, market)
-                : formatPercent(ownership?.institutional_pct, market)
-            }
-            note={ownership?.data_source ?? missingLabel(market)}
-          />
-          <MetricCard
-            market={market}
-            label={market === "KR" ? labels.institutionalFlow : labels.thirteenFOwners}
-            value={
-              market === "KR"
-                ? compactCount(ownership?.institutional_net_buy_30d, market)
-                : compactCount(ownership?.num_institutional_owners, market)
-            }
-            note={
-              market === "KR"
-                ? `${labels.fundamentalsDate}: ${formatDate(ownership?.report_date, market)}`
-                : ownership?.qoq_owner_change != null
-                  ? `QoQ ${ownership.qoq_owner_change > 0 ? "+" : ""}${ownership.qoq_owner_change}`
+      {/* ── Strategies tab ──────────────────────────────────────────── */}
+      {activeTab === "strategies" && (
+        <>
+          {/* Scores grid */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {scoreChip("Consensus", isRanked ? data.final_score : undefined)}
+            {scoreChip(
+              "CANSLIM",
+              typeof data.canslim_score === "number" && data.canslim_score > 0 ? data.canslim_score : undefined
+            )}
+            {scoreChip(
+              "Piotroski",
+              typeof data.piotroski_score === "number" && data.piotroski_score > 0
+                ? data.piotroski_score
+                : undefined,
+              100
+            )}
+            {scoreChip(
+              "Magic Formula",
+              typeof data.magic_formula_score === "number" && data.magic_formula_score > 0
+                ? data.magic_formula_score
+                : undefined,
+              100
+            )}
+            {scoreChip("Weinstein", typeof data.weinstein_score === "number" && data.weinstein_score > 0 ? data.weinstein_score : undefined)}
+          </div>
+
+          {/* Strategy breakdown */}
+          <div className="surface-panel rounded-[1.65rem] px-5 py-5">
+            <div className="tiny-label mb-4">
+              {market === "KR" ? "전략별 상세" : "Strategy Breakdown"}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {data.canslim_breakdown && (
+                <div>
+                  <div className="mb-2 text-xs text-faint uppercase tracking-widest">CANSLIM</div>
+                  <div className="flex flex-wrap gap-1">
+                    {data.canslim_breakdown.map((c) => {
+                      const tooltip = market === "KR"
+                        ? `${CANSLIM_LABELS_KR[c.key] ?? c.label} (${c.score.toFixed(1)})`
+                        : `${c.label} (${c.score.toFixed(1)})`;
+                      return (
+                        <span
+                          key={c.key}
+                          className={cn(
+                            "cursor-help rounded border px-2 py-0.5 text-[0.65rem] font-mono uppercase",
+                            c.score > 0
+                              ? "border-[oklch(0.92_0.04_150_/_0.4)] text-[oklch(0.92_0.04_150)]"
+                              : "border-white/10 text-faint"
+                          )}
+                          title={tooltip}
+                        >
+                          {c.key}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {data.piotroski_detail && (
+                <div>
+                  <div className="mb-2 text-xs text-faint uppercase tracking-widest">
+                    {market === "KR" ? "피오트로스키 F-점수" : "Piotroski F-Score"}: {data.piotroski_detail.f_score}/9
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {(Object.entries(data.piotroski_detail) as [string, boolean | number][])
+                      .filter(([k]) => k.startsWith("f") && k !== "f_score")
+                      .map(([k, v]) => {
+                        const pioLabels = market === "KR" ? PIOTROSKI_LABELS_KR : PIOTROSKI_LABELS_EN;
+                        const passText = market === "KR" ? (v ? "통과" : "미통과") : (v ? "PASS" : "FAIL");
+                        const tooltip = `${pioLabels[k] ?? k.toUpperCase()} — ${passText}`;
+                        return (
+                          <span
+                            key={k}
+                            className={cn(
+                              "cursor-help rounded border px-2 py-0.5 text-[0.65rem] font-mono uppercase",
+                              v
+                                ? "border-[oklch(0.92_0.04_150_/_0.4)] text-[oklch(0.92_0.04_150)]"
+                                : "border-white/10 text-faint"
+                            )}
+                            title={tooltip}
+                          >
+                            {k.toUpperCase()}
+                          </span>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              <MagicFormulaCard
+                score={typeof data.magic_formula_score === "number" ? data.magic_formula_score : undefined}
+                detail={data.magic_formula_detail}
+                market={market}
+              />
+
+              {data.weinstein_detail && (
+                <div>
+                  <div className="mb-2 text-xs text-faint uppercase tracking-widest">Weinstein</div>
+                  <div className="text-sm text-white">
+                    {market === "KR" ? "단계" : "Stage"} {data.weinstein_detail.stage}
+                    {data.weinstein_detail.sub_stage ? ` · ${data.weinstein_detail.sub_stage}` : ""}
+                  </div>
+                  <div className="mt-1 text-xs text-faint">
+                    {market === "KR" ? "이동평균 기울기" : "MA slope"} {data.weinstein_detail.ma_slope.toFixed(2)} ·{" "}
+                    {data.weinstein_detail.price_vs_ma > 0 ? "+" : ""}
+                    {(data.weinstein_detail.price_vs_ma * 100).toFixed(1)}% vs MA
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Chart tab ───────────────────────────────────────────────── */}
+      {activeTab === "chart" && (
+        <InstrumentChartComponent
+          data={chart ?? null}
+          interval={chartInterval}
+          rangeDays={chartRangeDays}
+          onIntervalChange={setChartInterval}
+          onRangeChange={setChartRangeDays}
+          isFetching={chartFetching}
+        />
+      )}
+
+      {/* ── Fundamentals tab ────────────────────────────────────────── */}
+      {activeTab === "fundamentals" && (
+        <div className="surface-panel rounded-[1.65rem] px-5 py-5">
+          <div className="tiny-label mb-4">{labels.investorMetrics}</div>
+          <div className="space-y-3">
+            <MetricSection
+              title={labels.valuation}
+              subtitle={marketMetrics?.price_as_of ? formatDate(marketMetrics.price_as_of, market) : missingLabel(market)}
+            >
+              <MetricRow label={labels.marketCap} value={compactMoney(marketMetrics?.market_cap, market)} />
+              <MetricRow label="Float Market Cap" value={compactMoney(marketMetrics?.float_market_cap, market)} />
+              <MetricRow label={labels.trailingPe} value={formatRatio(marketMetrics?.trailing_pe_ratio, market)} />
+              <MetricRow label="Dividend Yield" value={formatPercent(marketMetrics?.dividend_yield, market)} />
+              <MetricRow label="Share Source" value={plainValue(marketMetrics?.share_count_source, market)} />
+              <MetricRow label="EPS Source" value={plainValue(marketMetrics?.trailing_eps_source, market)} />
+            </MetricSection>
+
+            <MetricSection
+              title={labels.quarterly}
+              subtitle={
+                quarterly?.fiscal_year && quarterly?.fiscal_quarter
+                  ? `FY${quarterly.fiscal_year} Q${quarterly.fiscal_quarter} · ${formatDate(quarterly.report_date, market)}`
                   : missingLabel(market)
-            }
-          />
+              }
+              defaultOpen={false}
+            >
+              <MetricRow label={labels.revenue} value={compactMoney(quarterly?.revenue, market)} />
+              <MetricRow label={labels.revenueGrowth} value={formatPercent(quarterly?.revenue_yoy_growth, market)} />
+              <MetricRow label={labels.netIncome} value={compactMoney(quarterly?.net_income, market)} />
+              <MetricRow label={labels.eps} value={plainValue(quarterly?.eps, market)} />
+              <MetricRow label={labels.dilutedEps} value={plainValue(quarterly?.eps_diluted, market)} />
+              <MetricRow label={labels.epsGrowth} value={formatPercent(quarterly?.eps_yoy_growth, market)} />
+            </MetricSection>
+
+            <MetricSection
+              title={labels.annualIncome}
+              subtitle={annual?.fiscal_year ? `FY${annual.fiscal_year} · ${formatDate(annual.report_date, market)}` : missingLabel(market)}
+              defaultOpen={false}
+            >
+              <MetricRow label={labels.revenue} value={compactMoney(annual?.revenue, market)} />
+              <MetricRow label={labels.grossProfit} value={compactMoney(annual?.gross_profit, market)} />
+              <MetricRow label={labels.netIncome} value={compactMoney(annual?.net_income, market)} />
+              <MetricRow label={labels.operatingCashFlow} value={compactMoney(annual?.operating_cash_flow, market)} />
+              <MetricRow label={labels.eps} value={plainValue(annual?.eps, market)} />
+              <MetricRow label={labels.epsGrowth} value={formatPercent(annual?.eps_yoy_growth, market)} />
+            </MetricSection>
+
+            <MetricSection title={labels.balance} defaultOpen={false}>
+              <MetricRow label={labels.totalAssets} value={compactMoney(annual?.total_assets, market)} />
+              <MetricRow label={labels.currentAssets} value={compactMoney(annual?.current_assets, market)} />
+              <MetricRow label={labels.currentLiabilities} value={compactMoney(annual?.current_liabilities, market)} />
+              <MetricRow label={labels.longTermDebt} value={compactMoney(annual?.long_term_debt, market)} />
+              <MetricRow label={labels.roa} value={formatPercent(annual?.roa, market)} />
+              <MetricRow label={labels.currentRatio} value={formatRatio(annual?.current_ratio, market)} />
+              <MetricRow label={labels.grossMargin} value={formatPercent(annual?.gross_margin, market)} />
+              <MetricRow label={labels.assetTurnover} value={formatRatio(annual?.asset_turnover, market)} />
+              <MetricRow label={labels.leverageRatio} value={formatRatio(annual?.leverage_ratio, market)} />
+            </MetricSection>
+
+            <MetricSection title={labels.technical} defaultOpen={false}>
+              <MetricRow label={labels.technicalComposite} value={plainValue(data.technical_composite, market)} />
+              <MetricRow label={labels.rsRating} value={plainValue(data.rs_rating, market)} />
+              <MetricRow label={labels.adRating} value={plainValue(data.ad_rating, market)} />
+              <MetricRow label={labels.bbSqueeze} value={data.bb_squeeze == null ? missingLabel(market) : data.bb_squeeze ? labels.yes : labels.no} />
+              <MetricRow label={labels.rsLineNewHigh} value={data.rs_line_new_high == null ? missingLabel(market) : data.rs_line_new_high ? labels.yes : labels.no} />
+              <MetricRow label={labels.stopLoss} value={formatPrice(data.stop_loss_7pct, market)} />
+            </MetricSection>
+          </div>
         </div>
+      )}
 
-        <div className="mt-4 space-y-3">
-          <MetricSection
-            title={labels.priceLiquidity}
-            subtitle={`${labels.latestClose}: ${formatDate(price.trade_date, market)}`}
-          >
-            <MetricRow label={labels.close} value={formatPrice(price.close, market)} />
-            <MetricRow label={labels.previousClose} value={formatPrice(price.previous_close, market)} />
-            <MetricRow label={labels.change} value={formatPrice(price.change, market)} />
-            <MetricRow label={labels.changePercent} value={formatPercent(price.change_percent, market, "points")} />
-            <MetricRow label={labels.volume} value={compactCount(price.volume, market)} />
-            <MetricRow label={labels.avgVolume} value={compactCount(price.avg_volume_50d, market)} />
-          </MetricSection>
-
-          <MetricSection
-            title={labels.valuation}
-            subtitle={marketMetrics?.price_as_of ? formatDate(marketMetrics.price_as_of, market) : missingLabel(market)}
-            defaultOpen={false}
-          >
-            <MetricRow label={labels.marketCap} value={compactMoney(marketMetrics?.market_cap, market)} />
-            <MetricRow label="Float Market Cap" value={compactMoney(marketMetrics?.float_market_cap, market)} />
-            <MetricRow label={labels.trailingPe} value={formatRatio(marketMetrics?.trailing_pe_ratio, market)} />
-            <MetricRow label="Dividend Yield" value={formatPercent(marketMetrics?.dividend_yield, market)} />
-            <MetricRow label="Share Source" value={plainValue(marketMetrics?.share_count_source, market)} />
-            <MetricRow label="EPS Source" value={plainValue(marketMetrics?.trailing_eps_source, market)} />
-          </MetricSection>
-
-          <MetricSection
-            title={labels.ownershipFlow}
-            subtitle={ownership?.report_date ? formatDate(ownership.report_date, market) : missingLabel(market)}
-            defaultOpen={false}
-          >
-            <MetricRow label={labels.institutionalOwnership} value={formatPercent(ownership?.institutional_pct, market)} />
-            <MetricRow label={labels.foreignOwnership} value={formatPercent(ownership?.foreign_ownership_pct, market)} />
-            <MetricRow label={labels.thirteenFOwners} value={compactCount(ownership?.num_institutional_owners, market)} />
-            <MetricRow label={labels.institutionalFlow} value={compactCount(ownership?.institutional_net_buy_30d, market)} />
-            <MetricRow label={labels.foreignFlow} value={compactCount(ownership?.foreign_net_buy_30d, market)} />
-            <MetricRow label="Individual 30D Net Buy" value={compactCount(ownership?.individual_net_buy_30d, market)} />
-            <MetricRow label="Top Fund Quality" value={formatRatio(ownership?.top_fund_quality_score, market)} />
-            <MetricRow label="QoQ Owner Change" value={plainValue(ownership?.qoq_owner_change, market)} />
-            <MetricRow label={labels.buyback} value={ownership?.is_buyback_active == null ? missingLabel(market) : ownership.is_buyback_active ? labels.yes : labels.no} />
-            <MetricRow label="Source" value={plainValue(ownership?.data_source, market)} />
-          </MetricSection>
-
-          <MetricSection
-            title={labels.quarterly}
-            subtitle={
-              quarterly?.fiscal_year && quarterly?.fiscal_quarter
-                ? `FY${quarterly.fiscal_year} Q${quarterly.fiscal_quarter} · ${formatDate(quarterly.report_date, market)}`
-                : missingLabel(market)
-            }
-            defaultOpen={false}
-          >
-            <MetricRow label={labels.revenue} value={compactMoney(quarterly?.revenue, market)} />
-            <MetricRow label={labels.revenueGrowth} value={formatPercent(quarterly?.revenue_yoy_growth, market)} />
-            <MetricRow label={labels.netIncome} value={compactMoney(quarterly?.net_income, market)} />
-            <MetricRow label={labels.eps} value={plainValue(quarterly?.eps, market)} />
-            <MetricRow label={labels.dilutedEps} value={plainValue(quarterly?.eps_diluted, market)} />
-            <MetricRow label={labels.epsGrowth} value={formatPercent(quarterly?.eps_yoy_growth, market)} />
-          </MetricSection>
-
-          <MetricSection
-            title={labels.annualIncome}
-            subtitle={annual?.fiscal_year ? `FY${annual.fiscal_year} · ${formatDate(annual.report_date, market)}` : missingLabel(market)}
-            defaultOpen={false}
-          >
-            <MetricRow label={labels.revenue} value={compactMoney(annual?.revenue, market)} />
-            <MetricRow label={labels.grossProfit} value={compactMoney(annual?.gross_profit, market)} />
-            <MetricRow label={labels.netIncome} value={compactMoney(annual?.net_income, market)} />
-            <MetricRow label={labels.operatingCashFlow} value={compactMoney(annual?.operating_cash_flow, market)} />
-            <MetricRow label={labels.eps} value={plainValue(annual?.eps, market)} />
-            <MetricRow label={labels.epsGrowth} value={formatPercent(annual?.eps_yoy_growth, market)} />
-          </MetricSection>
-
-          <MetricSection title={labels.balance} defaultOpen={false}>
-            <MetricRow label={labels.totalAssets} value={compactMoney(annual?.total_assets, market)} />
-            <MetricRow label={labels.currentAssets} value={compactMoney(annual?.current_assets, market)} />
-            <MetricRow label={labels.currentLiabilities} value={compactMoney(annual?.current_liabilities, market)} />
-            <MetricRow label={labels.longTermDebt} value={compactMoney(annual?.long_term_debt, market)} />
-            <MetricRow label={labels.roa} value={formatPercent(annual?.roa, market)} />
-            <MetricRow label={labels.currentRatio} value={formatRatio(annual?.current_ratio, market)} />
-            <MetricRow label={labels.grossMargin} value={formatPercent(annual?.gross_margin, market)} />
-            <MetricRow label={labels.assetTurnover} value={formatRatio(annual?.asset_turnover, market)} />
-            <MetricRow label={labels.leverageRatio} value={formatRatio(annual?.leverage_ratio, market)} />
-          </MetricSection>
-
-          <MetricSection title={labels.technical} defaultOpen={false}>
-            <MetricRow label={labels.technicalComposite} value={plainValue(data.technical_composite, market)} />
-            <MetricRow label={labels.rsRating} value={plainValue(data.rs_rating, market)} />
-            <MetricRow label={labels.adRating} value={plainValue(data.ad_rating, market)} />
-            <MetricRow label={labels.bbSqueeze} value={data.bb_squeeze == null ? missingLabel(market) : data.bb_squeeze ? labels.yes : labels.no} />
-            <MetricRow label={labels.rsLineNewHigh} value={data.rs_line_new_high == null ? missingLabel(market) : data.rs_line_new_high ? labels.yes : labels.no} />
-            <MetricRow label={labels.stopLoss} value={formatPrice(data.stop_loss_7pct, market)} />
-          </MetricSection>
-        </div>
-      </div>
-
-      {/* Scores grid */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {scoreChip("Consensus", isRanked ? data.final_score : undefined)}
-        {scoreChip(
-          market === "KR" ? "CANSLIM" : "CANSLIM",
-          typeof data.canslim_score === "number" && data.canslim_score > 0 ? data.canslim_score : undefined
-        )}
-        {scoreChip(
-          market === "KR" ? "Piotroski" : "Piotroski",
-          typeof data.piotroski_score === "number" && data.piotroski_score > 0
-            ? data.piotroski_score
-            : undefined,
-          100
-        )}
-        {scoreChip(
-          market === "KR" ? "Magic Formula" : "Magic Formula",
-          typeof data.magic_formula_score === "number" && data.magic_formula_score > 0
-            ? data.magic_formula_score
-            : undefined,
-          100
-        )}
-        {scoreChip("Weinstein", typeof data.weinstein_score === "number" && data.weinstein_score > 0 ? data.weinstein_score : undefined)}
-      </div>
-
-      {/* Strategy passes */}
-      <div className="surface-panel rounded-[1.65rem] px-5 py-5">
-        <div className="tiny-label mb-4">
-          {market === "KR" ? "전략별 상세" : "Strategy Breakdown"}
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {/* CANSLIM */}
-          {data.canslim_breakdown && (
-            <div>
-              <div className="mb-2 text-xs text-faint uppercase tracking-widest">CANSLIM</div>
-              <div className="flex flex-wrap gap-1">
-                {data.canslim_breakdown.map((c) => {
-                  const tooltip = market === "KR"
-                    ? `${CANSLIM_LABELS_KR[c.key] ?? c.label} (${c.score.toFixed(1)})`
-                    : `${c.label} (${c.score.toFixed(1)})`;
-                  return (
-                    <span
-                      key={c.key}
-                      className={cn(
-                        "cursor-help rounded border px-2 py-0.5 text-[0.65rem] font-mono uppercase",
-                        c.score > 0
-                          ? "border-[oklch(0.92_0.04_150_/_0.4)] text-[oklch(0.92_0.04_150)]"
-                          : "border-white/10 text-faint"
-                      )}
-                      title={tooltip}
-                    >
-                      {c.key}
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Piotroski */}
-          {data.piotroski_detail && (
-            <div>
-              <div className="mb-2 text-xs text-faint uppercase tracking-widest">
-                {market === "KR" ? "피오트로스키 F-점수" : "Piotroski F-Score"}: {data.piotroski_detail.f_score}/9
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {(Object.entries(data.piotroski_detail) as [string, boolean | number][])
-                  .filter(([k]) => k.startsWith("f") && k !== "f_score")
-                  .map(([k, v]) => {
-                    const labels = market === "KR" ? PIOTROSKI_LABELS_KR : PIOTROSKI_LABELS_EN;
-                    const passText = market === "KR" ? (v ? "통과" : "미통과") : (v ? "PASS" : "FAIL");
-                    const tooltip = `${labels[k] ?? k.toUpperCase()} — ${passText}`;
-                    return (
-                      <span
-                        key={k}
-                        className={cn(
-                          "cursor-help rounded border px-2 py-0.5 text-[0.65rem] font-mono uppercase",
-                          v
-                            ? "border-[oklch(0.92_0.04_150_/_0.4)] text-[oklch(0.92_0.04_150)]"
-                            : "border-white/10 text-faint"
-                        )}
-                        title={tooltip}
-                      >
-                        {k.toUpperCase()}
-                      </span>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
-
-          {/* Magic Formula */}
-          <MagicFormulaCard
-            score={typeof data.magic_formula_score === "number" ? data.magic_formula_score : undefined}
-            detail={data.magic_formula_detail}
-            market={market}
-          />
-
-          {/* Weinstein */}
-          {data.weinstein_detail && (
-            <div>
-              <div className="mb-2 text-xs text-faint uppercase tracking-widest">Weinstein</div>
-              <div className="text-sm text-white">
-                {market === "KR" ? "단계" : "Stage"} {data.weinstein_detail.stage}
-                {data.weinstein_detail.sub_stage ? ` · ${data.weinstein_detail.sub_stage}` : ""}
-              </div>
-              <div className="mt-1 text-xs text-faint">
-                {market === "KR" ? "이동평균 기울기" : "MA slope"} {data.weinstein_detail.ma_slope.toFixed(2)} ·{" "}
-                {data.weinstein_detail.price_vs_ma > 0 ? "+" : ""}
-                {(data.weinstein_detail.price_vs_ma * 100).toFixed(1)}% vs MA
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Price chart */}
-      <InstrumentChartComponent
-        data={chart ?? null}
-        interval={chartInterval}
-        rangeDays={chartRangeDays}
-        onIntervalChange={setChartInterval}
-        onRangeChange={setChartRangeDays}
-        isFetching={chartFetching}
-      />
-
-      {/* Freshness */}
+      {/* Freshness — always visible at bottom */}
       {data.freshness && (
         <div className="surface-panel rounded-[1.65rem] px-5 py-4">
           <div className="tiny-label mb-2">Data Freshness</div>

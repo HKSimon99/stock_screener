@@ -8,6 +8,7 @@ import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function AppNav() {
   const pathname = usePathname();
@@ -31,7 +32,15 @@ export function AppNav() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-[rgba(15,23,42,0.08)] bg-[rgba(246,248,251,0.96)] shadow-[0_8px_22px_rgba(15,23,42,0.04)]">
+      <header
+        className="sticky top-0 z-40 border-b"
+        style={{
+          background: "var(--rv-header-bg)",
+          borderColor: "var(--rv-header-border)",
+          boxShadow: "var(--rv-header-shadow)",
+          backdropFilter: "blur(18px)",
+        }}
+      >
         <div className="app-shell flex h-16 items-center gap-3">
           <Link href="/rankings" className="motion-press flex min-h-11 shrink-0 items-center gap-2">
             <span className="flex size-10 items-center justify-center rounded-xl bg-[var(--rv-primary)] text-white shadow-[0_8px_18px_rgba(37,99,235,0.14)]">
@@ -49,7 +58,8 @@ export function AppNav() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={t("search.placeholder")}
-                className="h-11 w-full rounded-full border border-[rgba(15,23,42,0.1)] bg-white/80 pl-11 pr-5 text-sm font-medium text-[var(--rv-ink)] outline-none transition-colors placeholder:text-[var(--rv-stone)] focus:border-[rgba(37,99,235,0.42)]"
+                className="h-11 w-full rounded-full border bg-[var(--rv-surface-elevated)] pl-11 pr-5 text-sm font-medium text-[var(--rv-ink)] outline-none transition-colors placeholder:text-[var(--rv-stone)] focus:border-[rgba(37,99,235,0.42)]"
+                style={{ borderColor: "var(--rv-header-border)" }}
               />
             </label>
           </form>
@@ -73,7 +83,14 @@ export function AppNav() {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <div className="flex h-12 items-center rounded-full border border-[rgba(15,23,42,0.1)] bg-white p-0.5">
+            {/* Language toggle */}
+            <div
+              className="flex h-12 items-center rounded-full border p-0.5"
+              style={{
+                background: "var(--rv-lang-toggle-bg)",
+                borderColor: "var(--rv-header-border)",
+              }}
+            >
               {(["en", "ko"] as const).map((item) => (
                 <button
                   key={item}
@@ -82,7 +99,7 @@ export function AppNav() {
                   className={cn(
                     "h-11 min-w-11 rounded-full px-2 text-xs font-bold uppercase tracking-[0.08em] transition-colors",
                     lang === item
-                      ? "bg-[var(--rv-ink)] text-white"
+                      ? "bg-[var(--rv-ink)] text-[var(--rv-canvas-light)]"
                       : "text-[var(--rv-stone)] hover:text-[var(--rv-ink)]"
                   )}
                 >
@@ -91,9 +108,15 @@ export function AppNav() {
               ))}
             </div>
 
+            <ThemeToggle />
+
             <Link
               href="/app/search"
-              className="motion-press flex size-11 items-center justify-center rounded-full border border-[rgba(15,23,42,0.1)] bg-white text-[var(--rv-mute)] transition-colors hover:text-[var(--rv-ink)] md:hidden"
+              className="motion-press flex size-11 items-center justify-center rounded-full border text-[var(--rv-mute)] transition-colors hover:text-[var(--rv-ink)] md:hidden"
+              style={{
+                borderColor: "var(--rv-header-border)",
+                background: "var(--rv-header-bg)",
+              }}
               aria-label="Search"
             >
               <Search className="size-4" />
@@ -104,8 +127,13 @@ export function AppNav() {
         </div>
       </header>
 
+      {/* Mobile bottom nav */}
       <nav
-        className="fixed inset-x-3 bottom-3 z-50 rounded-[1.35rem] border border-[rgba(15,23,42,0.12)] bg-white p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.16)] md:hidden"
+        className="fixed inset-x-3 bottom-3 z-50 rounded-[1.35rem] border p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.16)] md:hidden"
+        style={{
+          background: "var(--rv-nav-bottom-bg)",
+          borderColor: "var(--rv-header-border)",
+        }}
         aria-label="Mobile main navigation"
       >
         <div className="grid grid-cols-3 gap-1">

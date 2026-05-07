@@ -301,10 +301,10 @@ function displayName(item: Pick<RankingItem, "market" | "ticker" | "name" | "nam
 }
 
 function scoreTone(score: number): string {
-  if (score >= 80) return "text-[oklch(0.43_0.12_150)]";
-  if (score >= 65) return "text-[oklch(0.48_0.1_78)]";
-  if (score >= 50) return "text-[oklch(0.42_0.08_235)]";
-  return "text-[oklch(0.5_0.11_32)]";
+  if (score >= 80) return "text-[var(--score-high-text)]";
+  if (score >= 65) return "text-[var(--score-mid-high-text)]";
+  if (score >= 50) return "text-[var(--score-mid-text)]";
+  return "text-[var(--score-low-text)]";
 }
 
 function scoreBarTone(score: number): string {
@@ -333,18 +333,19 @@ function FilterSelect({
 }) {
   return (
     <label className="grid gap-2">
-      <span className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[oklch(0.46_0.02_250)]">
+      {/* Label is always on a dark bg (filter panel / sheet) — use light text */}
+      <span className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--rv-card-meta)]">
         {label}
       </span>
       <span className="relative">
         <select
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="h-11 w-full appearance-none rounded-2xl border border-[oklch(0.78_0.03_88)] bg-white/75 px-3 pr-9 text-sm font-medium text-[oklch(0.22_0.02_250)] outline-none transition-colors focus:border-[oklch(0.65_0.13_82)]"
+          className="h-11 w-full appearance-none rounded-2xl border border-white/15 bg-white/[0.09] px-3 pr-9 text-sm font-medium text-white outline-none transition-colors focus:border-white/30"
         >
           {children}
         </select>
-        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[oklch(0.46_0.02_250)]" />
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[var(--rv-card-meta)]" />
       </span>
     </label>
   );
@@ -354,11 +355,11 @@ function ScoreMeter({ label, value }: { label: string; value: number }) {
   const clamped = Math.max(0, Math.min(100, value));
   return (
     <div className="min-w-0">
-      <div className="mb-1 flex items-center justify-between gap-2 text-[0.62rem] uppercase tracking-[0.14em] text-[oklch(0.48_0.02_250)]">
+      <div className="mb-1 flex items-center justify-between gap-2 text-[0.62rem] uppercase tracking-[0.14em] text-[var(--rv-card-meta)]">
         <span>{label}</span>
         <span>{formatCompact(clamped)}</span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-[oklch(0.86_0.02_88)]">
+      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--rv-ranked-card-border)]" style={{ opacity: 0.5 }}>
         <div
           className={cn("score-bar-fill h-full rounded-full transition-[width] duration-700 ease-out", scoreBarTone(clamped))}
           style={{ width: `${clamped}%` }}
@@ -425,7 +426,7 @@ function PinnedButton({
         pinned
           ? "border-[oklch(0.64_0.12_82_/_0.5)] bg-[oklch(0.88_0.1_84_/_0.32)] text-[oklch(0.32_0.06_72)]"
           : light
-            ? "border-[oklch(0.78_0.03_88)] bg-white/55 text-[oklch(0.42_0.02_250)] hover:border-[oklch(0.64_0.12_82_/_0.5)]"
+            ? "border-[var(--rv-ranked-card-border)] bg-white/[0.06] text-[var(--rv-card-mute)] hover:border-[oklch(0.64_0.12_82_/_0.5)]"
             : "border-white/10 text-faint hover:text-white"
       )}
     >
@@ -440,8 +441,12 @@ function PinnedButton({
 function RankedCardSkeleton({ index }: { index: number }) {
   return (
     <div
-      className="animate-pulse overflow-hidden rounded-[1.4rem] border border-[oklch(0.8_0.03_88)] bg-[oklch(0.985_0.012_88_/_0.92)]"
-      style={{ animationDelay: `${index * 80}ms` }}
+      className="animate-pulse overflow-hidden rounded-[1.4rem] border"
+      style={{
+        animationDelay: `${index * 80}ms`,
+        background: "var(--rv-ranked-card-bg)",
+        borderColor: "var(--rv-ranked-card-border)",
+      }}
     >
       {/* Mobile skeleton (< md) */}
       <div className="md:hidden flex items-center gap-3 pl-5 pr-4 py-3.5">
@@ -515,8 +520,12 @@ function RankedCard({ item, index }: { item: RankingItem; index: number }) {
 
   return (
     <article
-      className="animate-rise motion-card group relative overflow-hidden rounded-[1.4rem] border border-[oklch(0.8_0.03_88)] bg-[oklch(0.985_0.012_88_/_0.92)] md:shadow-[0_18px_60px_oklch(0.18_0.025_250_/_0.12)]"
-      style={{ animationDelay: `${Math.min(index * 35, 300)}ms` }}
+      className="animate-rise motion-card group relative overflow-hidden rounded-[1.4rem] border md:shadow-[0_18px_60px_oklch(0.18_0.025_250_/_0.12)]"
+      style={{
+        animationDelay: `${Math.min(index * 35, 300)}ms`,
+        background: "var(--rv-ranked-card-bg)",
+        borderColor: "var(--rv-ranked-card-border)",
+      }}
     >
       {/* ── Mobile compact row (< md) ── */}
       <Link
@@ -532,7 +541,7 @@ function RankedCard({ item, index }: { item: RankingItem; index: number }) {
         {/* Name + mini bars */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="font-semibold text-sm text-[oklch(0.18_0.018_250)] shrink-0 tabular-nums">{item.ticker}</span>
+            <span className="font-semibold text-sm text-[var(--rv-card-title)] shrink-0 tabular-nums">{item.ticker}</span>
             <ConvictionBadge level={item.conviction_level} size="sm" />
           </div>
           <div className="mt-0.5 truncate text-[0.72rem] text-faint leading-snug">{names.primary}</div>
@@ -540,7 +549,7 @@ function RankedCard({ item, index }: { item: RankingItem; index: number }) {
             {strategyScores.map(([label, value]) => (
               <div key={label} className="flex-1 min-w-0">
                 <div className="text-[0.5rem] uppercase tracking-wide text-faint text-center leading-none mb-0.5">{label}</div>
-                <div className="h-[3px] bg-[oklch(0.86_0.02_88)] rounded-full overflow-hidden">
+                <div className="h-[3px] rounded-full overflow-hidden" style={{ background: "var(--rv-ranked-card-border)", opacity: 0.6 }}>
                   <div
                     className={cn("score-bar-fill h-full rounded-full transition-[width] duration-700 ease-out", scoreBarTone(Math.min(100, value)))}
                     style={{ width: `${Math.min(100, value)}%` }}
@@ -564,7 +573,7 @@ function RankedCard({ item, index }: { item: RankingItem; index: number }) {
       <div className="hidden md:block p-5">
         <div className="grid gap-4 xl:grid-cols-[auto_minmax(0,1fr)_minmax(15rem,0.65fr)_auto] xl:items-center">
           <div className="flex items-start justify-between gap-3 xl:block">
-            <div className="font-heading text-4xl uppercase leading-none tracking-[-0.06em] text-[oklch(0.28_0.02_250)]">
+            <div className="font-heading text-4xl uppercase leading-none tracking-[-0.06em] text-[var(--rv-card-sub)]">
               #{item.rank}
             </div>
             <div className={cn("font-heading text-5xl leading-none tracking-[-0.06em] xl:mt-4", scoreTone(score))}>
@@ -577,7 +586,7 @@ function RankedCard({ item, index }: { item: RankingItem; index: number }) {
               <Link
                 href={buildInstrumentPath(item.ticker, item.market)}
                 transitionTypes={["nav-forward"]}
-                className="font-heading text-[clamp(1.6rem,3.5vw,2.8rem)] uppercase leading-[1.05] tracking-[-0.04em] text-[oklch(0.18_0.018_250)] transition-colors hover:text-[oklch(0.5_0.12_82)] line-clamp-2"
+                className="font-heading text-[clamp(1.6rem,3.5vw,2.8rem)] uppercase leading-[1.05] tracking-[-0.04em] text-[var(--rv-card-title)] transition-colors hover:text-[oklch(0.5_0.12_82)] line-clamp-2"
               >
                 {names.primary}
               </Link>
@@ -589,7 +598,7 @@ function RankedCard({ item, index }: { item: RankingItem; index: number }) {
                 </span>
               )}
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[oklch(0.46_0.02_250)]">
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--rv-card-meta)]">
               <span className="font-semibold">{names.secondary}</span>
               <span>{item.market}</span>
               {item.exchange && <span>{item.exchange}</span>}
@@ -597,11 +606,11 @@ function RankedCard({ item, index }: { item: RankingItem; index: number }) {
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <CoverageBadge state={item.coverage_state ?? "ranked"} />
-              <span className="rounded-full border border-[oklch(0.78_0.03_88)] bg-white/55 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[oklch(0.42_0.02_250)]">
+              <span className="rounded-full border border-[var(--rv-ranked-card-border)] bg-white/[0.06] px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[var(--rv-card-mute)]">
                 {item.strategy_pass_count} {item.strategy_pass_count === 1 ? "strategy" : "strategies"}
               </span>
               {item.technical_composite != null && (
-                <span className="rounded-full border border-[oklch(0.78_0.03_88)] bg-white/55 px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[oklch(0.42_0.02_250)]">
+                <span className="rounded-full border border-[var(--rv-ranked-card-border)] bg-white/[0.06] px-2.5 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-[var(--rv-card-mute)]">
                   Tech {item.technical_composite.toFixed(0)}
                 </span>
               )}
@@ -625,7 +634,7 @@ function RankedCard({ item, index }: { item: RankingItem; index: number }) {
             <Link
               href={buildInstrumentPath(item.ticker, item.market)}
               transitionTypes={["nav-forward"]}
-              className="inline-flex items-center gap-2 rounded-full bg-[oklch(0.18_0.018_250)] px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[oklch(0.28_0.03_250)]"
+              className="inline-flex items-center gap-2 rounded-full bg-[var(--rv-ink)] px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-[var(--rv-canvas-light)] transition-colors hover:opacity-80"
             >
               Open
               <ArrowUpRight className="size-3.5" />
@@ -660,11 +669,11 @@ function WatchlistCard({
         <Link
           href={buildInstrumentPath(item.ticker, item.market as "US" | "KR")}
           transitionTypes={["nav-forward"]}
-          className="block truncate font-heading text-2xl uppercase leading-none text-[oklch(0.22_0.018_250)] transition-colors hover:text-[oklch(0.5_0.12_82)]"
+          className="block truncate font-heading text-2xl uppercase leading-none text-[var(--rv-card-title)] transition-colors hover:text-[oklch(0.5_0.12_82)]"
         >
           {primaryName}
         </Link>
-        <div className="mt-1 text-xs text-[oklch(0.46_0.02_250)]">{secondaryName}</div>
+        <div className="mt-1 text-xs text-[var(--rv-card-meta)]">{secondaryName}</div>
       </div>
       <PinnedButton
         ticker={item.ticker}
@@ -985,7 +994,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
             onClick={() => setShowAdvanced(false)}
           />
           {/* Sheet */}
-          <div className="motion-sheet md:hidden fixed inset-x-0 bottom-0 z-50 rounded-t-2xl bg-[var(--rv-canvas-dark)] shadow-[0_-20px_60px_rgba(15,23,42,0.35)]">
+          <div className="motion-sheet surface-panel md:hidden fixed inset-x-0 bottom-0 z-50 rounded-t-2xl shadow-[0_-20px_60px_rgba(15,23,42,0.35)]">
             {/* Handle pill */}
             <div className="flex justify-center pt-3 pb-1">
               <div className="h-1 w-10 rounded-full bg-white/20" />
@@ -1026,7 +1035,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
                   className={cn(
                     "min-h-11 rounded-xl px-4 py-2 text-sm font-semibold transition-colors",
                     filters.market === market
-                      ? "bg-white text-[oklch(0.18_0.018_250)]"
+                      ? "bg-white text-[var(--rv-card-title)]"
                       : "text-faint hover:text-white"
                   )}
                 >
@@ -1115,9 +1124,9 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
       <div className="mt-3 grid gap-4">
         {/* ── Watchlist ──────────────────────────────────────────────── */}
         {watchlistDisplay.length > 0 && (
-          <section className="rounded-2xl border border-[rgba(15,23,42,0.1)] bg-white/82 px-4 py-4 text-[var(--rv-ink)] shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5">
-            <div className="tiny-label text-[oklch(0.48_0.02_250)]">{t("rankings.watchlist.eyebrow")}</div>
-            <h2 className="mt-1 font-heading text-xl uppercase tracking-[-0.03em] text-[oklch(0.18_0.018_250)] sm:text-2xl">
+          <section className="rounded-2xl border px-4 py-4 text-[var(--rv-ink)] shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5" style={{ background: "var(--rv-leaderboard-bg)", borderColor: "var(--rv-leaderboard-border)" }}>
+            <div className="tiny-label">{t("rankings.watchlist.eyebrow")}</div>
+            <h2 className="mt-1 font-heading text-xl uppercase tracking-[-0.03em] text-[var(--rv-card-title)] sm:text-2xl">
               {t("rankings.watchlist.title")}
             </h2>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -1130,7 +1139,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
               ))}
             </div>
             {!isSignedIn && (
-              <p className="mt-3 text-xs text-[oklch(0.52_0.02_250)]">
+              <p className="mt-3 text-xs text-[var(--rv-card-meta)]">
                 <Bookmark className="mr-1 inline size-3" />
                 {t("rankings.watchlist.signIn")}
               </p>
@@ -1142,8 +1151,8 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
         <section className="rounded-2xl border border-[rgba(15,23,42,0.1)] bg-white/82 px-4 py-4 text-[var(--rv-ink)] shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
-              <div className="tiny-label text-[oklch(0.48_0.02_250)]">{t("rankings.leaderboard.eyebrow")}</div>
-              <h2 className="mt-1 font-heading text-xl uppercase tracking-[-0.03em] text-[oklch(0.18_0.018_250)] sm:text-2xl break-words">
+              <div className="tiny-label">{t("rankings.leaderboard.eyebrow")}</div>
+              <h2 className="mt-1 font-heading text-xl uppercase tracking-[-0.03em] text-[var(--rv-card-title)] sm:text-2xl break-words">
                 {filters.market} {t("ui.stock").toLowerCase()} leaderboard
               </h2>
             </div>
@@ -1159,22 +1168,23 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
 
           {/* Empty state with icon + CTA */}
           {!rankings.error && rankedItems.length === 0 && !isLoading && (
-            <div className="flex flex-col items-center gap-4 rounded-[1.2rem] border border-[oklch(0.8_0.03_88)] bg-white/55 px-5 py-10 text-center">
+            <div className="flex flex-col items-center gap-4 rounded-[1.2rem] border px-5 py-10 text-center" style={{ borderColor: "var(--rv-ranked-card-border)", background: "var(--rv-ranked-card-bg)" }}>
               <div className="flex size-14 items-center justify-center rounded-full bg-[oklch(0.92_0.02_88)]">
-                <Search className="size-6 text-[oklch(0.52_0.04_250)]" />
+                <Search className="size-6 text-[var(--rv-card-meta)]" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-[oklch(0.28_0.02_250)]">
+                <p className="text-sm font-semibold text-[var(--rv-card-sub)]">
                   {t("rankings.leaderboard.empty")}
                 </p>
-                <p className="mt-1 text-xs text-[oklch(0.52_0.02_250)]">
+                <p className="mt-1 text-xs text-[var(--rv-card-meta)]">
                   Try adjusting or resetting your filters to see more results.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={clearFilters}
-                className="motion-press inline-flex items-center gap-2 rounded-full border border-[oklch(0.78_0.03_88)] bg-white px-4 py-2.5 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[oklch(0.28_0.02_250)] transition-colors hover:border-[oklch(0.65_0.08_82)]"
+                className="motion-press inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[var(--rv-card-sub)] transition-colors hover:border-[oklch(0.65_0.08_82)]"
+                style={{ background: "var(--rv-ranked-card-bg)", borderColor: "var(--rv-ranked-card-border)" }}
               >
                 <RefreshCw className="size-3.5" />
                 Reset filters
@@ -1201,7 +1211,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
           )}
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-[oklch(0.42_0.02_250)]">
+            <div className="text-sm text-[var(--rv-card-mute)]">
               {isLoading ? (
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="size-4 animate-spin" />
@@ -1215,7 +1225,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
               <button
                 type="button"
                 onClick={() => replaceParams({ limit: Math.min(filters.limit + 100, RANKINGS_LIMIT_MAX) })}
-                className="motion-press inline-flex items-center justify-center gap-2 rounded-full bg-[oklch(0.18_0.018_250)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[oklch(0.28_0.03_250)]"
+                className="motion-press inline-flex items-center justify-center gap-2 rounded-full bg-[var(--rv-ink)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-[var(--rv-canvas-light)] transition-colors hover:opacity-80"
               >
                 {t("rankings.leaderboard.loadMore")}
               </button>

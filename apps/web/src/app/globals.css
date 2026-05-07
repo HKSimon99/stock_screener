@@ -38,6 +38,31 @@
 :root {
   color-scheme: light;
 
+  /* ── Shell surface tokens (override in html.dark) ── */
+  --rv-header-bg: rgba(246, 248, 251, 0.96);
+  --rv-header-border: rgba(15, 23, 42, 0.08);
+  --rv-header-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  --rv-nav-bottom-bg: #ffffff;
+  --rv-lang-toggle-bg: #ffffff;
+
+  /* ── Card / leaderboard surface tokens ── */
+  --rv-ranked-card-bg: oklch(0.985 0.012 88 / 0.92);
+  --rv-ranked-card-border: oklch(0.8 0.03 88);
+  --rv-leaderboard-bg: rgba(255, 255, 255, 0.82);
+  --rv-leaderboard-border: rgba(15, 23, 42, 0.1);
+
+  /* ── Card text tokens ── */
+  --rv-card-title: oklch(0.18 0.018 250);
+  --rv-card-sub: oklch(0.28 0.02 250);
+  --rv-card-meta: oklch(0.46 0.02 250);
+  --rv-card-mute: oklch(0.42 0.02 250);
+
+  /* ── Score tone tokens ── */
+  --score-high-text: oklch(0.43 0.12 150);
+  --score-mid-high-text: oklch(0.48 0.1 78);
+  --score-mid-text: oklch(0.42 0.08 235);
+  --score-low-text: oklch(0.5 0.11 32);
+
   --rv-primary: #2563eb;
   --rv-primary-bright: #1d4ed8;
   --rv-primary-deep: #1e40af;
@@ -57,7 +82,8 @@
   --rv-stone: #8793a1;
   --rv-faint: #aeb7c2;
   --rv-on-dark: #f8fbff;
-  --rv-on-dark-mute: rgba(248, 251, 255, 0.74);
+  --rv-on-dark-mute: rgba(248, 251, 255, 0.82);
+  --rv-on-dark-faint: rgba(248, 251, 255, 0.66);
 
   --rv-hairline-dark: rgba(15, 23, 42, 0.12);
   --rv-hairline-light: #dce4ee;
@@ -120,6 +146,133 @@
   --ease-in-soft: cubic-bezier(0.32, 0, 0.67, 0);
 }
 
+/* ── Dark mode overrides ───────────────────────────────────────────────── */
+html.dark {
+  color-scheme: dark;
+
+  /* Canvas */
+  --rv-canvas-dark: #060a0e;
+  --rv-canvas-light: #0d1117;
+  --rv-surface-deep: #161b22;
+  --rv-surface-elevated: rgba(22, 27, 34, 0.92);
+  --rv-surface-card: #161b22;
+  --rv-surface-soft: #1c2128;
+
+  /* Text */
+  --rv-ink: #cdd9e5;
+  --rv-body-text: #adbac7;
+  --rv-charcoal: #8b949e;
+  --rv-mute: #8b949e;
+  --rv-stone: #768390;
+  --rv-faint: #545d68;
+  --rv-on-dark: #cdd9e5;
+  --rv-on-dark-mute: rgba(205, 217, 229, 0.82);
+  --rv-on-dark-faint: rgba(205, 217, 229, 0.56);
+
+  /* Borders */
+  --rv-hairline-dark: rgba(205, 217, 229, 0.1);
+  --rv-hairline-light: rgba(205, 217, 229, 0.1);
+  --rv-hairline-strong: rgba(205, 217, 229, 0.2);
+  --rv-divider-soft: rgba(205, 217, 229, 0.06);
+
+  /* Shadcn bridge */
+  --background: var(--rv-canvas-light);
+  --foreground: var(--rv-ink);
+  --card: var(--rv-surface-card);
+  --card-foreground: var(--rv-ink);
+  --popover: var(--rv-surface-card);
+  --popover-foreground: var(--rv-ink);
+  --secondary: var(--rv-surface-soft);
+  --secondary-foreground: var(--rv-ink);
+  --muted: var(--rv-surface-soft);
+  --muted-foreground: var(--rv-mute);
+  --input: var(--rv-surface-card);
+  --border: var(--rv-hairline-dark);
+
+  /* Shell surfaces */
+  --rv-header-bg: rgba(13, 17, 23, 0.96);
+  --rv-header-border: rgba(205, 217, 229, 0.08);
+  --rv-header-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+  --rv-nav-bottom-bg: #161b22;
+  --rv-lang-toggle-bg: #1c2128;
+
+  /* Card / leaderboard surfaces */
+  --rv-ranked-card-bg: #1a2332;
+  --rv-ranked-card-border: rgba(205, 217, 229, 0.1);
+  --rv-leaderboard-bg: rgba(22, 27, 34, 0.9);
+  --rv-leaderboard-border: rgba(205, 217, 229, 0.1);
+
+  /* Card text — lighter for dark card bg */
+  --rv-card-title: oklch(0.88 0.02 250);
+  --rv-card-sub: oklch(0.78 0.02 250);
+  --rv-card-meta: oklch(0.68 0.02 250);
+  --rv-card-mute: oklch(0.65 0.02 250);
+
+  /* Score tones — brighter for dark bg */
+  --score-high-text: oklch(0.68 0.15 150);
+  --score-mid-high-text: oklch(0.75 0.13 78);
+  --score-mid-text: oklch(0.72 0.1 235);
+  --score-low-text: oklch(0.72 0.14 32);
+}
+
+/* ── Dark-mode component overrides ────────────────────────────────────── */
+html.dark .btn-outline {
+  background: rgba(205, 217, 229, 0.06);
+  border-color: rgba(205, 217, 229, 0.14);
+  color: var(--rv-ink);
+}
+html.dark .btn-outline:hover {
+  background: rgba(205, 217, 229, 0.11);
+  border-color: rgba(205, 217, 229, 0.22);
+}
+
+html.dark .btn-pill-sm,
+html.dark .filter-chip,
+html.dark .segmented-pill {
+  border-color: rgba(205, 217, 229, 0.1);
+  background: rgba(205, 217, 229, 0.06);
+  color: var(--rv-mute);
+}
+html.dark .btn-pill-sm:hover,
+html.dark .filter-chip:hover,
+html.dark .segmented-pill:hover {
+  border-color: rgba(205, 217, 229, 0.18);
+  color: var(--rv-ink);
+}
+html.dark .btn-pill-sm[data-active="true"],
+html.dark .filter-chip[data-active="true"],
+html.dark .segmented-pill[data-active="true"] {
+  border-color: rgba(15, 186, 157, 0.38);
+  background: rgba(15, 186, 157, 0.14);
+  color: #2dd4bf;
+}
+
+html.dark .metric-tile {
+  background: #161b22;
+  border-color: rgba(205, 217, 229, 0.1);
+}
+
+html.dark .sticky-context {
+  background: rgba(13, 17, 23, 0.88);
+  border-color: rgba(205, 217, 229, 0.08);
+}
+
+html.dark .light-panel {
+  background: rgba(205, 217, 229, 0.06);
+  border-color: rgba(205, 217, 229, 0.1);
+  color: var(--rv-ink);
+}
+
+/* ── Fix: tiny-label / section-kicker inside dark surfaces ─────────────── */
+.surface-panel .tiny-label,
+.surface-panel .section-kicker,
+.surface-panel-soft .tiny-label,
+.surface-panel-soft .section-kicker,
+.glass-dark .tiny-label,
+.glass-dark .section-kicker {
+  color: var(--rv-on-dark-faint);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -131,6 +284,12 @@
     background:
       radial-gradient(circle at 12% -10%, rgba(37, 99, 235, 0.09), transparent 34rem),
       linear-gradient(180deg, #f7fafc 0%, #eef4f8 55%, #e8eff5 100%);
+  }
+
+  html.dark {
+    background:
+      radial-gradient(circle at 12% -10%, rgba(37, 99, 235, 0.05), transparent 34rem),
+      #0d1117;
   }
 
   body {
@@ -174,15 +333,15 @@
   }
 
   .surface-panel {
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: #141d26;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: #111a22;
     color: var(--rv-on-dark);
     box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
   }
 
   .surface-panel-soft {
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.08);
     color: var(--rv-on-dark);
   }
 
@@ -253,10 +412,19 @@
   .glass-dark .text-quiet { color: var(--rv-on-dark-mute); }
   .surface-panel .text-faint,
   .surface-panel-soft .text-faint,
-  .glass-dark .text-faint { color: rgba(248, 251, 255, 0.52); }
+  .glass-dark .text-faint { color: var(--rv-on-dark-faint); }
   .text-quiet { color: var(--rv-mute); }
   .text-faint { color: var(--rv-stone); }
   .text-balance { text-wrap: balance; }
+
+  .light-panel {
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    background: rgba(255, 255, 255, 0.88);
+    color: var(--rv-ink);
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
+  }
+  .light-panel .text-quiet { color: var(--rv-mute); }
+  .light-panel .text-faint { color: var(--rv-stone); }
 
   .btn-primary,
   .btn-cobalt {

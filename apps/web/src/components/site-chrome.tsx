@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, Sparkles } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const SITE_LINKS = [
   { href: "/methodology", label: "Methodology" },
@@ -10,7 +11,15 @@ const SITE_LINKS = [
 
 export function SiteChrome() {
   return (
-    <header className="sticky top-0 z-50 border-b border-[rgba(15,23,42,0.08)] bg-[rgba(246,248,251,0.96)] shadow-[0_8px_22px_rgba(15,23,42,0.04)]">
+    <header
+      className="sticky top-0 z-50 border-b"
+      style={{
+        background: "var(--rv-header-bg)",
+        borderColor: "var(--rv-header-border)",
+        boxShadow: "var(--rv-header-shadow)",
+        backdropFilter: "blur(18px)",
+      }}
+    >
       <div className="app-shell flex h-16 items-center justify-between gap-4">
         <Link href="/" className="motion-press flex min-h-11 shrink-0 items-center gap-2">
           <span className="flex size-10 items-center justify-center rounded-xl bg-[var(--rv-primary)] text-white shadow-[0_8px_18px_rgba(37,99,235,0.14)]">
@@ -33,10 +42,13 @@ export function SiteChrome() {
           ))}
         </nav>
 
-        <Link href="/rankings" transitionTypes={["nav-forward"]} className="btn-primary shrink-0 px-4 py-2 text-sm">
-          Open App
-          <ArrowRight className="size-4" />
-        </Link>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <Link href="/rankings" transitionTypes={["nav-forward"]} className="btn-primary shrink-0 px-4 py-2 text-sm">
+            Open App
+            <ArrowRight className="size-4" />
+          </Link>
+        </div>
       </div>
     </header>
   );

@@ -10,7 +10,11 @@ import { Providers } from "@/components/providers";
 import SentryErrorBoundary from "@/components/sentry-error-boundary";
 import { TosConsentGate } from "@/components/tos-consent-gate";
 import { LangSync } from "@/components/lang-sync";
+import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
+
+// Reads theme from localStorage before React hydrates to prevent flash of wrong theme
+const THEME_SCRIPT = `(function(){try{var s=localStorage.getItem('consensus-ui-state');if(s){var t=JSON.parse(s);if(t&&t.state&&t.state.theme==='dark'){document.documentElement.classList.add('dark');}}}catch(e){}})();`;
 
 const bodyFont = Inter({
   variable: "--font-body",
@@ -51,6 +55,10 @@ export default function RootLayout({
       className={`${bodyFont.variable} ${displayFont.variable} ${monoFont.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        {/* Anti-FOUC: apply dark class before first paint */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className="min-h-full bg-background text-foreground font-sans">
         <a
           href="#content"
@@ -61,6 +69,7 @@ export default function RootLayout({
         <SentryErrorBoundary>
           <ClerkProvider>
             <Providers>
+              <ThemeProvider />
               <LangSync />
               <TosConsentGate>
                 <div id="content">{children}</div>

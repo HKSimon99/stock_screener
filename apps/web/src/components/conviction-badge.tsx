@@ -70,7 +70,7 @@ export function ConvictionBadge({ level, size = "md" }: ConvictionBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border font-medium uppercase",
+        "inline-flex items-center gap-1.5 rounded-full border font-medium uppercase transition-transform duration-150 ease-out group-hover:scale-[1.01]",
         size === "sm"
           ? "px-2.5 py-1 text-[0.62rem] tracking-[0.14em]"
           : "px-3 py-1.5 text-[0.68rem] tracking-[0.16em]"

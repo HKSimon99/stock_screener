@@ -219,7 +219,7 @@ export function InstrumentChart({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="surface-panel overflow-hidden rounded-2xl">
+    <div className="surface-panel motion-panel-in overflow-hidden rounded-2xl">
       {/* ── Toolbar ─────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-5 pb-2 pt-4">
         <div className="flex items-center gap-3">
@@ -262,7 +262,7 @@ export function InstrumentChart({
                 type="button"
                 onClick={() => onIntervalChange(iv)}
                 className={cn(
-                  "rounded-full px-2.5 py-1 text-[0.65rem] uppercase tracking-widest transition-colors",
+                  "motion-press rounded-full px-2.5 py-1 text-[0.65rem] uppercase tracking-widest transition-colors",
                   interval === iv
                     ? "bg-white/10 text-white"
                     : "text-faint hover:text-quiet"
@@ -280,7 +280,7 @@ export function InstrumentChart({
                 type="button"
                 onClick={() => onRangeChange(d)}
                 className={cn(
-                  "rounded-full px-2.5 py-1 text-[0.65rem] uppercase tracking-widest transition-colors",
+                  "motion-press rounded-full px-2.5 py-1 text-[0.65rem] uppercase tracking-widest transition-colors",
                   rangeDays === d
                     ? "bg-white/10 text-white"
                     : "text-faint hover:text-quiet"
@@ -312,7 +312,7 @@ export function InstrumentChart({
         {/* Empty state: no data or empty bars array */}
         {(!data || !data.bars?.length) && !isFetching && (
           <div className="absolute inset-0 flex items-center justify-center p-6">
-            <div className="max-w-md rounded-[1.35rem] border border-white/10 bg-black/40 px-5 py-5 text-center shadow-2xl backdrop-blur">
+            <div className="motion-panel-in max-w-md rounded-[1.35rem] border border-white/10 bg-black/40 px-5 py-5 text-center shadow-2xl backdrop-blur">
               <div className="text-sm font-medium text-white">{emptyCopy.title}</div>
               <div className="mt-2 text-xs leading-5 text-faint">{emptyCopy.body}</div>
               <div className="mt-3 rounded-full border border-white/10 px-3 py-1.5 text-[0.62rem] uppercase tracking-[0.16em] text-faint">

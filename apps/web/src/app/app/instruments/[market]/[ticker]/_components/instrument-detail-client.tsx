@@ -175,12 +175,12 @@ function scoreChip(label: string, score?: number, max = 100) {
   const safeScore = hasScore ? score : 0;
   const pct = hasScore ? Math.min(100, Math.max(0, (safeScore / max) * 100)) : 0;
   return (
-    <div className="surface-panel-soft rounded-[1.2rem] px-4 py-3">
+    <div className="motion-card surface-panel-soft rounded-[1.2rem] px-4 py-3">
       <div className="text-[0.65rem] uppercase tracking-widest text-faint">{label}</div>
       <div className="mt-1 font-mono text-lg text-white">{hasScore ? safeScore.toFixed(1) : "—"}</div>
       <div className="relative mt-2 h-1 w-full overflow-hidden rounded-full bg-white/8">
         <div
-          className="absolute inset-y-0 left-0 rounded-full bg-[oklch(0.78_0.11_84_/_0.6)]"
+          className="score-bar-fill absolute inset-y-0 left-0 rounded-full bg-[oklch(0.78_0.11_84_/_0.6)]"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -292,7 +292,7 @@ function MetricCard({
   market: "US" | "KR";
 }) {
   return (
-    <div className="surface-panel-soft rounded-[1.25rem] border border-white/8 px-4 py-4">
+    <div className="motion-card surface-panel-soft rounded-[1.25rem] border border-white/8 px-4 py-4">
       <div className="text-[0.65rem] uppercase tracking-[0.18em] text-faint">{label}</div>
       <div
         className={cn(
@@ -322,7 +322,7 @@ function MetricSection({
   defaultOpen?: boolean;
 }) {
   return (
-    <details className="group rounded-[1.25rem] border border-white/8 bg-white/[0.03] px-4 py-3" open={defaultOpen}>
+    <details className="motion-panel-in group rounded-[1.25rem] border border-white/8 bg-white/[0.03] px-4 py-3" open={defaultOpen}>
       <summary className="cursor-pointer list-none">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -340,7 +340,7 @@ function MetricSection({
 
 function MetricRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[0.95rem] border border-white/8 bg-black/10 px-3 py-3">
+    <div className="motion-card rounded-[0.95rem] border border-white/8 bg-black/10 px-3 py-3">
       <div className="text-[0.65rem] uppercase tracking-[0.15em] text-faint">{label}</div>
       <div className="mt-1 font-mono text-sm text-white">{value}</div>
     </div>
@@ -756,7 +756,7 @@ export function InstrumentDetailClient({
               type="button"
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "shrink-0 rounded-full border px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.12em] transition-colors",
+                "motion-press shrink-0 rounded-full border px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.12em] transition-colors",
                 activeTab === tab.id
                   ? "border-[oklch(0.78_0.11_84_/_0.48)] bg-[oklch(0.8_0.11_84_/_0.18)] text-white"
                   : "border-white/10 text-faint hover:text-white"
@@ -770,7 +770,7 @@ export function InstrumentDetailClient({
 
       {/* ── Overview tab ────────────────────────────────────────────── */}
       {activeTab === "overview" && (
-        <div className="surface-panel rounded-2xl px-5 py-5">
+        <div className="motion-panel-in surface-panel rounded-2xl px-5 py-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <div className="tiny-label">{labels.investorMetrics}</div>
@@ -891,7 +891,7 @@ export function InstrumentDetailClient({
           </div>
 
           {/* Strategy breakdown */}
-          <div className="surface-panel rounded-2xl px-5 py-5">
+          <div className="motion-panel-in surface-panel rounded-2xl px-5 py-5">
             <div className="tiny-label mb-4">
               {market === "KR" ? "전략별 상세" : "Strategy Breakdown"}
             </div>
@@ -981,6 +981,7 @@ export function InstrumentDetailClient({
 
       {/* ── Chart tab ───────────────────────────────────────────────── */}
       {activeTab === "chart" && (
+        <div className="motion-panel-in">
         <InstrumentChartComponent
           data={chart ?? null}
           interval={chartInterval}
@@ -989,11 +990,12 @@ export function InstrumentDetailClient({
           onRangeChange={setChartRangeDays}
           isFetching={chartFetching}
         />
+        </div>
       )}
 
       {/* ── Fundamentals tab ────────────────────────────────────────── */}
       {activeTab === "fundamentals" && (
-        <div className="surface-panel rounded-2xl px-5 py-5">
+        <div className="motion-panel-in surface-panel rounded-2xl px-5 py-5">
           <div className="tiny-label mb-4">{labels.investorMetrics}</div>
           <div className="space-y-3">
             <MetricSection

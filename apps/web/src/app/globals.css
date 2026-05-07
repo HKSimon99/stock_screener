@@ -110,6 +110,14 @@
   --sp-block: 72px;
   --sp-section: 80px;
   --sp-band: 104px;
+
+  --motion-fast: 140ms;
+  --motion-base: 220ms;
+  --motion-slow: 360ms;
+  --motion-page: 460ms;
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-soft: cubic-bezier(0.32, 0, 0.67, 0);
 }
 
 @layer base {
@@ -266,7 +274,11 @@
     font-weight: 750;
     line-height: 1.25;
     padding: 0.75rem 1.25rem;
-    transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+    transition:
+      transform var(--motion-fast) var(--ease-out-quart),
+      box-shadow var(--motion-fast) var(--ease-out-quart),
+      filter var(--motion-fast) var(--ease-out-quart),
+      background var(--motion-fast) var(--ease-out-quart);
     white-space: nowrap;
     box-shadow: 0 12px 24px rgba(37, 99, 235, 0.16);
   }
@@ -274,6 +286,10 @@
   .btn-cobalt:hover {
     background: var(--rv-primary-bright);
     transform: translateY(-1px);
+  }
+  .btn-primary:active,
+  .btn-cobalt:active {
+    transform: translateY(0) scale(0.985);
   }
 
   .btn-outline {
@@ -291,13 +307,19 @@
     font-weight: 750;
     line-height: 1.25;
     padding: 0.75rem 1.25rem;
-    transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+    transition:
+      border-color var(--motion-fast) var(--ease-out-quart),
+      background var(--motion-fast) var(--ease-out-quart),
+      transform var(--motion-fast) var(--ease-out-quart);
     white-space: nowrap;
   }
   .btn-outline:hover {
     background: #ffffff;
     border-color: rgba(37, 99, 235, 0.26);
     transform: translateY(-1px);
+  }
+  .btn-outline:active {
+    transform: translateY(0) scale(0.985);
   }
 
   .btn-pill-sm,
@@ -317,7 +339,12 @@
     font-weight: 750;
     line-height: 1.2;
     padding: 0.65rem 0.95rem;
-    transition: border-color 150ms ease, background 150ms ease, color 150ms ease, transform 150ms ease;
+    transition:
+      border-color var(--motion-fast) var(--ease-out-quart),
+      background var(--motion-fast) var(--ease-out-quart),
+      color var(--motion-fast) var(--ease-out-quart),
+      transform var(--motion-fast) var(--ease-out-quart),
+      box-shadow var(--motion-fast) var(--ease-out-quart);
   }
 
   .btn-pill-sm:hover,
@@ -326,6 +353,11 @@
     border-color: rgba(37, 99, 235, 0.24);
     color: var(--rv-ink);
     transform: translateY(-1px);
+  }
+  .btn-pill-sm:active,
+  .filter-chip:active,
+  .segmented-pill:active {
+    transform: translateY(0) scale(0.98);
   }
 
   .btn-pill-sm[data-active="true"],
@@ -356,7 +388,58 @@
   }
 
   .animate-rise {
-    animation: rise-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation: rise-in var(--motion-slow) var(--ease-out-quint) both;
+  }
+
+  .motion-card {
+    transition:
+      transform var(--motion-base) var(--ease-out-quart),
+      border-color var(--motion-base) var(--ease-out-quart),
+      background var(--motion-base) var(--ease-out-quart),
+      box-shadow var(--motion-base) var(--ease-out-quart);
+  }
+  .motion-card:hover {
+    transform: translateY(-2px);
+  }
+  .motion-card:active {
+    transform: translateY(0) scale(0.995);
+  }
+
+  .motion-press {
+    transition:
+      transform var(--motion-fast) var(--ease-out-quart),
+      background var(--motion-fast) var(--ease-out-quart),
+      color var(--motion-fast) var(--ease-out-quart),
+      border-color var(--motion-fast) var(--ease-out-quart);
+  }
+  .motion-press:active {
+    transform: scale(0.98);
+  }
+
+  .motion-link-arrow {
+    transition:
+      transform var(--motion-fast) var(--ease-out-quart),
+      opacity var(--motion-fast) var(--ease-out-quart);
+  }
+  .group:hover .motion-link-arrow {
+    transform: translate(2px, -2px);
+  }
+
+  .motion-sheet-backdrop {
+    animation: backdrop-in var(--motion-base) var(--ease-out-quart) both;
+  }
+
+  .motion-sheet {
+    animation: sheet-up var(--motion-slow) var(--ease-out-quint) both;
+  }
+
+  .motion-panel-in {
+    animation: panel-in var(--motion-base) var(--ease-out-quart) both;
+  }
+
+  .score-bar-fill {
+    transform-origin: left center;
+    animation: score-fill var(--motion-page) var(--ease-out-quint) both;
   }
 }
 
@@ -365,11 +448,74 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sheet-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes score-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes route-fade-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-4px); }
+}
+
+@keyframes route-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes route-forward-in {
+  from { opacity: 0; transform: translateX(18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes route-forward-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(-10px); }
+}
+
+::view-transition-old(root) {
+  animation: route-fade-out var(--motion-fast) var(--ease-in-soft) both;
+}
+
+::view-transition-new(root) {
+  animation: route-fade-in var(--motion-base) var(--ease-out-quart) both;
+}
+
+html:active-view-transition-type(nav-forward)::view-transition-old(root) {
+  animation: route-forward-out var(--motion-fast) var(--ease-in-soft) both;
+}
+
+html:active-view-transition-type(nav-forward)::view-transition-new(root) {
+  animation: route-forward-in var(--motion-slow) var(--ease-out-quart) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
   }
 }

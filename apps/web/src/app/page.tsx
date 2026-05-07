@@ -29,7 +29,7 @@ export default function Home() {
 
       <main>
         <section className="app-shell grid min-h-[calc(100svh-4rem)] items-center gap-8 py-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(24rem,0.78fr)] lg:gap-14 lg:py-14">
-          <div>
+          <div className="animate-rise">
             <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(15,23,42,0.1)] bg-white/80 px-3 py-2 text-[0.72rem] font-bold uppercase tracking-[0.14em] text-[var(--rv-mute)]">
               <Sparkles className="size-3.5 text-[var(--rv-teal)]" />
               {t("home.kicker")}
@@ -42,7 +42,7 @@ export default function Home() {
               {t("home.sub")}
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link href="/rankings" className="btn-primary">
+              <Link href="/rankings" transitionTypes={["nav-forward"]} className="btn-primary">
                 {t("home.cta.app")}
                 <ArrowRight className="size-4" />
               </Link>
@@ -52,7 +52,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="surface-panel rounded-2xl p-4 sm:p-5">
+          <div className="animate-rise surface-panel rounded-2xl p-4 sm:p-5" style={{ animationDelay: "120ms" }}>
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <div className="tiny-label">Live research desk</div>
@@ -68,7 +68,7 @@ export default function Home() {
                 ["#2", "MSFT", "88", "Platinum"],
                 ["#3", "AAPL", "81", "Gold"],
               ].map(([rank, ticker, score, level]) => (
-                <div key={ticker} className="rounded-xl border border-white/8 bg-white/[0.06] p-4">
+                <div key={ticker} className="motion-card rounded-xl border border-white/8 bg-white/[0.06] p-4">
                   <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -106,7 +106,7 @@ export default function Home() {
             {features.map((feature) => {
               const Icon = feature.icon;
               return (
-                <article key={feature.titleKey} className="metric-tile">
+                <article key={feature.titleKey} className="motion-card metric-tile">
                   <div className="flex size-11 items-center justify-center rounded-xl bg-[rgba(15,186,157,0.12)] text-[#075e54]">
                     <Icon className="size-5" />
                   </div>

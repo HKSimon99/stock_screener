@@ -33,7 +33,7 @@ export function AppNav() {
     <>
       <header className="sticky top-0 z-40 border-b border-[rgba(15,23,42,0.08)] bg-[rgba(246,248,251,0.96)] shadow-[0_8px_22px_rgba(15,23,42,0.04)]">
         <div className="app-shell flex h-16 items-center gap-3">
-          <Link href="/rankings" className="flex min-h-11 shrink-0 items-center gap-2">
+          <Link href="/rankings" className="motion-press flex min-h-11 shrink-0 items-center gap-2">
             <span className="flex size-10 items-center justify-center rounded-xl bg-[var(--rv-primary)] text-white shadow-[0_8px_18px_rgba(37,99,235,0.14)]">
               <Sparkles className="size-4" />
             </span>
@@ -93,7 +93,7 @@ export function AppNav() {
 
             <Link
               href="/app/search"
-              className="flex size-11 items-center justify-center rounded-full border border-[rgba(15,23,42,0.1)] bg-white text-[var(--rv-mute)] transition-colors hover:text-[var(--rv-ink)] md:hidden"
+              className="motion-press flex size-11 items-center justify-center rounded-full border border-[rgba(15,23,42,0.1)] bg-white text-[var(--rv-mute)] transition-colors hover:text-[var(--rv-ink)] md:hidden"
               aria-label="Search"
             >
               <Search className="size-4" />
@@ -117,7 +117,7 @@ export function AppNav() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex min-h-12 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-bold uppercase tracking-[0.04em] transition-colors",
+                  "motion-press flex min-h-12 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-bold uppercase tracking-[0.04em] transition-colors",
                   active
                     ? "bg-[rgba(15,186,157,0.13)] text-[#075e54]"
                     : "text-[var(--rv-stone)] hover:text-[var(--rv-ink)]"

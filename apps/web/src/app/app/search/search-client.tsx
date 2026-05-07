@@ -149,7 +149,8 @@ export function SearchClient({
                   <Link
                     key={`${item.market}-${item.ticker}`}
                     href={buildInstrumentPath(item.ticker, item.market)}
-                    className="rounded-full border border-white/10 px-4 py-2 text-sm text-faint transition-colors hover:text-white"
+                    transitionTypes={["nav-forward"]}
+                    className="motion-press rounded-full border border-white/10 px-4 py-2 text-sm text-faint transition-colors hover:text-white"
                   >
                     {item.market} {item.ticker}
                   </Link>
@@ -168,7 +169,8 @@ export function SearchClient({
                   <Link
                     key={`${item.market}-${item.ticker}`}
                     href={buildInstrumentPath(item.ticker, item.market)}
-                    className="rounded-full border border-white/10 px-4 py-2 text-sm text-faint transition-colors hover:text-white"
+                    transitionTypes={["nav-forward"]}
+                    className="motion-press rounded-full border border-white/10 px-4 py-2 text-sm text-faint transition-colors hover:text-white"
                   >
                     {item.market} {item.ticker}
                   </Link>
@@ -217,11 +219,12 @@ export function SearchClient({
               return (
                 <div
                   key={`${item.market}-${item.ticker}`}
-                  className="surface-panel-soft flex flex-col gap-4 rounded-xl px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  className="motion-card surface-panel-soft flex flex-col gap-4 rounded-xl px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div>
                     <Link
                       href={buildInstrumentPath(item.ticker, item.market)}
+                      transitionTypes={["nav-forward"]}
                       onClick={() =>
                         remember({
                           ticker: item.ticker,
@@ -264,7 +267,7 @@ export function SearchClient({
                       })
                     }
                     className={cn(
-                      "inline-flex items-center gap-2 self-start rounded-full border px-4 py-2 text-[0.72rem] uppercase tracking-[0.16em] transition-colors",
+                      "motion-press inline-flex items-center gap-2 self-start rounded-full border px-4 py-2 text-[0.72rem] uppercase tracking-[0.16em] transition-colors",
                       pinnedState
                         ? "border-[oklch(0.78_0.11_84_/_0.42)] bg-[oklch(0.8_0.11_84_/_0.14)] text-white"
                         : "border-white/10 text-faint hover:text-white"

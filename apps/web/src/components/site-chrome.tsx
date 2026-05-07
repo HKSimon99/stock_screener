@@ -12,7 +12,7 @@ export function SiteChrome() {
   return (
     <header className="sticky top-0 z-50 border-b border-[rgba(15,23,42,0.08)] bg-[rgba(246,248,251,0.96)] shadow-[0_8px_22px_rgba(15,23,42,0.04)]">
       <div className="app-shell flex h-16 items-center justify-between gap-4">
-        <Link href="/" className="flex min-h-11 shrink-0 items-center gap-2">
+        <Link href="/" className="motion-press flex min-h-11 shrink-0 items-center gap-2">
           <span className="flex size-10 items-center justify-center rounded-xl bg-[var(--rv-primary)] text-white shadow-[0_8px_18px_rgba(37,99,235,0.14)]">
             <Sparkles className="size-4" />
           </span>
@@ -26,14 +26,14 @@ export function SiteChrome() {
             <Link
               key={item.href}
               href={item.href}
-              className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--rv-mute)] transition-colors hover:text-[var(--rv-ink)]"
+              className="motion-press inline-flex min-h-11 items-center text-sm font-semibold text-[var(--rv-mute)] transition-colors hover:text-[var(--rv-ink)]"
             >
               {item.label}
             </Link>
           ))}
         </nav>
 
-        <Link href="/rankings" className="btn-primary shrink-0 px-4 py-2 text-sm">
+        <Link href="/rankings" transitionTypes={["nav-forward"]} className="btn-primary shrink-0 px-4 py-2 text-sm">
           Open App
           <ArrowRight className="size-4" />
         </Link>

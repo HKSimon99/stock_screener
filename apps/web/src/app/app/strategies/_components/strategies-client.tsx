@@ -118,7 +118,7 @@ const STRATEGY_MARKETS: Record<StrategyTab, Array<"US" | "KR">> = {
 function StrategyInfoCard({ tab }: { tab: StrategyTab }) {
   const info = STRATEGY_INFO[tab];
   return (
-    <div className="surface-panel rounded-2xl px-5 py-5 space-y-4">
+    <div className="motion-panel-in surface-panel rounded-2xl px-5 py-5 space-y-4">
       {/* Guru */}
       <div className="flex items-start gap-3">
         <div className="flex-1">
@@ -136,7 +136,7 @@ function StrategyInfoCard({ tab }: { tab: StrategyTab }) {
         {info.criteria.map((c) => (
           <div
             key={c.label}
-            className="rounded-xl border border-white/8 bg-white/[0.06] px-3.5 py-2.5"
+            className="motion-card rounded-xl border border-white/8 bg-white/[0.06] px-3.5 py-2.5"
           >
             <div className="text-[0.65rem] font-medium uppercase tracking-[0.12em] text-white/70">
               {c.label}
@@ -258,7 +258,7 @@ export function StrategiesClient({ initialData = {} }: StrategiesClientProps) {
                 type="button"
                 onClick={() => handleTabChange(tab)}
                 className={cn(
-                  "rounded-full px-4 py-1.5 text-[0.72rem] uppercase tracking-[0.14em] transition-colors",
+                  "motion-press rounded-full px-4 py-1.5 text-[0.72rem] uppercase tracking-[0.14em] transition-colors",
                   activeTab === tab
                     ? "bg-white/10 text-white"
                     : "text-faint hover:text-quiet"
@@ -278,7 +278,7 @@ export function StrategiesClient({ initialData = {} }: StrategiesClientProps) {
                   type="button"
                   onClick={() => setMarket(m)}
                   className={cn(
-                    "rounded-full px-4 py-1.5 text-[0.72rem] uppercase tracking-[0.14em] transition-colors",
+                    "motion-press rounded-full px-4 py-1.5 text-[0.72rem] uppercase tracking-[0.14em] transition-colors",
                     market === m
                       ? "bg-white/10 text-white"
                       : "text-faint hover:text-quiet"

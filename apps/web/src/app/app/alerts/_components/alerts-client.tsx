@@ -87,7 +87,7 @@ export function AlertsClient({ initialData }: AlertsClientProps) {
                 <div
                   key={alert.id}
                   className={cn(
-                    "surface-panel rounded-xl px-5 py-4",
+                    "motion-card surface-panel rounded-xl px-5 py-4",
                     severityTone(alert.severity)
                   )}
                 >
@@ -101,7 +101,8 @@ export function AlertsClient({ initialData }: AlertsClientProps) {
                         {alert.ticker && alert.market && (
                           <Link
                             href={buildInstrumentPath(alert.ticker, alert.market)}
-                            className="rounded-full border border-white/10 px-2 py-0.5 text-[0.65rem] uppercase tracking-widest text-faint transition-colors hover:text-white"
+                            transitionTypes={["nav-forward"]}
+                            className="motion-press rounded-full border border-white/10 px-2 py-0.5 text-[0.65rem] uppercase tracking-widest text-faint transition-colors hover:text-white"
                           >
                             {alert.market} {alert.ticker}
                           </Link>

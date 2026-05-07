@@ -360,7 +360,7 @@ function ScoreMeter({ label, value }: { label: string; value: number }) {
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-[oklch(0.86_0.02_88)]">
         <div
-          className={cn("h-full rounded-full transition-[width] duration-700 ease-out", scoreBarTone(clamped))}
+          className={cn("score-bar-fill h-full rounded-full transition-[width] duration-700 ease-out", scoreBarTone(clamped))}
           style={{ width: `${clamped}%` }}
         />
       </div>
@@ -421,7 +421,7 @@ function PinnedButton({
       type="button"
       onClick={handleToggle}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.14em] transition-colors",
+        "motion-press inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.14em] transition-colors",
         pinned
           ? "border-[oklch(0.64_0.12_82_/_0.5)] bg-[oklch(0.88_0.1_84_/_0.32)] text-[oklch(0.32_0.06_72)]"
           : light
@@ -515,12 +515,13 @@ function RankedCard({ item, index }: { item: RankingItem; index: number }) {
 
   return (
     <article
-      className="animate-rise group relative overflow-hidden rounded-[1.4rem] border border-[oklch(0.8_0.03_88)] bg-[oklch(0.985_0.012_88_/_0.92)] transition-transform duration-300 md:shadow-[0_18px_60px_oklch(0.18_0.025_250_/_0.12)] md:hover:-translate-y-0.5"
+      className="animate-rise motion-card group relative overflow-hidden rounded-[1.4rem] border border-[oklch(0.8_0.03_88)] bg-[oklch(0.985_0.012_88_/_0.92)] md:shadow-[0_18px_60px_oklch(0.18_0.025_250_/_0.12)]"
       style={{ animationDelay: `${Math.min(index * 35, 300)}ms` }}
     >
       {/* ── Mobile compact row (< md) ── */}
       <Link
         href={buildInstrumentPath(item.ticker, item.market)}
+        transitionTypes={["nav-forward"]}
         className="md:hidden flex items-center gap-3 pl-5 pr-4 py-3.5 active:bg-black/5 transition-colors"
       >
         {/* Rank */}
@@ -541,7 +542,7 @@ function RankedCard({ item, index }: { item: RankingItem; index: number }) {
                 <div className="text-[0.5rem] uppercase tracking-wide text-faint text-center leading-none mb-0.5">{label}</div>
                 <div className="h-[3px] bg-[oklch(0.86_0.02_88)] rounded-full overflow-hidden">
                   <div
-                    className={cn("h-full rounded-full transition-[width] duration-700 ease-out", scoreBarTone(Math.min(100, value)))}
+                    className={cn("score-bar-fill h-full rounded-full transition-[width] duration-700 ease-out", scoreBarTone(Math.min(100, value)))}
                     style={{ width: `${Math.min(100, value)}%` }}
                   />
                 </div>
@@ -575,6 +576,7 @@ function RankedCard({ item, index }: { item: RankingItem; index: number }) {
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href={buildInstrumentPath(item.ticker, item.market)}
+                transitionTypes={["nav-forward"]}
                 className="font-heading text-[clamp(1.6rem,3.5vw,2.8rem)] uppercase leading-[1.05] tracking-[-0.04em] text-[oklch(0.18_0.018_250)] transition-colors hover:text-[oklch(0.5_0.12_82)] line-clamp-2"
               >
                 {names.primary}
@@ -622,6 +624,7 @@ function RankedCard({ item, index }: { item: RankingItem; index: number }) {
             />
             <Link
               href={buildInstrumentPath(item.ticker, item.market)}
+              transitionTypes={["nav-forward"]}
               className="inline-flex items-center gap-2 rounded-full bg-[oklch(0.18_0.018_250)] px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[oklch(0.28_0.03_250)]"
             >
               Open
@@ -656,6 +659,7 @@ function WatchlistCard({
       <div className="min-w-0">
         <Link
           href={buildInstrumentPath(item.ticker, item.market as "US" | "KR")}
+          transitionTypes={["nav-forward"]}
           className="block truncate font-heading text-2xl uppercase leading-none text-[oklch(0.22_0.018_250)] transition-colors hover:text-[oklch(0.5_0.12_82)]"
         >
           {primaryName}
@@ -977,11 +981,11 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
         <>
           {/* Backdrop */}
           <div
-            className="md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+            className="motion-sheet-backdrop md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
             onClick={() => setShowAdvanced(false)}
           />
           {/* Sheet */}
-          <div className="md:hidden fixed inset-x-0 bottom-0 z-50 rounded-t-2xl bg-[var(--rv-canvas-dark)] shadow-[0_-20px_60px_rgba(15,23,42,0.35)]">
+          <div className="motion-sheet md:hidden fixed inset-x-0 bottom-0 z-50 rounded-t-2xl bg-[var(--rv-canvas-dark)] shadow-[0_-20px_60px_rgba(15,23,42,0.35)]">
             {/* Handle pill */}
             <div className="flex justify-center pt-3 pb-1">
               <div className="h-1 w-10 rounded-full bg-white/20" />
@@ -1095,7 +1099,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
 
       {/* ── Desktop filter panel (collapsible, md+ only) ─────────────────── */}
       {showAdvanced && (
-        <div className="hidden md:block mt-3 surface-panel rounded-2xl px-4 py-4 sm:px-5">
+        <div className="motion-panel-in hidden md:block mt-3 surface-panel rounded-2xl px-4 py-4 sm:px-5">
           <FilterPanelContent {...filterPanelProps} />
         </div>
       )}
@@ -1170,7 +1174,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
               <button
                 type="button"
                 onClick={clearFilters}
-                className="inline-flex items-center gap-2 rounded-full border border-[oklch(0.78_0.03_88)] bg-white px-4 py-2.5 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[oklch(0.28_0.02_250)] transition-colors hover:border-[oklch(0.65_0.08_82)]"
+                className="motion-press inline-flex items-center gap-2 rounded-full border border-[oklch(0.78_0.03_88)] bg-white px-4 py-2.5 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-[oklch(0.28_0.02_250)] transition-colors hover:border-[oklch(0.65_0.08_82)]"
               >
                 <RefreshCw className="size-3.5" />
                 Reset filters
@@ -1211,7 +1215,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
               <button
                 type="button"
                 onClick={() => replaceParams({ limit: Math.min(filters.limit + 100, RANKINGS_LIMIT_MAX) })}
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-[oklch(0.18_0.018_250)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[oklch(0.28_0.03_250)]"
+                className="motion-press inline-flex items-center justify-center gap-2 rounded-full bg-[oklch(0.18_0.018_250)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[oklch(0.28_0.03_250)]"
               >
                 {t("rankings.leaderboard.loadMore")}
               </button>

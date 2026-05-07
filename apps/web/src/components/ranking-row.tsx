@@ -37,18 +37,18 @@ export function RankingRow({ item, showPin = true }: RankingRowProps) {
   const score = Math.max(0, Math.min(100, item.final_score));
 
   return (
-    <article className="group rounded-xl border border-[rgba(15,23,42,0.08)] bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] transition-transform hover:-translate-y-0.5 sm:p-4">
+    <article className="motion-card group rounded-xl border border-[rgba(15,23,42,0.08)] bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:p-4">
       <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3">
         <div className="text-right font-mono text-xs font-semibold text-[var(--rv-stone)]">
           #{item.rank}
         </div>
 
-        <Link href={buildInstrumentPath(item.ticker, item.market)} className="min-w-0">
+        <Link href={buildInstrumentPath(item.ticker, item.market)} transitionTypes={["nav-forward"]} className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
             <span className="truncate font-heading text-xl font-bold uppercase text-[var(--rv-ink)] sm:text-2xl">
               {item.ticker}
             </span>
-            <ArrowUpRight className="size-3.5 shrink-0 text-[var(--rv-stone)] opacity-0 transition-opacity group-hover:opacity-100" />
+            <ArrowUpRight className="motion-link-arrow size-3.5 shrink-0 text-[var(--rv-stone)] opacity-0 group-hover:opacity-100" />
           </div>
           <div className="mt-0.5 truncate text-sm text-[var(--rv-mute)]">
             {item.name ?? item.exchange ?? item.market}
@@ -68,7 +68,7 @@ export function RankingRow({ item, showPin = true }: RankingRowProps) {
           </div>
           <div className="h-1 w-16 overflow-hidden rounded-full bg-[var(--rv-surface-soft)]">
             <div
-            className="h-full rounded-full bg-[var(--rv-teal)]"
+              className="score-bar-fill h-full rounded-full bg-[var(--rv-teal)]"
               style={{ width: `${score}%` }}
             />
           </div>

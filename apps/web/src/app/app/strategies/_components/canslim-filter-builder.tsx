@@ -157,7 +157,7 @@ function ToggleRow({
       type="button"
       onClick={() => onChange(!value)}
       className={cn(
-        "flex w-full items-start justify-between rounded-[0.9rem] border px-3 py-2.5 text-left transition-colors",
+        "motion-press flex w-full items-start justify-between rounded-[0.9rem] border px-3 py-2.5 text-left transition-colors",
         value
           ? "border-[oklch(0.78_0.11_84_/_0.4)] bg-[oklch(0.78_0.11_84_/_0.1)] text-white"
           : "border-white/8 text-faint hover:border-white/15 hover:text-quiet"
@@ -247,12 +247,12 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
   return (
     <div className="space-y-3">
       {/* ── Filter panel toggle ─────────────────────────────────────────── */}
-      <div className="surface-panel overflow-hidden rounded-[1.45rem]">
+      <div className="surface-panel motion-panel-in overflow-hidden rounded-[1.45rem]">
         {/* Toggle header */}
         <button
           type="button"
           onClick={() => setPanelOpen((v) => !v)}
-          className="flex w-full items-center justify-between px-5 py-4"
+          className="motion-press flex w-full items-center justify-between px-5 py-4"
         >
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="size-3.5 text-faint" />
@@ -274,7 +274,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
 
         {/* Expanded panel */}
         {panelOpen && (
-          <div className="border-t border-white/6 px-5 pb-5 pt-4">
+          <div className="motion-panel-in border-t border-white/6 px-5 pb-5 pt-4">
             {/* Presets */}
             <div className="mb-5">
               <div className="mb-2 text-[0.62rem] uppercase tracking-widest text-faint">
@@ -287,7 +287,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
                     type="button"
                     onClick={() => applyPreset(key)}
                     className={cn(
-                      "rounded-full border px-3 py-1.5 text-[0.65rem] uppercase tracking-[0.14em] transition-colors",
+                      "motion-press rounded-full border px-3 py-1.5 text-[0.65rem] uppercase tracking-[0.14em] transition-colors",
                       activePreset === key
                         ? "border-[oklch(0.78_0.11_84_/_0.5)] bg-[oklch(0.78_0.11_84_/_0.18)] text-white"
                         : "border-white/10 text-faint hover:border-white/20 hover:text-quiet"
@@ -348,7 +348,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
                 <button
                   type="button"
                   onClick={resetFilters}
-                  className="flex items-center gap-1.5 rounded-full border border-white/8 px-4 py-2 text-[0.65rem] uppercase tracking-[0.14em] text-faint transition-colors hover:text-white"
+                  className="motion-press flex items-center gap-1.5 rounded-full border border-white/8 px-4 py-2 text-[0.65rem] uppercase tracking-[0.14em] text-faint transition-colors hover:text-white"
                 >
                   <X className="size-3" />
                   Reset
@@ -357,7 +357,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
               <button
                 type="button"
                 onClick={applyFilters}
-                className="rounded-full bg-[oklch(0.78_0.11_84_/_0.25)] px-5 py-2 text-[0.65rem] uppercase tracking-[0.14em] text-white transition-colors hover:bg-[oklch(0.78_0.11_84_/_0.35)]"
+                className="motion-press rounded-full bg-[oklch(0.78_0.11_84_/_0.25)] px-5 py-2 text-[0.65rem] uppercase tracking-[0.14em] text-white transition-colors hover:bg-[oklch(0.78_0.11_84_/_0.35)]"
               >
                 Apply Filters
               </button>
@@ -368,7 +368,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
 
       {/* ── Active filter summary (when panel is closed) ────────────────── */}
       {!panelOpen && showFiltered && (
-        <div className="flex items-center justify-between rounded-[1rem] border border-[oklch(0.78_0.11_84_/_0.3)] bg-[oklch(0.78_0.11_84_/_0.08)] px-4 py-2">
+        <div className="motion-panel-in flex items-center justify-between rounded-[1rem] border border-[oklch(0.78_0.11_84_/_0.3)] bg-[oklch(0.78_0.11_84_/_0.08)] px-4 py-2">
           <span className="text-[0.65rem] text-[oklch(0.88_0.12_85)]">
             {filterCount} filter{filterCount !== 1 ? "s" : ""} active
             {filteredData && ` · ${filteredData.total} results`}
@@ -377,7 +377,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
           <button
             type="button"
             onClick={resetFilters}
-            className="flex items-center gap-1 text-[0.62rem] text-faint transition-colors hover:text-white"
+            className="motion-press flex items-center gap-1 text-[0.62rem] text-faint transition-colors hover:text-white"
           >
             <X className="size-3" />
             Clear

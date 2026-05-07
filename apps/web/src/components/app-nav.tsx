@@ -147,7 +147,7 @@ export function AppNav() {
                 className={cn(
                   "motion-press flex min-h-12 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-bold uppercase tracking-[0.04em] transition-colors",
                   active
-                    ? "bg-[rgba(15,186,157,0.13)] text-[#075e54]"
+                    ? "bg-[rgba(15,186,157,0.13)] text-[#075e54] dark:text-[#2dd4bf]"
                     : "text-[var(--rv-stone)] hover:text-[var(--rv-ink)]"
                 )}
               >

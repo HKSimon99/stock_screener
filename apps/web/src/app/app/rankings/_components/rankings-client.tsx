@@ -274,7 +274,7 @@ function coverageTone(state?: CoverageState): string {
   if (state === "stale") {
     return "border-[oklch(0.72_0.12_55_/_0.34)] bg-[oklch(0.88_0.08_55_/_0.24)] text-[oklch(0.43_0.08_52)]";
   }
-  return "border-[oklch(0.55_0.02_248_/_0.28)] bg-white/45 text-[oklch(0.38_0.02_248)]";
+  return "border-[oklch(0.55_0.02_248_/_0.28)] bg-[oklch(0.55_0.02_248_/_0.12)] text-[oklch(0.38_0.02_248)] dark:text-[oklch(0.72_0.02_248)]";
 }
 
 /** Strip legal boilerplate suffixes from US stock names for cleaner display. */
@@ -1035,7 +1035,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
                   className={cn(
                     "min-h-11 rounded-xl px-4 py-2 text-sm font-semibold transition-colors",
                     filters.market === market
-                      ? "bg-white text-[var(--rv-card-title)]"
+                      ? "bg-[var(--rv-ink)] text-[var(--rv-canvas-light)]"
                       : "text-faint hover:text-white"
                   )}
                 >
@@ -1148,7 +1148,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
         )}
 
         {/* ── Leaderboard ────────────────────────────────────────────── */}
-        <section className="rounded-2xl border border-[rgba(15,23,42,0.1)] bg-white/82 px-4 py-4 text-[var(--rv-ink)] shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5">
+        <section className="rounded-2xl border px-4 py-4 text-[var(--rv-ink)] shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5" style={{ background: "var(--rv-leaderboard-bg)", borderColor: "var(--rv-leaderboard-border)" }}>
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
               <div className="tiny-label">{t("rankings.leaderboard.eyebrow")}</div>

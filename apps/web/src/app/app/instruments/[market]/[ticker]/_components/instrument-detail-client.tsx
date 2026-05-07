@@ -739,10 +739,8 @@ export function InstrumentDetailClient({
       )}
 
       {/* ── Tab bar ─────────────────────────────────────────────────── */}
-      <div className="sticky top-[4.5rem] z-30 -mx-4 px-4 py-2 sm:-mx-6 sm:px-6"
-        style={{ background: "rgba(246,248,251,0.84)", backdropFilter: "blur(16px)" }}
-      >
-        <div className="flex gap-1 overflow-x-auto">
+      <div className="sticky top-[4.5rem] z-30 -mx-4 px-4 py-2 sm:-mx-6 sm:px-6">
+        <div className="light-panel flex gap-1 overflow-x-auto rounded-2xl p-1 backdrop-blur">
           {(
             [
               { id: "overview",      label: market === "KR" ? "개요"     : "Overview"      },
@@ -758,8 +756,8 @@ export function InstrumentDetailClient({
               className={cn(
                 "motion-press shrink-0 rounded-full border px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.12em] transition-colors",
                 activeTab === tab.id
-                  ? "border-[oklch(0.78_0.11_84_/_0.48)] bg-[oklch(0.8_0.11_84_/_0.18)] text-white"
-                  : "border-white/10 text-faint hover:text-white"
+                  ? "border-[rgba(37,99,235,0.26)] bg-[var(--rv-ink)] text-[var(--rv-canvas-light)] shadow-[0_8px_18px_rgba(15,23,42,0.12)]"
+                  : "border-transparent text-[var(--rv-mute)] hover:bg-[var(--rv-surface-soft)] hover:text-[var(--rv-ink)]"
               )}
             >
               {tab.label}

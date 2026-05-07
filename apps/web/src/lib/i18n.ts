@@ -61,6 +61,16 @@ export type TranslationKey =
   | "home.next.body"
   | "home.next.cta"
   | "home.footer.disclaimer"
+  | "home.leaderboard.kicker"
+  | "home.leaderboard.ranked"
+  | "home.leaderboard.viewAll"
+  | "home.how.title"
+  | "home.how.step1.title"
+  | "home.how.step1.body"
+  | "home.how.step2.title"
+  | "home.how.step2.body"
+  | "home.how.step3.title"
+  | "home.how.step3.body"
   // ── Search page ───────────────────────────────────────────────────────────
   | "search.kicker"
   | "search.headline"
@@ -216,6 +226,16 @@ export const translations: Record<Lang, Dictionary> = {
     "home.next.body":                  "The app shell exposes canonical routes, a search-first entry, and coverage-aware instrument pages. Rankings update nightly.",
     "home.next.cta":                   "Open search",
     "home.footer.disclaimer":          "Not investment advice.",
+    "home.leaderboard.kicker":         "Live research desk",
+    "home.leaderboard.ranked":         "ranked",
+    "home.leaderboard.viewAll":        "View full rankings",
+    "home.how.title":                  "How it works",
+    "home.how.step1.title":            "Ingest",
+    "home.how.step1.body":             "We pull price, volume, fundamentals and filings for 6,500+ US and Korean equities every trading day.",
+    "home.how.step2.title":            "Score",
+    "home.how.step2.body":             "Five independent models — CANSLIM, Piotroski, Minervini, Weinstein and Dual Momentum — grade each name 0–100.",
+    "home.how.step3.title":            "Rank",
+    "home.how.step3.body":             "A conviction-weighted consensus score surfaces the names where multiple strategies agree. No single-model noise.",
     // Search
     "search.kicker":           "Symbol Search",
     "search.headline":         "Search the covered universe first.",
@@ -369,6 +389,16 @@ export const translations: Record<Lang, Dictionary> = {
     "home.next.body":                  "앱 셸은 정규 경로, 검색 우선 진입, 커버리지 인식 종목 페이지를 제공합니다. 랭킹은 매일 밤 업데이트됩니다.",
     "home.next.cta":                   "검색 열기",
     "home.footer.disclaimer":          "투자 조언이 아닙니다.",
+    "home.leaderboard.kicker":         "실시간 리서치 데스크",
+    "home.leaderboard.ranked":         "랭크됨",
+    "home.leaderboard.viewAll":        "전체 랭킹 보기",
+    "home.how.title":                  "작동 방식",
+    "home.how.step1.title":            "수집",
+    "home.how.step1.body":             "매 거래일마다 미국·한국 주식 6,500개 이상의 가격, 거래량, 재무 지표, 공시 데이터를 수집합니다.",
+    "home.how.step2.title":            "채점",
+    "home.how.step2.body":             "CANSLIM, 피오트로스키, 미너비니, 와인스타인, 듀얼 모멘텀 — 5가지 독립 모델이 각 종목을 0~100점으로 평가합니다.",
+    "home.how.step3.title":            "순위",
+    "home.how.step3.body":             "신뢰 가중 컨센서스 점수가 여러 전략이 동의하는 종목을 상위로 올립니다. 단일 모델 노이즈 없음.",
     // Search
     "search.kicker":           "종목 검색",
     "search.headline":         "커버리지 내 종목을 먼저 검색하세요.",

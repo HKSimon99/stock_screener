@@ -1,6 +1,10 @@
+"use client";
+
 import Link from "next/link";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useUIStore } from "@/lib/store";
+import { cn } from "@/lib/utils";
 
 const SITE_LINKS = [
   { href: "/methodology", label: "Methodology" },
@@ -10,6 +14,9 @@ const SITE_LINKS = [
 ] as const;
 
 export function SiteChrome() {
+  const lang = useUIStore((state) => state.lang);
+  const setLang = useUIStore((state) => state.setLang);
+
   return (
     <header
       className="sticky top-0 z-50 border-b"
@@ -43,7 +50,33 @@ export function SiteChrome() {
         </nav>
 
         <div className="flex items-center gap-2">
+          {/* Language toggle */}
+          <div
+            className="flex h-12 items-center rounded-full border p-0.5"
+            style={{
+              background: "var(--rv-lang-toggle-bg)",
+              borderColor: "var(--rv-header-border)",
+            }}
+          >
+            {(["en", "ko"] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setLang(item)}
+                className={cn(
+                  "h-11 min-w-11 rounded-full px-2 text-xs font-bold uppercase tracking-[0.08em] transition-colors",
+                  lang === item
+                    ? "bg-[var(--rv-ink)] text-[var(--rv-canvas-light)]"
+                    : "text-[var(--rv-stone)] hover:text-[var(--rv-ink)]"
+                )}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+
           <ThemeToggle />
+
           <Link href="/rankings" transitionTypes={["nav-forward"]} className="btn-primary shrink-0 px-4 py-2 text-sm">
             Open App
             <ArrowRight className="size-4" />

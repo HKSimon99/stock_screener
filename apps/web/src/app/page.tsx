@@ -16,8 +16,8 @@ const STRATEGY_LABELS = ["CAN", "PIO", "MIN", "WEI"] as const;
 
 const CONVICTION_COLORS: Record<string, { bg: string; text: string }> = {
   Diamond: { bg: "bg-[oklch(0.55_0.14_245_/_0.22)]", text: "text-[oklch(0.78_0.12_245)]" },
-  Platinum: { bg: "bg-[oklch(0.6_0.06_200_/_0.2)]", text: "text-[oklch(0.82_0.05_200)]" },
-  Gold:     { bg: "bg-[oklch(0.72_0.12_84_/_0.2)]",  text: "text-[oklch(0.82_0.11_84)]" },
+  Platinum: { bg: "bg-[oklch(0.6_0.06_200_/_0.2)]",  text: "text-[oklch(0.82_0.05_200)]" },
+  Gold:     { bg: "bg-[oklch(0.72_0.12_84_/_0.2)]",   text: "text-[oklch(0.82_0.11_84)]" },
 };
 
 function ScoreBar({ value }: { value: number }) {
@@ -32,40 +32,29 @@ function ScoreBar({ value }: { value: number }) {
 }
 
 const FEATURE_ICONS = [Search, ShieldCheck, BarChart3, Bell] as const;
-
-const STEPS = [
-  {
-    icon: Database,
-    title: "Ingest",
-    body: "We pull price, volume, fundamentals and filings for 6,500+ US and Korean equities every trading day.",
-  },
-  {
-    icon: Zap,
-    title: "Score",
-    body: "Five independent models — CANSLIM, Piotroski, Minervini, Weinstein and Dual Momentum — grade each name 0–100.",
-  },
-  {
-    icon: TrendingUp,
-    title: "Rank",
-    body: "A conviction-weighted consensus score surfaces the names where multiple strategies agree. No single-model noise.",
-  },
-] as const;
+const STEP_ICONS = [Database, Zap, TrendingUp] as const;
 
 export default function Home() {
   const { t } = useT();
 
+  const steps = [
+    { icon: STEP_ICONS[0], titleKey: "home.how.step1.title" as const, bodyKey: "home.how.step1.body" as const },
+    { icon: STEP_ICONS[1], titleKey: "home.how.step2.title" as const, bodyKey: "home.how.step2.body" as const },
+    { icon: STEP_ICONS[2], titleKey: "home.how.step3.title" as const, bodyKey: "home.how.step3.body" as const },
+  ];
+
   const features = [
-    { icon: FEATURE_ICONS[0], titleKey: "home.features.search.title", bodyKey: "home.features.search.body" },
-    { icon: FEATURE_ICONS[1], titleKey: "home.features.coverage.title", bodyKey: "home.features.coverage.body" },
-    { icon: FEATURE_ICONS[2], titleKey: "home.features.chart.title", bodyKey: "home.features.chart.body" },
-    { icon: FEATURE_ICONS[3], titleKey: "home.features.regime.title", bodyKey: "home.features.regime.body" },
-  ] as const;
+    { icon: FEATURE_ICONS[0], titleKey: "home.features.search.title" as const, bodyKey: "home.features.search.body" as const },
+    { icon: FEATURE_ICONS[1], titleKey: "home.features.coverage.title" as const, bodyKey: "home.features.coverage.body" as const },
+    { icon: FEATURE_ICONS[2], titleKey: "home.features.chart.title" as const, bodyKey: "home.features.chart.body" as const },
+    { icon: FEATURE_ICONS[3], titleKey: "home.features.regime.title" as const, bodyKey: "home.features.regime.body" as const },
+  ];
 
   const stats = [
-    { labelKey: "home.stats.universe.label", valueKey: "home.stats.universe.value" },
-    { labelKey: "home.stats.strategies.label", valueKey: "home.stats.strategies.value" },
-    { labelKey: "home.stats.data.label", valueKey: "home.stats.data.value" },
-  ] as const;
+    { labelKey: "home.stats.universe.label" as const, valueKey: "home.stats.universe.value" as const },
+    { labelKey: "home.stats.strategies.label" as const, valueKey: "home.stats.strategies.value" as const },
+    { labelKey: "home.stats.data.label" as const, valueKey: "home.stats.data.value" as const },
+  ];
 
   return (
     <div className="min-h-screen">
@@ -76,7 +65,8 @@ export default function Home() {
         <section className="app-shell grid min-h-[calc(100svh-4rem)] items-center gap-8 py-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(24rem,0.78fr)] lg:gap-14 lg:py-14">
           {/* left copy */}
           <div className="animate-rise">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(15,23,42,0.1)] bg-white/80 px-3 py-2 text-[0.72rem] font-bold uppercase tracking-[0.14em] text-[var(--rv-mute)]">
+            {/* kicker badge — CSS-var based so dark mode adapts */}
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--rv-hairline-dark)] bg-[var(--rv-surface-elevated)] px-3 py-2 text-[0.72rem] font-bold uppercase tracking-[0.14em] text-[var(--rv-mute)]">
               <Sparkles className="size-3.5 text-[var(--rv-teal)]" />
               {t("home.kicker")}
             </div>
@@ -99,7 +89,7 @@ export default function Home() {
             </div>
 
             {/* inline stats strip */}
-            <div className="mt-10 flex flex-wrap gap-6 border-t border-[rgba(15,23,42,0.08)] pt-8">
+            <div className="mt-10 flex flex-wrap gap-6 border-t border-[var(--rv-hairline-dark)] pt-8">
               {stats.map((s) => (
                 <div key={s.labelKey}>
                   <div className="font-heading text-2xl font-bold text-[var(--rv-ink)]">{t(s.valueKey)}</div>
@@ -109,11 +99,11 @@ export default function Home() {
             </div>
           </div>
 
-          {/* right — mock leaderboard panel */}
+          {/* right — mock leaderboard panel (always dark surface) */}
           <div className="animate-rise surface-panel rounded-2xl p-4 sm:p-5" style={{ animationDelay: "120ms" }}>
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <div className="tiny-label">Live research desk</div>
+                <div className="tiny-label">{t("home.leaderboard.kicker")}</div>
                 <div className="mt-1 font-heading text-2xl font-bold uppercase text-white">US Leaderboard</div>
               </div>
               {/* live pulse */}
@@ -122,7 +112,7 @@ export default function Home() {
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[oklch(0.72_0.12_175)] opacity-60" />
                   <span className="relative inline-flex size-2 rounded-full bg-[oklch(0.72_0.12_175)]" />
                 </span>
-                ranked
+                {t("home.leaderboard.ranked")}
               </span>
             </div>
 
@@ -171,37 +161,39 @@ export default function Home() {
               transitionTypes={["nav-forward"]}
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 py-3 text-xs font-bold uppercase tracking-[0.12em] text-faint transition-colors hover:border-white/20 hover:text-white"
             >
-              View full rankings
+              {t("home.leaderboard.viewAll")}
               <ArrowRight className="size-3.5" />
             </Link>
           </div>
         </section>
 
         {/* ── How it works ────────────────────────────────────── */}
-        <section className="bg-white py-16 sm:py-20">
+        {/* Use CSS var so this section adapts in dark mode instead of staying pure white */}
+        <section className="py-16 sm:py-20" style={{ background: "var(--rv-surface-deep)" }}>
           <div className="app-shell">
             <div className="mb-10 text-center">
               <div className="section-kicker">{t("home.features.kicker")}</div>
               <h2 className="mt-3 font-heading text-3xl font-bold uppercase text-[var(--rv-ink)] sm:text-5xl">
-                How it works
+                {t("home.how.title")}
               </h2>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
-              {STEPS.map((step, i) => {
+              {steps.map((step, i) => {
                 const Icon = step.icon;
                 return (
                   <article
-                    key={step.title}
-                    className="group relative overflow-hidden rounded-2xl border border-[rgba(15,23,42,0.08)] bg-[var(--rv-canvas-light)] p-7 transition-shadow hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
+                    key={step.titleKey}
+                    className="group relative overflow-hidden rounded-2xl border border-[var(--rv-hairline-dark)] bg-[var(--rv-surface-card)] p-7 transition-shadow hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
                   >
-                    <div className="mb-1 font-mono text-[2.4rem] font-bold leading-none text-[rgba(15,23,42,0.06)]">
+                    {/* decorative step number — faint in both light and dark */}
+                    <div className="mb-1 font-mono text-[2.4rem] font-bold leading-none text-[rgba(15,23,42,0.06)] dark:text-[rgba(205,217,229,0.08)]">
                       0{i + 1}
                     </div>
                     <div className="mt-2 flex size-12 items-center justify-center rounded-xl bg-[rgba(37,99,235,0.1)] text-[var(--rv-primary)]">
                       <Icon className="size-5" />
                     </div>
-                    <h3 className="mt-5 font-heading text-xl font-bold uppercase text-[var(--rv-ink)]">{step.title}</h3>
-                    <p className="mt-2 text-sm leading-6 text-[var(--rv-mute)]">{step.body}</p>
+                    <h3 className="mt-5 font-heading text-xl font-bold uppercase text-[var(--rv-ink)]">{t(step.titleKey)}</h3>
+                    <p className="mt-2 text-sm leading-6 text-[var(--rv-mute)]">{t(step.bodyKey)}</p>
                   </article>
                 );
               })}
@@ -222,9 +214,10 @@ export default function Home() {
               return (
                 <article
                   key={feature.titleKey}
-                  className="rounded-2xl border border-[rgba(15,23,42,0.08)] bg-white p-6 transition-shadow hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
+                  className="rounded-2xl border border-[var(--rv-hairline-dark)] bg-[var(--rv-surface-card)] p-6 transition-shadow hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
                 >
-                  <div className="flex size-11 items-center justify-center rounded-xl bg-[rgba(15,186,157,0.12)] text-[#075e54]">
+                  {/* teal icon — use CSS var so it stays readable on dark card */}
+                  <div className="flex size-11 items-center justify-center rounded-xl bg-[rgba(15,186,157,0.12)] text-[var(--rv-teal)]">
                     <Icon className="size-5" />
                   </div>
                   <h3 className="mt-4 font-heading text-xl font-bold text-[var(--rv-ink)]">{t(feature.titleKey)}</h3>

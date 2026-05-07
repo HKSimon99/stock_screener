@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Bell, Info, Zap } from "lucide-react";
 import { buildInstrumentPath, fetchAlerts, type Alert, type AlertsResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useT } from "@/hooks/use-t";
 
 interface AlertsClientProps {
   initialData: AlertsResponse | null;
@@ -26,15 +27,9 @@ function severityTone(severity: Alert["severity"]): string {
   return "border-white/10 bg-white/[0.04]";
 }
 
-function relativeTime(iso: string): string {
-  const delta = Date.now() - new Date(iso).getTime();
-  const h = Math.floor(delta / 3600000);
-  if (h < 1) return `${Math.floor(delta / 60000)}m ago`;
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
-
 export function AlertsClient({ initialData }: AlertsClientProps) {
+  const { t, lang } = useT();
+
   const { data, isFetching } = useQuery({
     queryKey: ["alerts", 30, 100],
     queryFn: () => fetchAlerts({ days: 30, limit: 100 }),
@@ -42,23 +37,40 @@ export function AlertsClient({ initialData }: AlertsClientProps) {
     staleTime: 60_000,
   });
 
+  function relativeTime(iso: string): string {
+    const delta = Date.now() - new Date(iso).getTime();
+    const h = Math.floor(delta / 3600000);
+    if (h < 1) {
+      const m = Math.floor(delta / 60000);
+      return lang === "ko" ? `${m}${t("alerts.relative.minutes")}` : `${m}${t("alerts.relative.minutes")}`;
+    }
+    if (h < 24) return `${h}${t("alerts.relative.hours")}`;
+    return `${Math.floor(h / 24)}${t("alerts.relative.days")}`;
+  }
+
   const critical = data?.items.filter((a) => a.severity === "CRITICAL") ?? [];
   const warnings = data?.items.filter((a) => a.severity === "WARNING") ?? [];
   const info = data?.items.filter((a) => a.severity === "INFO") ?? [];
+
+  const groups = [
+    { label: t("alerts.group.critical"), items: critical },
+    { label: t("alerts.group.warnings"), items: warnings },
+    { label: t("alerts.group.info"),     items: info },
+  ];
 
   return (
     <div className="app-shell mobile-safe-bottom space-y-4 py-4 sm:py-6">
       {/* Header */}
       <div className="surface-panel rounded-2xl px-5 py-5">
-        <div className="tiny-label">Alert Centre</div>
+        <div className="tiny-label">{t("alerts.center")}</div>
         <h1 className="mt-2 font-heading text-4xl font-bold uppercase text-white">
-          Active Alerts
+          {t("alerts.active")}
         </h1>
         <div className="mt-2 flex flex-wrap gap-3 text-xs text-faint">
-          <span>{data?.critical ?? 0} critical</span>
-          <span>{data?.warnings ?? 0} warnings</span>
-          <span>{data?.total ?? 0} total</span>
-          {isFetching && <span>· refreshing…</span>}
+          <span>{data?.critical ?? 0} {t("alerts.count.critical")}</span>
+          <span>{data?.warnings ?? 0} {t("alerts.count.warnings")}</span>
+          <span>{data?.total ?? 0} {t("alerts.count.total")}</span>
+          {isFetching && <span>· {t("alerts.refreshing")}</span>}
         </div>
       </div>
 
@@ -66,16 +78,12 @@ export function AlertsClient({ initialData }: AlertsClientProps) {
       {data?.items.length === 0 && (
         <div className="surface-panel flex flex-col items-center gap-3 rounded-2xl px-5 py-12 text-center">
           <Bell className="size-8 text-faint/40" />
-          <div className="text-sm text-quiet">No alerts in the past 30 days.</div>
+          <div className="text-sm text-quiet">{t("alerts.empty")}</div>
         </div>
       )}
 
       {/* Alert groups */}
-      {[
-        { label: "Critical", items: critical },
-        { label: "Warnings", items: warnings },
-        { label: "Info", items: info },
-      ]
+      {groups
         .filter((g) => g.items.length > 0)
         .map((group) => (
           <section key={group.label}>
@@ -113,9 +121,9 @@ export function AlertsClient({ initialData }: AlertsClientProps) {
                       )}
                       {(alert.threshold_value != null || alert.actual_value != null) && (
                         <div className="mt-1 text-xs text-faint">
-                          {alert.threshold_value != null && `Threshold: ${alert.threshold_value}`}
+                          {alert.threshold_value != null && `${t("alerts.threshold")}: ${alert.threshold_value}`}
                           {alert.threshold_value != null && alert.actual_value != null && " · "}
-                          {alert.actual_value != null && `Actual: ${alert.actual_value.toFixed(2)}`}
+                          {alert.actual_value != null && `${t("alerts.actual")}: ${alert.actual_value.toFixed(2)}`}
                         </div>
                       )}
                     </div>

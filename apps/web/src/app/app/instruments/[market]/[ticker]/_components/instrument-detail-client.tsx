@@ -18,6 +18,8 @@ import {
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { InstrumentChart as InstrumentChartComponent, type ChartInterval, type ChartRangeDays } from "@/components/instrument-chart";
+import { useT } from "@/hooks/use-t";
+import type { Lang } from "@/lib/i18n";
 
 interface InstrumentDetailClientProps {
   ticker: string;
@@ -35,6 +37,15 @@ const CANSLIM_LABELS_KR: Record<string, string> = {
   S: "수급 (Supply / Demand)",
   L: "선도주 여부·RS 등급 (Leader)",
   I: "기관 수급 (Institutional)",
+};
+
+const CANSLIM_LABELS_EN: Record<string, string> = {
+  C: "Current quarterly EPS growth",
+  A: "Annual EPS growth (3-year)",
+  N: "New high · new product · new management",
+  S: "Supply & Demand (volume + float)",
+  L: "Leader — RS rating 80+",
+  I: "Institutional net buying",
 };
 
 const PIOTROSKI_LABELS_EN: Record<string, string> = {
@@ -88,35 +99,37 @@ function MagicFormulaCard({
   score,
   detail,
   market,
+  lang,
 }: {
   score: number | undefined;
   detail: InstrumentDetail["magic_formula_detail"];
   market: "US" | "KR";
+  lang: Lang;
 }) {
-  const isKr = market === "KR";
-  const title = isKr ? "마법공식 (Magic Formula)" : "Magic Formula";
+  const isKo = lang === "ko";
+  const title = isKo ? "마법공식 (Magic Formula)" : "Magic Formula";
 
   if (!detail) {
     return (
       <div>
         <div className="mb-2 text-xs text-faint uppercase tracking-widest">{title}</div>
         <div className="text-xs text-faint">
-          {isKr ? "데이터 없음" : "Not available"}
+          {missingLabel(lang)}
         </div>
       </div>
     );
   }
 
   const excluded = detail.exclude_reason !== null;
-  const reasonMap = isKr ? MAGIC_FORMULA_EXCLUDE_REASONS_KR : MAGIC_FORMULA_EXCLUDE_REASONS_EN;
+  const reasonMap = isKo ? MAGIC_FORMULA_EXCLUDE_REASONS_KR : MAGIC_FORMULA_EXCLUDE_REASONS_EN;
   const reasonLabel = excluded
     ? reasonMap[detail.exclude_reason ?? ""] ?? (detail.exclude_reason ?? "")
     : null;
 
-  const roicLabel = isKr ? "ROIC (투하자본수익률)" : "ROIC";
-  const eyLabel   = isKr ? "EY (이익수익률)"     : "Earnings Yield";
-  const rankLabel = isKr ? "종합 순위"            : "Combined Rank";
-  const universeLabel = isKr ? "유니버스" : "Universe";
+  const roicLabel = isKo ? "ROIC (투하자본수익률)" : "ROIC";
+  const eyLabel   = isKo ? "EY (이익수익률)"     : "Earnings Yield";
+  const rankLabel = isKo ? "종합 순위"            : "Combined Rank";
+  const universeLabel = isKo ? "유니버스" : "Universe";
 
   return (
     <div>
@@ -137,7 +150,7 @@ function MagicFormulaCard({
           <div className="flex justify-between gap-2">
             <span
               className="cursor-help text-faint"
-              title={isKr
+              title={isKo
                 ? "ROIC = 영업이익 / (순운전자본 + 순고정자산). 자본을 얼마나 효율적으로 굴리는지."
                 : "ROIC = EBIT / (NWC + Net Fixed Assets). How efficiently capital generates operating earnings."}
             >
@@ -148,7 +161,7 @@ function MagicFormulaCard({
           <div className="flex justify-between gap-2">
             <span
               className="cursor-help text-faint"
-              title={isKr
+              title={isKo
                 ? "EY = 영업이익 / 기업가치. 기업가치 대비 영업이익 수익률."
                 : "EY = EBIT / Enterprise Value. Operating earnings yield on enterprise value."}
             >
@@ -210,8 +223,9 @@ function convictionBadge(level: string) {
   );
 }
 
-function missingLabel(market: "US" | "KR") {
-  return market === "KR" ? "데이터 없음" : "Not available";
+/** Works with lang ("ko"/"en") or market ("KR"/"US") */
+function missingLabel(langOrMarket: string): string {
+  return langOrMarket === "ko" || langOrMarket === "KR" ? "데이터 없음" : "Not available";
 }
 
 function formatDate(value: string | undefined, market: "US" | "KR") {
@@ -315,11 +329,15 @@ function MetricSection({
   subtitle,
   children,
   defaultOpen = true,
+  openLabel = "Open",
+  closeLabel = "Close",
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
   defaultOpen?: boolean;
+  openLabel?: string;
+  closeLabel?: string;
 }) {
   return (
     <details className="motion-panel-in group rounded-[1.25rem] border border-white/8 bg-white/[0.03] px-4 py-3" open={defaultOpen}>
@@ -329,8 +347,8 @@ function MetricSection({
             <div className="text-xs uppercase tracking-[0.18em] text-faint">{title}</div>
             {subtitle && <div className="mt-1 text-xs text-faint">{subtitle}</div>}
           </div>
-          <span className="text-xs uppercase tracking-[0.16em] text-faint group-open:hidden">Open</span>
-          <span className="hidden text-xs uppercase tracking-[0.16em] text-faint group-open:inline">Close</span>
+          <span className="text-xs uppercase tracking-[0.16em] text-faint group-open:hidden">{openLabel}</span>
+          <span className="hidden text-xs uppercase tracking-[0.16em] text-faint group-open:inline">{closeLabel}</span>
         </div>
       </summary>
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
@@ -365,6 +383,7 @@ export function InstrumentDetailClient({
   const togglePinned = useUIStore((state) => state.togglePinnedInstrument);
   const isPinned = useUIStore((state) => state.isPinned);
   const pinned = isPinned(ticker, market);
+  const { t, lang } = useT();
 
   async function handleTogglePin(name: string, exchange: string) {
     togglePinned({ ticker, market, name, exchange });
@@ -388,7 +407,7 @@ export function InstrumentDetailClient({
     try {
       const token = await getToken();
       if (!token) {
-        setHydrationError(market === "KR" ? "로그인이 필요합니다." : "Sign in to queue a refresh.");
+        setHydrationError(labels.refreshSignInHint);
         return;
       }
       await queueInstrumentHydration(ticker, market, token);
@@ -457,7 +476,7 @@ export function InstrumentDetailClient({
   if (isPending && !data) {
     return (
       <div className="app-shell py-12 text-center">
-        <div className="text-sm text-quiet">Loading instrument data…</div>
+        <div className="text-sm text-quiet">{t("ui.loading")}</div>
       </div>
     );
   }
@@ -485,7 +504,7 @@ export function InstrumentDetailClient({
   const annual = data.annual_metrics;
   const marketMetrics = data.market_metrics;
   const ownership = data.ownership_metrics;
-  const labels = market === "KR"
+  const labels = lang === "ko"
     ? {
         investorMetrics: "투자 지표",
         valuation: "밸류에이션",
@@ -552,6 +571,23 @@ export function InstrumentDetailClient({
         previous: "이전",
         yes: "예",
         no: "아니오",
+        overviewDesc: "데이터가 있는 항목만 표시됩니다. 없는 지표는 데이터 수집 후 표시됩니다.",
+        strategyBreakdown: "전략별 상세",
+        weinsteinStage: "단계",
+        weinsteinMaSlope: "이동평균 기울기",
+        pioPass: "통과",
+        pioFail: "미통과",
+        dataFreshness: "데이터 갱신 현황",
+        floatMarketCap: "유통주식 시가총액",
+        dividendYield: "배당수익률",
+        shareSource: "주식 수 출처",
+        epsSource: "EPS 출처",
+        individual30d: "개인 30일 순매수",
+        topFundQuality: "상위 펀드 품질",
+        qoqOwnerChange: "QoQ 보유기관 변화",
+        source: "출처",
+        openToggle: "펼치기",
+        closeToggle: "접기",
       }
     : {
         investorMetrics: "Investor Metrics",
@@ -619,7 +655,26 @@ export function InstrumentDetailClient({
         previous: "Prev",
         yes: "Yes",
         no: "No",
+        overviewDesc: "Only fields with data are shown. Missing metrics appear after ingestion.",
+        strategyBreakdown: "Strategy Breakdown",
+        weinsteinStage: "Stage",
+        weinsteinMaSlope: "MA slope",
+        pioPass: "PASS",
+        pioFail: "FAIL",
+        dataFreshness: "Data Freshness",
+        floatMarketCap: "Float Market Cap",
+        dividendYield: "Dividend Yield",
+        shareSource: "Share Source",
+        epsSource: "EPS Source",
+        individual30d: "Individual 30D Net Buy",
+        topFundQuality: "Top Fund Quality",
+        qoqOwnerChange: "QoQ Owner Change",
+        source: "Source",
+        openToggle: "Open",
+        closeToggle: "Close",
       };
+
+  const sectionToggle = { openLabel: labels.openToggle, closeLabel: labels.closeToggle };
 
   return (
     <div className="app-shell mobile-safe-bottom space-y-4 py-4 sm:py-6">
@@ -641,7 +696,7 @@ export function InstrumentDetailClient({
             </div>
             {isFetching && (
               <div className="mt-2 text-xs uppercase tracking-[0.16em] text-faint">
-                Refreshing…
+                {t("alerts.refreshing")}
               </div>
             )}
             <div className="mt-3 flex flex-wrap gap-2">
@@ -653,7 +708,7 @@ export function InstrumentDetailClient({
               )}
               {data.regime_warning && (
                 <span className="rounded-full border border-[oklch(0.9_0.06_75_/_0.4)] bg-[oklch(0.9_0.06_75_/_0.08)] px-3 py-1 text-[0.68rem] uppercase tracking-widest text-[oklch(0.9_0.06_75)]">
-                  Regime warning
+                  {t("ui.regimeWarning")}
                 </span>
               )}
             </div>
@@ -670,7 +725,7 @@ export function InstrumentDetailClient({
             )}
           >
             <Pin className="size-3.5" />
-            {pinned ? "Pinned" : "Pin"}
+            {pinned ? t("ui.pinned") : t("ui.pin")}
           </button>
         </div>
       </div>
@@ -743,10 +798,10 @@ export function InstrumentDetailClient({
         <div className="light-panel flex gap-1 overflow-x-auto rounded-2xl p-1 backdrop-blur">
           {(
             [
-              { id: "overview",      label: market === "KR" ? "개요"     : "Overview"      },
-              { id: "strategies",    label: market === "KR" ? "전략"     : "Strategies"    },
-              { id: "chart",         label: market === "KR" ? "차트"     : "Chart"         },
-              { id: "fundamentals",  label: market === "KR" ? "재무"     : "Fundamentals"  },
+              { id: "overview",      label: lang === "ko" ? "개요"     : "Overview"      },
+              { id: "strategies",    label: lang === "ko" ? "전략"     : "Strategies"    },
+              { id: "chart",         label: lang === "ko" ? "차트"     : "Chart"         },
+              { id: "fundamentals",  label: lang === "ko" ? "재무"     : "Fundamentals"  },
             ] as const
           ).map((tab) => (
             <button
@@ -773,7 +828,7 @@ export function InstrumentDetailClient({
             <div>
               <div className="tiny-label">{labels.investorMetrics}</div>
               <div className="mt-2 text-sm text-quiet">
-                Only sourced backend fields are shown. Missing metrics stay explicit until provider data is reliable.
+                {labels.overviewDesc}
               </div>
             </div>
             <div className="text-xs text-faint">
@@ -792,27 +847,27 @@ export function InstrumentDetailClient({
               market={market}
               label={labels.marketCap}
               value={compactMoney(marketMetrics?.market_cap, market)}
-              note={marketMetrics?.share_count_source ?? missingLabel(market)}
+              note={marketMetrics?.share_count_source ?? missingLabel(lang)}
             />
             <MetricCard
               market={market}
               label={labels.trailingPe}
               value={formatRatio(marketMetrics?.trailing_pe_ratio, market)}
-              note={marketMetrics?.trailing_eps_source ?? missingLabel(market)}
+              note={marketMetrics?.trailing_eps_source ?? missingLabel(lang)}
             />
             <MetricCard
               market={market}
-              label={market === "KR" ? labels.foreignOwnership : labels.institutionalOwnership}
+              label={lang === "ko" ? labels.foreignOwnership : labels.institutionalOwnership}
               value={
                 market === "KR"
                   ? formatPercent(ownership?.foreign_ownership_pct, market)
                   : formatPercent(ownership?.institutional_pct, market)
               }
-              note={ownership?.data_source ?? missingLabel(market)}
+              note={ownership?.data_source ?? missingLabel(lang)}
             />
             <MetricCard
               market={market}
-              label={market === "KR" ? labels.institutionalFlow : labels.thirteenFOwners}
+              label={lang === "ko" ? labels.institutionalFlow : labels.thirteenFOwners}
               value={
                 market === "KR"
                   ? compactCount(ownership?.institutional_net_buy_30d, market)
@@ -823,7 +878,7 @@ export function InstrumentDetailClient({
                   ? `${labels.fundamentalsDate}: ${formatDate(ownership?.report_date, market)}`
                   : ownership?.qoq_owner_change != null
                     ? `QoQ ${ownership.qoq_owner_change > 0 ? "+" : ""}${ownership.qoq_owner_change}`
-                    : missingLabel(market)
+                    : missingLabel(lang)
               }
             />
           </div>
@@ -832,6 +887,7 @@ export function InstrumentDetailClient({
             <MetricSection
               title={labels.priceLiquidity}
               subtitle={`${labels.latestClose}: ${formatDate(price.trade_date, market)}`}
+              {...sectionToggle}
             >
               <MetricRow label={labels.close} value={formatPrice(price.close, market)} />
               <MetricRow label={labels.previousClose} value={formatPrice(price.previous_close, market)} />
@@ -843,19 +899,20 @@ export function InstrumentDetailClient({
 
             <MetricSection
               title={labels.ownershipFlow}
-              subtitle={ownership?.report_date ? formatDate(ownership.report_date, market) : missingLabel(market)}
+              subtitle={ownership?.report_date ? formatDate(ownership.report_date, market) : missingLabel(lang)}
               defaultOpen={false}
+              {...sectionToggle}
             >
               <MetricRow label={labels.institutionalOwnership} value={formatPercent(ownership?.institutional_pct, market)} />
               <MetricRow label={labels.foreignOwnership} value={formatPercent(ownership?.foreign_ownership_pct, market)} />
               <MetricRow label={labels.thirteenFOwners} value={compactCount(ownership?.num_institutional_owners, market)} />
               <MetricRow label={labels.institutionalFlow} value={compactCount(ownership?.institutional_net_buy_30d, market)} />
               <MetricRow label={labels.foreignFlow} value={compactCount(ownership?.foreign_net_buy_30d, market)} />
-              <MetricRow label="Individual 30D Net Buy" value={compactCount(ownership?.individual_net_buy_30d, market)} />
-              <MetricRow label="Top Fund Quality" value={formatRatio(ownership?.top_fund_quality_score, market)} />
-              <MetricRow label="QoQ Owner Change" value={plainValue(ownership?.qoq_owner_change, market)} />
-              <MetricRow label={labels.buyback} value={ownership?.is_buyback_active == null ? missingLabel(market) : ownership.is_buyback_active ? labels.yes : labels.no} />
-              <MetricRow label="Source" value={plainValue(ownership?.data_source, market)} />
+              <MetricRow label={labels.individual30d} value={compactCount(ownership?.individual_net_buy_30d, market)} />
+              <MetricRow label={labels.topFundQuality} value={formatRatio(ownership?.top_fund_quality_score, market)} />
+              <MetricRow label={labels.qoqOwnerChange} value={plainValue(ownership?.qoq_owner_change, market)} />
+              <MetricRow label={labels.buyback} value={ownership?.is_buyback_active == null ? missingLabel(lang) : ownership.is_buyback_active ? labels.yes : labels.no} />
+              <MetricRow label={labels.source} value={plainValue(ownership?.data_source, market)} />
             </MetricSection>
           </div>
         </div>
@@ -891,7 +948,7 @@ export function InstrumentDetailClient({
           {/* Strategy breakdown */}
           <div className="motion-panel-in surface-panel rounded-2xl px-5 py-5">
             <div className="tiny-label mb-4">
-              {market === "KR" ? "전략별 상세" : "Strategy Breakdown"}
+              {labels.strategyBreakdown}
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {data.canslim_breakdown && (
@@ -899,9 +956,8 @@ export function InstrumentDetailClient({
                   <div className="mb-2 text-xs text-faint uppercase tracking-widest">CANSLIM</div>
                   <div className="flex flex-wrap gap-1">
                     {data.canslim_breakdown.map((c) => {
-                      const tooltip = market === "KR"
-                        ? `${CANSLIM_LABELS_KR[c.key] ?? c.label} (${c.score.toFixed(1)})`
-                        : `${c.label} (${c.score.toFixed(1)})`;
+                      const canslimLabels = lang === "ko" ? CANSLIM_LABELS_KR : CANSLIM_LABELS_EN;
+                      const tooltip = `${canslimLabels[c.key] ?? c.label} (${c.score.toFixed(1)})`;
                       return (
                         <span
                           key={c.key}
@@ -924,14 +980,14 @@ export function InstrumentDetailClient({
               {data.piotroski_detail && (
                 <div>
                   <div className="mb-2 text-xs text-faint uppercase tracking-widest">
-                    {market === "KR" ? "피오트로스키 F-점수" : "Piotroski F-Score"}: {data.piotroski_detail.f_score}/9
+                    {lang === "ko" ? "피오트로스키 F-점수" : "Piotroski F-Score"}: {data.piotroski_detail.f_score}/9
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {(Object.entries(data.piotroski_detail) as [string, boolean | number][])
                       .filter(([k]) => k.startsWith("f") && k !== "f_score")
                       .map(([k, v]) => {
-                        const pioLabels = market === "KR" ? PIOTROSKI_LABELS_KR : PIOTROSKI_LABELS_EN;
-                        const passText = market === "KR" ? (v ? "통과" : "미통과") : (v ? "PASS" : "FAIL");
+                        const pioLabels = lang === "ko" ? PIOTROSKI_LABELS_KR : PIOTROSKI_LABELS_EN;
+                        const passText = v ? labels.pioPass : labels.pioFail;
                         const tooltip = `${pioLabels[k] ?? k.toUpperCase()} — ${passText}`;
                         return (
                           <span
@@ -956,17 +1012,18 @@ export function InstrumentDetailClient({
                 score={typeof data.magic_formula_score === "number" ? data.magic_formula_score : undefined}
                 detail={data.magic_formula_detail}
                 market={market}
+                lang={lang}
               />
 
               {data.weinstein_detail && (
                 <div>
                   <div className="mb-2 text-xs text-faint uppercase tracking-widest">Weinstein</div>
                   <div className="text-sm text-white">
-                    {market === "KR" ? "단계" : "Stage"} {data.weinstein_detail.stage}
+                    {labels.weinsteinStage} {data.weinstein_detail.stage}
                     {data.weinstein_detail.sub_stage ? ` · ${data.weinstein_detail.sub_stage}` : ""}
                   </div>
                   <div className="mt-1 text-xs text-faint">
-                    {market === "KR" ? "이동평균 기울기" : "MA slope"} {data.weinstein_detail.ma_slope.toFixed(2)} ·{" "}
+                    {labels.weinsteinMaSlope} {data.weinstein_detail.ma_slope.toFixed(2)} ·{" "}
                     {data.weinstein_detail.price_vs_ma > 0 ? "+" : ""}
                     {(data.weinstein_detail.price_vs_ma * 100).toFixed(1)}% vs MA
                   </div>
@@ -998,14 +1055,15 @@ export function InstrumentDetailClient({
           <div className="space-y-3">
             <MetricSection
               title={labels.valuation}
-              subtitle={marketMetrics?.price_as_of ? formatDate(marketMetrics.price_as_of, market) : missingLabel(market)}
+              subtitle={marketMetrics?.price_as_of ? formatDate(marketMetrics.price_as_of, market) : missingLabel(lang)}
+              {...sectionToggle}
             >
               <MetricRow label={labels.marketCap} value={compactMoney(marketMetrics?.market_cap, market)} />
-              <MetricRow label="Float Market Cap" value={compactMoney(marketMetrics?.float_market_cap, market)} />
+              <MetricRow label={labels.floatMarketCap} value={compactMoney(marketMetrics?.float_market_cap, market)} />
               <MetricRow label={labels.trailingPe} value={formatRatio(marketMetrics?.trailing_pe_ratio, market)} />
-              <MetricRow label="Dividend Yield" value={formatPercent(marketMetrics?.dividend_yield, market)} />
-              <MetricRow label="Share Source" value={plainValue(marketMetrics?.share_count_source, market)} />
-              <MetricRow label="EPS Source" value={plainValue(marketMetrics?.trailing_eps_source, market)} />
+              <MetricRow label={labels.dividendYield} value={formatPercent(marketMetrics?.dividend_yield, market)} />
+              <MetricRow label={labels.shareSource} value={plainValue(marketMetrics?.share_count_source, market)} />
+              <MetricRow label={labels.epsSource} value={plainValue(marketMetrics?.trailing_eps_source, market)} />
             </MetricSection>
 
             <MetricSection
@@ -1013,9 +1071,10 @@ export function InstrumentDetailClient({
               subtitle={
                 quarterly?.fiscal_year && quarterly?.fiscal_quarter
                   ? `FY${quarterly.fiscal_year} Q${quarterly.fiscal_quarter} · ${formatDate(quarterly.report_date, market)}`
-                  : missingLabel(market)
+                  : missingLabel(lang)
               }
               defaultOpen={false}
+              {...sectionToggle}
             >
               <MetricRow label={labels.revenue} value={compactMoney(quarterly?.revenue, market)} />
               <MetricRow label={labels.revenueGrowth} value={formatPercent(quarterly?.revenue_yoy_growth, market)} />
@@ -1027,8 +1086,9 @@ export function InstrumentDetailClient({
 
             <MetricSection
               title={labels.annualIncome}
-              subtitle={annual?.fiscal_year ? `FY${annual.fiscal_year} · ${formatDate(annual.report_date, market)}` : missingLabel(market)}
+              subtitle={annual?.fiscal_year ? `FY${annual.fiscal_year} · ${formatDate(annual.report_date, market)}` : missingLabel(lang)}
               defaultOpen={false}
+              {...sectionToggle}
             >
               <MetricRow label={labels.revenue} value={compactMoney(annual?.revenue, market)} />
               <MetricRow label={labels.grossProfit} value={compactMoney(annual?.gross_profit, market)} />
@@ -1038,7 +1098,7 @@ export function InstrumentDetailClient({
               <MetricRow label={labels.epsGrowth} value={formatPercent(annual?.eps_yoy_growth, market)} />
             </MetricSection>
 
-            <MetricSection title={labels.balance} defaultOpen={false}>
+            <MetricSection title={labels.balance} defaultOpen={false} {...sectionToggle}>
               <MetricRow label={labels.totalAssets} value={compactMoney(annual?.total_assets, market)} />
               <MetricRow label={labels.currentAssets} value={compactMoney(annual?.current_assets, market)} />
               <MetricRow label={labels.currentLiabilities} value={compactMoney(annual?.current_liabilities, market)} />
@@ -1050,12 +1110,12 @@ export function InstrumentDetailClient({
               <MetricRow label={labels.leverageRatio} value={formatRatio(annual?.leverage_ratio, market)} />
             </MetricSection>
 
-            <MetricSection title={labels.technical} defaultOpen={false}>
+            <MetricSection title={labels.technical} defaultOpen={false} {...sectionToggle}>
               <MetricRow label={labels.technicalComposite} value={plainValue(data.technical_composite, market)} />
               <MetricRow label={labels.rsRating} value={plainValue(data.rs_rating, market)} />
               <MetricRow label={labels.adRating} value={plainValue(data.ad_rating, market)} />
-              <MetricRow label={labels.bbSqueeze} value={data.bb_squeeze == null ? missingLabel(market) : data.bb_squeeze ? labels.yes : labels.no} />
-              <MetricRow label={labels.rsLineNewHigh} value={data.rs_line_new_high == null ? missingLabel(market) : data.rs_line_new_high ? labels.yes : labels.no} />
+              <MetricRow label={labels.bbSqueeze} value={data.bb_squeeze == null ? missingLabel(lang) : data.bb_squeeze ? labels.yes : labels.no} />
+              <MetricRow label={labels.rsLineNewHigh} value={data.rs_line_new_high == null ? missingLabel(lang) : data.rs_line_new_high ? labels.yes : labels.no} />
               <MetricRow label={labels.stopLoss} value={formatPrice(data.stop_loss_7pct, market)} />
             </MetricSection>
           </div>
@@ -1065,7 +1125,7 @@ export function InstrumentDetailClient({
       {/* Freshness — always visible at bottom */}
       {data.freshness && (
         <div className="surface-panel rounded-2xl px-5 py-4">
-          <div className="tiny-label mb-2">Data Freshness</div>
+          <div className="tiny-label mb-2">{labels.dataFreshness}</div>
           <div className="flex flex-wrap gap-4 text-xs text-faint">
             {Object.entries(data.freshness).map(([k, v]) => (
               <span key={k}>

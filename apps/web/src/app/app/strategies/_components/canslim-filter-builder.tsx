@@ -30,6 +30,7 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { RankingRow } from "@/components/ranking-row";
+import { useT } from "@/hooks/use-t";
 
 // ── Preset definitions ────────────────────────────────────────────────────────
 
@@ -187,6 +188,7 @@ interface CanslimTabProps {
 
 export function CanslimTab({ initialData }: CanslimTabProps) {
   const { getToken } = useAuth();
+  const { t } = useT();
 
   const [panelOpen, setPanelOpen]       = useState(false);
   const [draft, setDraft]               = useState<FilterState>(EMPTY_FILTERS);
@@ -257,7 +259,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="size-3.5 text-faint" />
             <span className="text-[0.72rem] uppercase tracking-[0.14em] text-quiet">
-              Advanced Filters
+              {t("canslim.advancedFilters")}
             </span>
             {filterCount > 0 && (
               <span className="rounded-full bg-[oklch(0.78_0.11_84_/_0.25)] px-2 py-0.5 text-[0.6rem] text-[oklch(0.88_0.12_85)]">
@@ -278,7 +280,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
             {/* Presets */}
             <div className="mb-5">
               <div className="mb-2 text-[0.62rem] uppercase tracking-widest text-faint">
-                Presets
+                {t("canslim.presets")}
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {(Object.keys(PRESETS) as PresetKey[]).map((key) => (
@@ -302,7 +304,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
             {/* Sliders */}
             <div className="mb-5 grid gap-5 sm:grid-cols-3">
               <SliderRow
-                label="CANSLIM Score"
+                label={t("canslim.scoreLabel")}
                 value={draft.minCanslim}
                 min={0}
                 max={100}
@@ -310,14 +312,14 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
                 onChange={(v) => patchDraft({ minCanslim: v })}
               />
               <SliderRow
-                label="Piotroski F-Score"
+                label={t("canslim.piotroskiLabel")}
                 value={draft.minPiotroskiF}
                 min={0}
                 max={9}
                 onChange={(v) => patchDraft({ minPiotroskiF: v })}
               />
               <SliderRow
-                label="Minervini Criteria"
+                label={t("canslim.minerviniLabel")}
                 value={draft.minMinerviniCriteria}
                 min={0}
                 max={8}
@@ -329,14 +331,14 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
             {/* Toggles */}
             <div className="mb-5 grid gap-2 sm:grid-cols-2">
               <ToggleRow
-                label="Weinstein Stage 2"
-                description="Only show stocks currently in Stage 2 (advancing)"
+                label={t("canslim.weinsteinLabel")}
+                description={t("canslim.weinsteinDesc")}
                 value={draft.requireWeinsteinStage2}
                 onChange={(v) => patchDraft({ requireWeinsteinStage2: v })}
               />
               <ToggleRow
-                label="RS Line New High"
-                description="Relative strength line at a new 52-week high"
+                label={t("canslim.rsLineLabel")}
+                description={t("canslim.rsLineDesc")}
                 value={draft.requireRsLineNewHigh}
                 onChange={(v) => patchDraft({ requireRsLineNewHigh: v })}
               />
@@ -351,7 +353,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
                   className="motion-press flex items-center gap-1.5 rounded-full border border-white/8 px-4 py-2 text-[0.65rem] uppercase tracking-[0.14em] text-faint transition-colors hover:text-white"
                 >
                   <X className="size-3" />
-                  Reset
+                  {t("canslim.reset")}
                 </button>
               )}
               <button
@@ -359,7 +361,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
                 onClick={applyFilters}
                 className="motion-press rounded-full bg-[oklch(0.78_0.11_84_/_0.25)] px-5 py-2 text-[0.65rem] uppercase tracking-[0.14em] text-white transition-colors hover:bg-[oklch(0.78_0.11_84_/_0.35)]"
               >
-                Apply Filters
+                {t("canslim.apply")}
               </button>
             </div>
           </div>
@@ -370,9 +372,9 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
       {!panelOpen && showFiltered && (
         <div className="motion-panel-in flex items-center justify-between rounded-[1rem] border border-[oklch(0.78_0.11_84_/_0.3)] bg-[oklch(0.78_0.11_84_/_0.08)] px-4 py-2">
           <span className="text-[0.65rem] text-[oklch(0.88_0.12_85)]">
-            {filterCount} filter{filterCount !== 1 ? "s" : ""} active
-            {filteredData && ` · ${filteredData.total} results`}
-            {filterFetching && " · refreshing…"}
+            {filterCount} {t("canslim.advancedFilters").toLowerCase()}
+            {filteredData && ` · ${filteredData.total}`}
+            {filterFetching && ` · ${t("alerts.refreshing")}`}
           </span>
           <button
             type="button"
@@ -380,7 +382,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
             className="motion-press flex items-center gap-1 text-[0.62rem] text-faint transition-colors hover:text-white"
           >
             <X className="size-3" />
-            Clear
+            {t("canslim.clear")}
           </button>
         </div>
       )}
@@ -388,7 +390,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
       {/* ── Error state ────────────────────────────────────────────────── */}
       {filterError && (
         <div className="rounded-[1rem] border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-300">
-          Filter query failed — check your session or try again.
+          {t("canslim.filterError")}
         </div>
       )}
 
@@ -396,7 +398,7 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
       <div className="space-y-2">
         {(filterFetching || baseFetching) && !showFiltered && !baseData && (
           <div className="surface-panel rounded-[1.65rem] px-5 py-8 text-center text-sm text-quiet">
-            Loading…
+            {t("ui.loading")}
           </div>
         )}
 
@@ -432,13 +434,13 @@ export function CanslimTab({ initialData }: CanslimTabProps) {
 
         {showFiltered && !filterFetching && items.length === 0 && (
           <div className="surface-panel rounded-[1.65rem] px-5 py-8 text-center text-sm text-quiet">
-            No results match the current filters. Try loosening the criteria.
+            {t("canslim.noResults")}
           </div>
         )}
 
         {!showFiltered && !baseFetching && baseItems.length === 0 && (
           <div className="surface-panel rounded-[1.65rem] px-5 py-8 text-center text-sm text-quiet">
-            No CANSLIM rankings available for US yet.
+            {t("canslim.noBase")}
           </div>
         )}
       </div>

@@ -74,6 +74,7 @@
   --rv-surface-elevated: rgba(255, 255, 255, 0.92);
   --rv-surface-card: #ffffff;
   --rv-surface-soft: #edf3f8;
+  --rv-surface-tint: #f0f4f9;
 
   --rv-ink: #101820;
   --rv-body-text: #1d2730;
@@ -157,6 +158,7 @@ html.dark {
   --rv-surface-elevated: rgba(22, 27, 34, 0.92);
   --rv-surface-card: #161b22;
   --rv-surface-soft: #1c2128;
+  --rv-surface-tint: #1c2128;
 
   /* Text */
   --rv-ink: #cdd9e5;

@@ -5,17 +5,20 @@ import { ArrowRight, Sparkles } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-
-const SITE_LINKS = [
-  { href: "/methodology", label: "Methodology" },
-  { href: "/data-sources", label: "Data Sources" },
-  { href: "/freshness-policy", label: "Freshness" },
-  { href: "/disclosures", label: "Disclosures" },
-] as const;
+import { useT } from "@/hooks/use-t";
+import type { TranslationKey } from "@/lib/i18n";
 
 export function SiteChrome() {
   const lang = useUIStore((state) => state.lang);
   const setLang = useUIStore((state) => state.setLang);
+  const { t } = useT();
+
+  const SITE_LINKS: Array<{ href: string; labelKey: TranslationKey }> = [
+    { href: "/methodology",     labelKey: "nav.methodology" },
+    { href: "/data-sources",    labelKey: "nav.dataSources" },
+    { href: "/freshness-policy", labelKey: "nav.freshness" },
+    { href: "/disclosures",     labelKey: "nav.disclosures" },
+  ];
 
   return (
     <header
@@ -44,7 +47,7 @@ export function SiteChrome() {
               href={item.href}
               className="motion-press inline-flex min-h-11 items-center text-sm font-semibold text-[var(--rv-mute)] transition-colors hover:text-[var(--rv-ink)]"
             >
-              {item.label}
+              {t(item.labelKey)}
             </Link>
           ))}
         </nav>
@@ -78,7 +81,7 @@ export function SiteChrome() {
           <ThemeToggle />
 
           <Link href="/rankings" transitionTypes={["nav-forward"]} className="btn-primary shrink-0 px-4 py-2 text-sm">
-            Open App
+            {t("nav.openApp")}
             <ArrowRight className="size-4" />
           </Link>
         </div>

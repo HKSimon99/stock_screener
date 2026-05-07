@@ -168,8 +168,8 @@ export default function Home() {
         </section>
 
         {/* ── How it works ────────────────────────────────────── */}
-        {/* Use CSS var so this section adapts in dark mode instead of staying pure white */}
-        <section className="py-16 sm:py-20" style={{ background: "var(--rv-surface-deep)" }}>
+        {/* surface-soft gives cards a white surface to pop against in light mode */}
+        <section className="py-16 sm:py-20" style={{ background: "var(--rv-surface-soft)" }}>
           <div className="app-shell">
             <div className="mb-10 text-center">
               <div className="section-kicker">{t("home.features.kicker")}</div>

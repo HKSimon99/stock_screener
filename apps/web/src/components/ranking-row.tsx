@@ -5,6 +5,7 @@ import { ArrowUpRight, Pin } from "lucide-react";
 import { buildInstrumentPath } from "@/lib/api";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { useT } from "@/hooks/use-t";
 
 export interface RankingRowData {
   rank: number;
@@ -35,9 +36,10 @@ export function RankingRow({ item, showPin = true }: RankingRowProps) {
   const isPinned = useUIStore((state) => state.isPinned);
   const pinned = isPinned(item.ticker, item.market);
   const score = Math.max(0, Math.min(100, item.final_score));
+  const { t } = useT();
 
   return (
-    <article className="motion-card group rounded-xl border border-[rgba(15,23,42,0.08)] bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] sm:p-4">
+    <article className="motion-card group rounded-xl border border-[rgba(15,23,42,0.08)] bg-[var(--rv-surface-tint)] p-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] dark:bg-[var(--rv-surface-card)] sm:p-4">
       <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3">
         <div className="text-right font-mono text-xs font-semibold text-[var(--rv-stone)]">
           #{item.rank}
@@ -56,8 +58,8 @@ export function RankingRow({ item, showPin = true }: RankingRowProps) {
           {(item.conviction_level || item.strategy_pass_count != null || item.regime_warning) && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[0.62rem] font-bold uppercase tracking-[0.12em] text-[var(--rv-stone)]">
               {item.conviction_level && <span>{item.conviction_level}</span>}
-              {item.strategy_pass_count != null && <span>{item.strategy_pass_count} strategies</span>}
-              {item.regime_warning && <span className="text-[var(--rv-warning)]">regime</span>}
+              {item.strategy_pass_count != null && <span>{item.strategy_pass_count}{t("ui.strategies")}</span>}
+              {item.regime_warning && <span className="text-[var(--rv-warning)]">{t("ui.regime")}</span>}
             </div>
           )}
         </Link>
@@ -95,7 +97,7 @@ export function RankingRow({ item, showPin = true }: RankingRowProps) {
             data-active={pinned ? "true" : undefined}
           >
             <Pin className="size-3" />
-            {pinned ? "Pinned" : "Pin"}
+            {pinned ? t("ui.pinned") : t("ui.pin")}
           </button>
         )}
       </div>

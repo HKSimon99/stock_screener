@@ -22,6 +22,8 @@ import {
 import { cn } from "@/lib/utils";
 import { RankingRow } from "@/components/ranking-row";
 import { CanslimTab } from "@/app/app/strategies/_components/canslim-filter-builder";
+import { useT } from "@/hooks/use-t";
+import type { Lang } from "@/lib/i18n";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,21 +44,79 @@ interface StrategyInfo {
   criteria: StrategyCriterion[];
 }
 
-const STRATEGY_INFO: Record<StrategyTab, StrategyInfo> = {
+const STRATEGY_INFO_EN: Record<StrategyTab, StrategyInfo> = {
+  canslim: {
+    guru: "William J. O'Neil",
+    guruTitle: "Founder, Investor's Business Daily",
+    tagline: "7 criteria for growth stocks",
+    description:
+      "Developed by IBD founder William O'Neil in 1988. Combines earnings growth, institutional buying, and market trend to find stocks poised for a big move. Each letter is an independent filter — the more criteria a stock passes, the stronger the case.",
+    criteria: [
+      { label: "C — Current EPS",    desc: "Quarterly EPS up 25% or more year-over-year" },
+      { label: "A — Annual EPS",     desc: "Annual EPS growth of 25%+ over the past 3 years" },
+      { label: "N — New",            desc: "New product, service, or 52-week high" },
+      { label: "S — Supply & Demand", desc: "Volume spike with relatively low float" },
+      { label: "L — Leader",         desc: "RS rating 80+ (top 20% of sector)" },
+      { label: "I — Institutional",  desc: "Rising institutional ownership" },
+      { label: "M — Market",         desc: "Only buy in a confirmed uptrend" },
+    ],
+  },
+  piotroski: {
+    guru: "Joseph Piotroski",
+    guruTitle: "Professor, Stanford Graduate School of Business",
+    tagline: "9-point financial health score",
+    description:
+      "Published in a 2000 paper by Stanford professor Joseph Piotroski. Scores nine binary tests across profitability, leverage, and efficiency — each passes (1) or fails (0). F-Score 8–9 signals a financially strong company; 0–2 signals a weak one. Particularly effective at avoiding value traps.",
+    criteria: [
+      { label: "ROA > 0",           desc: "Net income positive relative to assets" },
+      { label: "Operating cash flow > 0", desc: "Generating real cash, not just book earnings" },
+      { label: "ROA improving",     desc: "ROA higher than the prior year" },
+      { label: "Accruals < 0",      desc: "Cash earnings exceed book earnings (earnings quality)" },
+      { label: "Leverage falling",  desc: "Long-term debt ratio declining" },
+      { label: "Liquidity improving", desc: "Better short-term coverage ratio" },
+      { label: "No dilution",       desc: "No new shares issued" },
+      { label: "Asset turnover up", desc: "More revenue per dollar of assets" },
+      { label: "Gross margin up",   desc: "Improving profitability structure" },
+    ],
+  },
+  magic_formula: {
+    guru: "Joel Greenblatt",
+    guruTitle: "Founder, Gotham Capital · Professor, Columbia",
+    tagline: "ROIC + earnings yield combined rank",
+    description:
+      "Published in 'The Little Book That Beats the Market' (2005) by hedge fund manager Joel Greenblatt. Simplifies Buffett's 'buy good companies cheap' principle into two numbers. Rank stocks by ROIC (quality) and earnings yield (value) separately, then add the ranks. The lowest combined rank wins.",
+    criteria: [
+      {
+        label: "ROIC",
+        desc: "EBIT ÷ (net working capital + net fixed assets) — higher is better quality",
+      },
+      {
+        label: "Earnings Yield",
+        desc: "EBIT ÷ enterprise value (market cap + debt – cash) — higher means cheaper",
+      },
+      {
+        label: "Combined rank",
+        desc: "ROIC rank + EY rank — lower combined rank means more attractive",
+      },
+    ],
+  },
+};
+
+const STRATEGY_INFO_KO: Record<StrategyTab, StrategyInfo> = {
   canslim: {
     guru: "William J. O'Neil",
     guruTitle: "Investor's Business Daily 창업자",
     tagline: "성장주 7대 기준",
     description:
-      "IBD 창업자 윌리엄 오닐이 1988년 정리한 성장주 선별 기준. 주당순이익(EPS)과 매출 성장, 기관 매수, 시장 추세를 결합해 '폭발적 성장이 임박한 종목'을 찾는다. CAN SLIM 각 글자는 독립적인 필터로, 모두 통과할수록 확신도가 높다.",
+      "IBD 창업자 윌리엄 오닐이 1988년 정리한 성장주 선별 기준. 주당순이익(EPS)과 매출 성장, 기관 매수, 시장 추세를 결합해 폭발적 성장이 임박한 종목을 찾습니다. CAN SLIM 각 글자는 독립적인 필터로, 더 많이 통과할수록 확신도가 높아집니다.",
     criteria: [
-      { label: "C — Current EPS", desc: "최근 분기 EPS 25% 이상 성장" },
-      { label: "A — Annual EPS", desc: "최근 3년 연간 EPS 25% 이상 성장" },
-      { label: "N — New Product", desc: "신제품·신서비스·52주 신고가" },
-      { label: "S — Supply & Demand", desc: "거래량 급증 + 낮은 유통주식 수" },
-      { label: "L — Leader", desc: "RS 등급 80 이상 (섹터 내 상위 20%)" },
-      { label: "I — Institutional", desc: "기관 순매수 증가" },
-      { label: "M — Market Direction", desc: "상승 장세(Confirmed Uptrend)에서만 매수" },
+      { label: "C — Current EPS",  desc: "최근 분기 EPS 전년 대비 25% 이상 성장" },
+      { label: "A — Annual EPS",   desc: "최근 3년 연간 EPS 25% 이상 성장" },
+      { label: "N — 새로운 것",    desc: "신제품·신서비스·52주 신고가" },
+      { label: "S — 수급",         desc: "거래량 급증 + 유통주식 수 적음" },
+      { label: "L — 주도주",       desc: "RS 등급 80 이상 (섹터 내 상위 20%)" },
+      { label: "I — 기관",         desc: "기관 순매수 증가" },
+      { label: "M — 시장 방향",    desc: "상승 장세에서만 매수" },
     ],
   },
   piotroski: {
@@ -64,15 +124,15 @@ const STRATEGY_INFO: Record<StrategyTab, StrategyInfo> = {
     guruTitle: "스탠퍼드 경영대학원 교수",
     tagline: "재무 건전성 9점 F-Score",
     description:
-      "스탠퍼드 교수 조셉 피오트로스키가 2000년 발표한 논문에서 제시한 재무 건전성 점수. 수익성·레버리지·효율성 9개 항목을 0/1로 채점해 합산. F-Score 8–9는 '재무적으로 강한 기업', 0–2는 '위험 기업'으로 분류한다. 가치주 함정(value trap)을 피하는 데 특히 효과적이다.",
+      "스탠퍼드 교수 조셉 피오트로스키가 2000년 발표한 논문의 재무 건전성 점수. 수익성·레버리지·효율성 9개 항목을 0/1로 채점해 합산합니다. F-Score 8~9는 재무적으로 강한 기업, 0~2는 위험 기업입니다. 가치 함정(value trap)을 피하는 데 특히 효과적입니다.",
     criteria: [
-      { label: "ROA > 0", desc: "총자산 대비 순이익 양수" },
-      { label: "영업 현금흐름 > 0", desc: "실제 현금 창출" },
-      { label: "ROA 개선", desc: "전년 대비 ROA 증가" },
-      { label: "발생액 < 0", desc: "현금이익 > 장부이익 (분식 방어)" },
-      { label: "부채비율 감소", desc: "장기부채 비중 하락" },
-      { label: "유동비율 개선", desc: "단기 지급 능력 향상" },
-      { label: "희석 없음", desc: "신주 발행 없음" },
+      { label: "ROA > 0",          desc: "총자산 대비 순이익 양수" },
+      { label: "영업 현금흐름 > 0", desc: "장부 이익이 아닌 실제 현금 창출" },
+      { label: "ROA 개선",         desc: "전년 대비 ROA 증가" },
+      { label: "발생액 < 0",       desc: "현금이익 > 장부이익 (이익 품질 확인)" },
+      { label: "부채비율 감소",    desc: "장기부채 비중 하락" },
+      { label: "유동비율 개선",    desc: "단기 지급 능력 향상" },
+      { label: "희석 없음",        desc: "신주 발행 없음" },
       { label: "총자산회전율 개선", desc: "자산 효율 상승" },
       { label: "매출총이익률 개선", desc: "수익성 구조 개선" },
     ],
@@ -80,9 +140,9 @@ const STRATEGY_INFO: Record<StrategyTab, StrategyInfo> = {
   magic_formula: {
     guru: "Joel Greenblatt",
     guruTitle: "고담 캐피탈 창업자 · 컬럼비아 교수",
-    tagline: "ROIC + 이익수익률 복합 랭킹",
+    tagline: "ROIC + 이익수익률 복합 순위",
     description:
-      "헤지펀드 매니저 조엘 그린블라트가 《주식시장을 이기는 작은 책》(2005)에서 공개한 전략. '좋은 기업을 저렴한 가격에 사라'는 워런 버핏의 원칙을 두 개의 숫자로 단순화했다. ROIC가 높은 기업(우량 기업)과 이익수익률(EY)이 높은 기업(저평가 기업)의 순위를 합산해, 복합 순위가 낮은 종목을 선택한다.",
+      "헤지펀드 매니저 조엘 그린블라트가 《주식시장을 이기는 작은 책》(2005)에서 공개한 전략. '좋은 기업을 저렴하게 사라'는 원칙을 두 개의 숫자로 단순화했습니다. ROIC(우량성)와 이익수익률(저평가) 순위를 각각 매긴 뒤 합산해, 복합 순위가 낮은 종목을 선택합니다.",
     criteria: [
       {
         label: "ROIC (자본이익률)",
@@ -94,7 +154,7 @@ const STRATEGY_INFO: Record<StrategyTab, StrategyInfo> = {
       },
       {
         label: "복합 순위",
-        desc: "ROIC 순위 + EY 순위 합산 → 낮을수록 매력적",
+        desc: "ROIC 순위 + EY 순위 합산 — 낮을수록 매력적",
       },
     ],
   },
@@ -113,10 +173,14 @@ const STRATEGY_MARKETS: Record<StrategyTab, Array<"US" | "KR">> = {
   magic_formula: ["US", "KR"],
 };
 
+function getStrategyInfo(lang: Lang): Record<StrategyTab, StrategyInfo> {
+  return lang === "ko" ? STRATEGY_INFO_KO : STRATEGY_INFO_EN;
+}
+
 // ── Sub-component: strategy info card ────────────────────────────────────────
 
-function StrategyInfoCard({ tab }: { tab: StrategyTab }) {
-  const info = STRATEGY_INFO[tab];
+function StrategyInfoCard({ tab, lang }: { tab: StrategyTab; lang: Lang }) {
+  const info = getStrategyInfo(lang)[tab];
   return (
     <div className="motion-panel-in surface-panel rounded-2xl px-5 py-5 space-y-4">
       {/* Guru */}
@@ -158,6 +222,7 @@ interface StrategyListProps {
 }
 
 function StrategyList({ strategy, market, initialData }: StrategyListProps) {
+  const { t } = useT();
   const { data, error, isFetching } = useQuery({
     queryKey: ["strategy-rankings", strategy, market],
     queryFn:  () => fetchStrategyRankings(strategy, market),
@@ -170,7 +235,7 @@ function StrategyList({ strategy, market, initialData }: StrategyListProps) {
   if (isFetching && !data) {
     return (
       <div className="surface-panel rounded-2xl px-5 py-8 text-center text-sm text-quiet">
-        Loading…
+        {t("ui.loading")}
       </div>
     );
   }
@@ -179,8 +244,8 @@ function StrategyList({ strategy, market, initialData }: StrategyListProps) {
     return (
       <div className="surface-panel rounded-2xl border border-[oklch(0.68_0.18_28_/_0.3)] bg-[oklch(0.31_0.06_28_/_0.14)] px-5 py-5 text-sm text-[oklch(0.89_0.04_24)]">
         {error instanceof APIError
-          ? error.detail ?? `${TAB_LABELS[strategy]} rankings are temporarily unavailable.`
-          : `${TAB_LABELS[strategy]} rankings are temporarily unavailable.`}
+          ? error.detail ?? t("strategies.unavailable")
+          : t("strategies.unavailable")}
       </div>
     );
   }
@@ -188,7 +253,7 @@ function StrategyList({ strategy, market, initialData }: StrategyListProps) {
   if (!data?.items?.length) {
     return (
       <div className="surface-panel rounded-2xl px-5 py-8 text-center text-sm text-quiet">
-        No {TAB_LABELS[strategy]} rankings available for {market}.
+        {t("strategies.empty")}
       </div>
     );
   }
@@ -196,7 +261,7 @@ function StrategyList({ strategy, market, initialData }: StrategyListProps) {
   return (
     <div className="space-y-2">
       {isFetching && (
-        <div className="text-right text-[0.65rem] text-faint">refreshing…</div>
+        <div className="text-right text-[0.65rem] text-faint">{t("alerts.refreshing")}</div>
       )}
       {data.items.map((item) => (
         <RankingRow
@@ -224,6 +289,7 @@ interface StrategiesClientProps {
 export function StrategiesClient({ initialData = {} }: StrategiesClientProps) {
   const [activeTab, setActiveTab] = useState<StrategyTab>("canslim");
   const [market, setMarket]       = useState<"US" | "KR">("US");
+  const { t, lang }               = useT();
 
   const availableMarkets = STRATEGY_MARKETS[activeTab];
 
@@ -241,12 +307,12 @@ export function StrategiesClient({ initialData = {} }: StrategiesClientProps) {
     <div className="app-shell mobile-safe-bottom space-y-4 py-4 sm:py-6">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="surface-panel rounded-2xl px-5 py-5">
-        <div className="tiny-label">Strategies</div>
+        <div className="tiny-label">{t("nav.strategies")}</div>
         <h1 className="mt-2 font-heading text-4xl font-bold uppercase text-white">
-          Strategy Rankings
+          {t("strategies.headline")}
         </h1>
         <p className="mt-1 text-xs text-faint">
-          Per-strategy scores ranked independently — drill into each methodology.
+          {t("strategies.sub")}
         </p>
 
         {/* ── Tab bar ────────────────────────────────────────────────── */}
@@ -294,13 +360,13 @@ export function StrategiesClient({ initialData = {} }: StrategiesClientProps) {
         {/* Context note */}
         {activeTab === "canslim" && (
           <div className="mt-3 text-[0.65rem] text-faint">
-            CANSLIM is designed for US growth stocks — KR market not included.
+            {t("strategies.canslimNote")}
           </div>
         )}
       </div>
 
       {/* ── Strategy info card ─────────────────────────────────────────── */}
-      <StrategyInfoCard tab={activeTab} />
+      <StrategyInfoCard tab={activeTab} lang={lang} />
 
       {/* ── Strategy list ──────────────────────────────────────────────── */}
       {activeTab === "canslim" ? (

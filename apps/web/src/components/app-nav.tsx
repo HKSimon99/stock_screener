@@ -1,22 +1,8 @@
 "use client";
 
-/**
- * AppNav — authenticated research desk header + mobile bottom nav.
- *
- * Layout:
- *  - Sticky true-black header: Wordmark | Search (md+) | Lang toggle | UserButton
- *  - Sub-nav pills below header bar (desktop only)
- *  - Mobile: floating bottom nav-rail (5 tabs), lang toggle in header
- *
- * Mobile thumb-zone principle:
- *  - Bottom nav: primary navigation (thumb zone)
- *  - Lang toggle: top-right header (reachable, rarely changed)
- *  - Search: both top-right icon (mobile) and center bar (desktop)
- */
-
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, Layers3, Search } from "lucide-react";
+import { Bell, Layers3, Search, Sparkles } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
@@ -24,175 +10,121 @@ import { useUIStore } from "@/lib/store";
 import { useT } from "@/hooks/use-t";
 
 export function AppNav() {
-  const pathname      = usePathname();
-  const router        = useRouter();
+  const pathname = usePathname();
+  const router = useRouter();
   const [query, setQuery] = useState("");
-  const lang          = useUIStore((state) => state.lang);
-  const setLang       = useUIStore((state) => state.setLang);
-  const { t }         = useT();
+  const lang = useUIStore((state) => state.lang);
+  const setLang = useUIStore((state) => state.setLang);
+  const { t } = useT();
 
-  const NAV_ITEMS = [
-    { href: "/rankings",   label: t("nav.rankings"), icon: Layers3 },
-    { href: "/app/search", label: t("nav.search"),   icon: Search  },
-    { href: "/app/alerts", label: t("nav.alerts"),   icon: Bell    },
+  const navItems = [
+    { href: "/rankings", label: t("nav.rankings"), icon: Layers3 },
+    { href: "/app/search", label: t("nav.search"), icon: Search },
+    { href: "/app/alerts", label: t("nav.alerts"), icon: Bell },
   ] as const;
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const cleaned = query.trim();
-    if (!cleaned) return;
-    router.push(`/app/search?q=${encodeURIComponent(cleaned)}`);
+    if (cleaned) router.push(`/app/search?q=${encodeURIComponent(cleaned)}`);
   }
 
   return (
     <>
-      {/* ── Sticky header ──────────────────────────────────────────── */}
-      <header
-        className="sticky top-0 z-40 w-full"
-        style={{
-          background: "#000000",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
+      <header className="sticky top-0 z-40 border-b border-[rgba(15,23,42,0.08)] bg-[rgba(246,248,251,0.96)] shadow-[0_8px_22px_rgba(15,23,42,0.04)]">
         <div className="app-shell flex h-16 items-center gap-3">
-
-          {/* Wordmark */}
-          <Link
-            href="/rankings"
-            className="shrink-0 font-heading text-xl font-semibold uppercase text-white"
-            style={{ letterSpacing: "-0.02em" }}
-          >
-            Consensus
+          <Link href="/rankings" className="flex min-h-11 shrink-0 items-center gap-2">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-[var(--rv-primary)] text-white shadow-[0_8px_18px_rgba(37,99,235,0.14)]">
+              <Sparkles className="size-4" />
+            </span>
+            <span className="font-heading text-lg font-bold uppercase text-[var(--rv-ink)]">
+              Consensus
+            </span>
           </Link>
 
-          {/* Search bar — grows to fill space (desktop only) */}
-          <form
-            onSubmit={submitSearch}
-            className="hidden flex-1 md:block"
-          >
+          <form onSubmit={submitSearch} className="hidden min-w-0 flex-1 md:block">
             <label className="relative block">
-              <Search
-                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/40"
-                style={{ width: 16, height: 16 }}
-              />
+              <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[var(--rv-stone)]" />
               <input
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(event) => setQuery(event.target.value)}
                 placeholder={t("search.placeholder")}
-                className="w-full rounded-full border py-2.5 pl-11 pr-5 text-sm text-white outline-none transition-colors placeholder:text-white/35"
-                style={{
-                  background: "#16181a",
-                  borderColor: "rgba(255,255,255,0.10)",
-                  height: 40,
-                }}
-                onFocus={(e) => (e.currentTarget.style.borderColor = "#494fdf")}
-                onBlur={(e)  => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.10)")}
+                className="h-11 w-full rounded-full border border-[rgba(15,23,42,0.1)] bg-white/80 pl-11 pr-5 text-sm font-medium text-[var(--rv-ink)] outline-none transition-colors placeholder:text-[var(--rv-stone)] focus:border-[rgba(37,99,235,0.42)]"
               />
             </label>
           </form>
 
-          {/* Right cluster */}
-          <div className="ml-auto flex items-center gap-2">
-
-            {/* KO / EN language toggle — visible on all screen sizes */}
-            <div
-              className="flex items-center rounded-full border"
-              style={{
-                borderColor: "rgba(255,255,255,0.12)",
-                background:  "#16181a",
-                padding:     2,
-              }}
-            >
-              {(["en", "ko"] as const).map((l) => (
-                <button
-                  key={l}
-                  type="button"
-                  onClick={() => setLang(l)}
-                  className="rounded-full font-semibold transition-colors"
-                  style={{
-                    fontSize:      "0.6rem",
-                    letterSpacing: "0.12em",
-                    textTransform: "uppercase",
-                    padding:       "5px 10px",
-                    minWidth:      36,
-                    background:    lang === l ? "#494fdf" : "transparent",
-                    color:         lang === l ? "#ffffff" : "rgba(255,255,255,0.45)",
-                  }}
-                >
-                  {l === "en" ? "EN" : "KO"}
-                </button>
-              ))}
-            </div>
-
-            {/* Mobile search shortcut */}
-            <Link
-              href="/app/search"
-              className="flex size-9 items-center justify-center rounded-full text-white/60 transition-colors hover:text-white md:hidden"
-              style={{ background: "#16181a" }}
-              aria-label="Search"
-            >
-              <Search style={{ width: 16, height: 16 }} />
-            </Link>
-
-            <UserButton />
-          </div>
-        </div>
-
-        {/* ── Sub-nav pills (desktop) ──────────────────────────────── */}
-        <div className="app-shell hidden pb-3 md:block">
-          <div className="flex flex-wrap gap-1.5">
-            {NAV_ITEMS.map((item) => {
-              const Icon   = item.icon;
+          <nav className="hidden items-center gap-1 lg:flex" aria-label="Main navigation">
+            {navItems.map((item) => {
+              const Icon = item.icon;
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors",
-                    active
-                      ? "border-[#494fdf] bg-[rgba(73,79,223,0.18)] text-white"
-                      : "text-white/55 hover:text-white"
-                  )}
-                  style={{
-                    borderColor: active ? "#494fdf" : "rgba(255,255,255,0.10)",
-                    background:  active ? "rgba(73,79,223,0.18)" : "#16181a",
-                  }}
+                  className="segmented-pill"
+                  data-active={active ? "true" : undefined}
                 >
-                  <Icon style={{ width: 14, height: 14 }} />
+                  <Icon className="size-4" />
                   {item.label}
                 </Link>
               );
             })}
+          </nav>
+
+          <div className="ml-auto flex items-center gap-2">
+            <div className="flex h-12 items-center rounded-full border border-[rgba(15,23,42,0.1)] bg-white p-0.5">
+              {(["en", "ko"] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setLang(item)}
+                  className={cn(
+                    "h-11 min-w-11 rounded-full px-2 text-xs font-bold uppercase tracking-[0.08em] transition-colors",
+                    lang === item
+                      ? "bg-[var(--rv-ink)] text-white"
+                      : "text-[var(--rv-stone)] hover:text-[var(--rv-ink)]"
+                  )}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+
+            <Link
+              href="/app/search"
+              className="flex size-11 items-center justify-center rounded-full border border-[rgba(15,23,42,0.1)] bg-white text-[var(--rv-mute)] transition-colors hover:text-[var(--rv-ink)] md:hidden"
+              aria-label="Search"
+            >
+              <Search className="size-4" />
+            </Link>
+
+            <UserButton />
           </div>
         </div>
       </header>
 
-      {/* ── Mobile bottom nav-rail ─────────────────────────────────── */}
       <nav
-        className="fixed inset-x-2 bottom-3 z-50 md:hidden"
-        style={{ borderRadius: 22, background: "#16181a", border: "1px solid rgba(255,255,255,0.10)" }}
-        aria-label="Main navigation"
+        className="fixed inset-x-3 bottom-3 z-50 rounded-[1.35rem] border border-[rgba(15,23,42,0.12)] bg-white p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.16)] md:hidden"
+        aria-label="Mobile main navigation"
       >
-        <div className="grid grid-cols-3 p-1.5 gap-0.5">
-          {NAV_ITEMS.map((item) => {
-            const Icon   = item.icon;
+        <div className="grid grid-cols-3 gap-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex flex-col items-center gap-1 rounded-[15px] px-1 py-2.5 transition-colors",
+                  "flex min-h-12 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-bold uppercase tracking-[0.04em] transition-colors",
                   active
-                    ? "bg-[rgba(73,79,223,0.22)] text-white"
-                    : "text-white/45 hover:text-white"
+                    ? "bg-[rgba(15,186,157,0.13)] text-[#075e54]"
+                    : "text-[var(--rv-stone)] hover:text-[var(--rv-ink)]"
                 )}
               >
-                <Icon style={{ width: 18, height: 18 }} />
-                <span style={{ fontSize: "0.55rem", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", lineHeight: 1 }}>
-                  {item.label}
-                </span>
+                <Icon className="size-[18px]" />
+                <span className="leading-none">{item.label}</span>
               </Link>
             );
           })}

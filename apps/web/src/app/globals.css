@@ -4,126 +4,113 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* ─── Revolut Design Token System ─────────────────────────────────────────── */
-
 @theme inline {
-  /* Map Tailwind color utilities to Revolut CSS vars */
-  --color-background:        var(--background);
-  --color-foreground:        var(--foreground);
-  --color-card:              var(--card);
-  --color-card-foreground:   var(--card-foreground);
-  --color-popover:           var(--popover);
-  --color-popover-foreground:var(--popover-foreground);
-  --color-primary:           var(--primary);
-  --color-primary-foreground:var(--primary-foreground);
-  --color-secondary:         var(--secondary);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted:             var(--muted);
-  --color-muted-foreground:  var(--muted-foreground);
-  --color-accent:            var(--accent);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
-  --color-destructive:       var(--destructive);
-  --color-border:            var(--border);
-  --color-input:             var(--input);
-  --color-ring:              var(--ring);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 
-  --font-sans:    var(--font-body);
+  --font-sans: var(--font-body);
   --font-heading: var(--font-display);
-  --font-mono:    var(--font-code);
+  --font-mono: var(--font-code);
 
-  /* Radius scale — Revolut uses explicit px values */
-  --radius-sm:  8px;
-  --radius-md:  12px;
-  --radius-lg:  20px;
-  --radius-xl:  28px;
-  --radius-2xl: 9999px;    /* pill */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  /* ── Brand ─────────────────────────────────────────────────── */
-  --rv-primary:        #494fdf;   /* cobalt violet — use sparingly */
-  --rv-primary-bright: #4f55f1;
-  --rv-primary-deep:   #3a40c4;
-  --rv-on-primary:     #ffffff;
+  --rv-primary: #2563eb;
+  --rv-primary-bright: #1d4ed8;
+  --rv-primary-deep: #1e40af;
+  --rv-on-primary: #ffffff;
 
-  /* ── Canvas ────────────────────────────────────────────────── */
-  --rv-canvas-dark:      #000000;  /* true black — storytelling canvas */
-  --rv-canvas-light:     #ffffff;
-  --rv-surface-deep:     #0a0a0a;  /* one step above canvas-dark */
-  --rv-surface-elevated: #16181a;  /* plan cards / feature cards on dark */
-  --rv-surface-card:     #ffffff;
-  --rv-surface-soft:     #f4f4f4;  /* white-canvas inset groups */
+  --rv-canvas-dark: #0b1117;
+  --rv-canvas-light: #f6f8fb;
+  --rv-surface-deep: #ffffff;
+  --rv-surface-elevated: rgba(255, 255, 255, 0.92);
+  --rv-surface-card: #ffffff;
+  --rv-surface-soft: #edf3f8;
 
-  /* ── Text ──────────────────────────────────────────────────── */
-  --rv-ink:          #191c1f;               /* primary on light canvas */
-  --rv-body-text:    #1f2226;
-  --rv-charcoal:     #3a3d40;
-  --rv-mute:         #505a63;
-  --rv-stone:        #8d969e;
-  --rv-faint:        #c9c9cd;
-  --rv-on-dark:      #ffffff;
-  --rv-on-dark-mute: rgba(255, 255, 255, 0.72);
+  --rv-ink: #101820;
+  --rv-body-text: #1d2730;
+  --rv-charcoal: #34414d;
+  --rv-mute: #637080;
+  --rv-stone: #8793a1;
+  --rv-faint: #aeb7c2;
+  --rv-on-dark: #f8fbff;
+  --rv-on-dark-mute: rgba(248, 251, 255, 0.74);
 
-  /* ── Hairlines / Dividers ──────────────────────────────────── */
-  --rv-hairline-dark:   rgba(255, 255, 255, 0.12);
-  --rv-hairline-light:  #e2e2e7;
-  --rv-hairline-strong: #191c1f;
-  --rv-divider-soft:    rgba(255, 255, 255, 0.06);
+  --rv-hairline-dark: rgba(15, 23, 42, 0.12);
+  --rv-hairline-light: #dce4ee;
+  --rv-hairline-strong: rgba(15, 23, 42, 0.22);
+  --rv-divider-soft: rgba(15, 23, 42, 0.08);
 
-  /* ── Semantic accents (illustrations only — never button surfaces) ── */
-  --rv-teal:       #00a87e;
-  --rv-blue:       #007bc2;
-  --rv-green:      #428619;
-  --rv-yellow:     #b09000;
-  --rv-warning:    #ec7e00;
-  --rv-pink:       #e61e49;
-  --rv-danger:     #e23b4a;
+  --rv-teal: #0fba9d;
+  --rv-blue: #2563eb;
+  --rv-green: #65a30d;
+  --rv-lime: #84cc16;
+  --rv-yellow: #ca8a04;
+  --rv-warning: #f59e0b;
+  --rv-pink: #db2777;
+  --rv-danger: #ef4444;
 
-  /* ── Conviction signal colours ─────────────────────────────── */
-  --signal-diamond:  #a5f3fc;   /* cyan-200 */
-  --signal-platinum: #c4b5fd;   /* violet-300 */
-  --signal-gold:     #fcd34d;   /* amber-300 */
-  --signal-silver:   #cbd5e1;   /* slate-300 */
-  --signal-bronze:   #fdba74;   /* orange-300 */
-  --signal-unranked: #64748b;   /* slate-500 */
+  --signal-diamond: #0891b2;
+  --signal-platinum: #2563eb;
+  --signal-gold: #ca8a04;
+  --signal-silver: #64748b;
+  --signal-bronze: #c2410c;
+  --signal-unranked: #94a3b8;
 
-  /* ── Shadcn/Tailwind compatibility mappings ─────────────────── */
-  --background:         var(--rv-canvas-dark);
-  --foreground:         var(--rv-on-dark);
-  --card:               var(--rv-surface-elevated);
-  --card-foreground:    var(--rv-on-dark);
-  --popover:            var(--rv-surface-elevated);
-  --popover-foreground: var(--rv-on-dark);
-  --primary:            var(--rv-primary);
+  --background: var(--rv-canvas-light);
+  --foreground: var(--rv-ink);
+  --card: var(--rv-surface-card);
+  --card-foreground: var(--rv-ink);
+  --popover: var(--rv-surface-card);
+  --popover-foreground: var(--rv-ink);
+  --primary: var(--rv-primary);
   --primary-foreground: var(--rv-on-primary);
-  --secondary:          var(--rv-surface-deep);
-  --secondary-foreground: var(--rv-on-dark);
-  --muted:              var(--rv-surface-deep);
-  --muted-foreground:   var(--rv-on-dark-mute);
-  --accent:             var(--rv-primary);
-  --accent-foreground:  var(--rv-on-primary);
-  --destructive:        var(--rv-danger);
-  --border:             var(--rv-hairline-dark);
-  --input:              var(--rv-surface-elevated);
-  --ring:               var(--rv-primary);
+  --secondary: var(--rv-surface-soft);
+  --secondary-foreground: var(--rv-ink);
+  --muted: var(--rv-surface-soft);
+  --muted-foreground: var(--rv-mute);
+  --accent: var(--rv-teal);
+  --accent-foreground: #042f2e;
+  --destructive: var(--rv-danger);
+  --border: var(--rv-hairline-dark);
+  --input: #ffffff;
+  --ring: var(--rv-primary);
 
-  /* ── Spacing tokens ─────────────────────────────────────────── */
   --sp-xxs: 4px;
-  --sp-xs:  6px;
-  --sp-sm:  8px;
-  --sp-md:  14px;
-  --sp-lg:  16px;
-  --sp-xl:  24px;
+  --sp-xs: 6px;
+  --sp-sm: 8px;
+  --sp-md: 12px;
+  --sp-lg: 16px;
+  --sp-xl: 24px;
   --sp-xxl: 32px;
   --sp-3xl: 48px;
-  --sp-block:   80px;
-  --sp-section: 88px;
-  --sp-band:    120px;
+  --sp-block: 72px;
+  --sp-section: 80px;
+  --sp-band: 104px;
 }
-
-/* ─── Base ───────────────────────────────────────────────────────────────── */
 
 @layer base {
   * {
@@ -133,13 +120,16 @@
 
   html {
     @apply font-sans;
-    background: var(--rv-canvas-dark);
+    background:
+      radial-gradient(circle at 12% -10%, rgba(37, 99, 235, 0.09), transparent 34rem),
+      linear-gradient(180deg, #f7fafc 0%, #eef4f8 55%, #e8eff5 100%);
   }
 
   body {
     min-height: 100%;
-    background: var(--rv-canvas-dark);
-    color: var(--rv-on-dark);
+    background: transparent;
+    color: var(--rv-ink);
+    text-rendering: geometricPrecision;
   }
 
   a {
@@ -147,245 +137,239 @@
     text-decoration: none;
   }
 
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
   button {
     cursor: pointer;
   }
 
+  button:disabled {
+    cursor: not-allowed;
+  }
+
   ::selection {
-    background: rgba(73, 79, 223, 0.28);
-    color: #ffffff;
+    background: rgba(15, 186, 157, 0.22);
+    color: var(--rv-ink);
   }
 }
 
-/* ─── Utilities ──────────────────────────────────────────────────────────── */
-
 @layer utilities {
-
-  /* ── Layout shell ─────────────────────────────────────────── */
   .app-shell {
     margin-inline: auto;
-    width: min(100%, 80rem);       /* 1280px max — Revolut content width */
-    padding-inline: clamp(1rem, 2vw, 1.5rem);
+    width: min(100%, 82rem);
+    padding-inline: clamp(1rem, 2.3vw, 1.75rem);
   }
 
-  /* ── Surface cards (dark canvas) ─────────────────────────── */
-  /* feature-card-dark equivalent */
   .surface-panel {
-    border: 1px solid var(--rv-hairline-dark);
-    background: var(--rv-surface-elevated);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #141d26;
+    color: var(--rv-on-dark);
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
   }
 
-  /* A slightly deeper inset variant */
   .surface-panel-soft {
-    border: 1px solid var(--rv-hairline-dark);
-    background: var(--rv-surface-deep);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--rv-on-dark);
   }
 
-  /* ── Typography utilities ─────────────────────────────────── */
+  .glass-dark {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(11, 17, 23, 0.86);
+    color: var(--rv-on-dark);
+    box-shadow: 0 18px 52px rgba(11, 17, 23, 0.24);
+    backdrop-filter: blur(18px);
+  }
 
-  /* display-xxl — 136px, weight 500, tight */
+  .metric-tile {
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: #ffffff;
+    padding: 1rem;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+  }
+
   .display-hero {
     font-family: var(--font-display);
-    font-size: clamp(3.5rem, 10vw, 8.5rem);
-    font-weight: 500;
-    line-height: 1.0;
-    letter-spacing: -0.04em;
+    font-size: clamp(3rem, 9vw, 7.4rem);
+    font-weight: 650;
+    line-height: 0.96;
+    letter-spacing: 0;
     text-transform: uppercase;
   }
 
-  /* display-xl — 80px */
   .display-xl {
     font-family: var(--font-display);
-    font-size: clamp(2.8rem, 6vw, 5rem);
-    font-weight: 500;
-    line-height: 1.0;
-    letter-spacing: -0.03em;
+    font-size: clamp(2.5rem, 5.4vw, 4.8rem);
+    font-weight: 650;
+    line-height: 1;
+    letter-spacing: 0;
     text-transform: uppercase;
   }
 
-  /* display-lg — 48px */
   .display-lg {
     font-family: var(--font-display);
-    font-size: clamp(2rem, 4vw, 3rem);
-    font-weight: 500;
-    line-height: 1.21;
-    letter-spacing: -0.02em;
+    font-size: clamp(1.9rem, 3.4vw, 3rem);
+    font-weight: 650;
+    line-height: 1.08;
+    letter-spacing: 0;
     text-transform: uppercase;
   }
 
-  /* heading-md — 24px */
   .heading-md {
     font-family: var(--font-display);
-    font-size: 1.5rem;
-    font-weight: 500;
-    line-height: 1.33;
+    font-size: 1.35rem;
+    font-weight: 650;
+    line-height: 1.2;
+    letter-spacing: 0;
   }
 
-  /* Kicker / overline label */
-  .section-kicker {
-    font-family: var(--font-body);
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--rv-on-dark-mute);
-  }
-
-  /* Tiny meta label */
+  .section-kicker,
   .tiny-label {
     font-family: var(--font-body);
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.16em;
+    font-size: 0.68rem;
+    font-weight: 750;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.45);
+    color: var(--rv-mute);
   }
 
-  /* ── Text colours ─────────────────────────────────────────── */
-  .text-on-dark      { color: var(--rv-on-dark); }
-  .text-quiet        { color: var(--rv-on-dark-mute); }
-  .text-faint        { color: var(--rv-stone); }
-  .text-balance      { text-wrap: balance; }
+  .text-on-dark { color: var(--rv-on-dark); }
+  .surface-panel .text-quiet,
+  .surface-panel-soft .text-quiet,
+  .glass-dark .text-quiet { color: var(--rv-on-dark-mute); }
+  .surface-panel .text-faint,
+  .surface-panel-soft .text-faint,
+  .glass-dark .text-faint { color: rgba(248, 251, 255, 0.52); }
+  .text-quiet { color: var(--rv-mute); }
+  .text-faint { color: var(--rv-stone); }
+  .text-balance { text-wrap: balance; }
 
-  /* ── Buttons ──────────────────────────────────────────────── */
-
-  /* button-primary: white pill on dark canvas — the loudest action */
-  .btn-primary {
+  .btn-primary,
+  .btn-cobalt {
     display: inline-flex;
+    min-height: 44px;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
     border-radius: 9999px;
-    background: #ffffff;
-    color: #000000;
+    border: 1px solid rgba(37, 99, 235, 0.22);
+    background: var(--rv-primary);
+    color: #ffffff;
     font-family: var(--font-body);
-    font-size: 1rem;
-    font-weight: 600;
-    line-height: 1.5;
-    letter-spacing: 0.01em;
-    padding: 14px 28px;
-    height: 48px;
-    transition: background 180ms ease;
+    font-size: 0.94rem;
+    font-weight: 750;
+    line-height: 1.25;
+    padding: 0.75rem 1.25rem;
+    transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
     white-space: nowrap;
+    box-shadow: 0 12px 24px rgba(37, 99, 235, 0.16);
   }
-  .btn-primary:hover { background: #f4f4f4; }
+  .btn-primary:hover,
+  .btn-cobalt:hover {
+    background: var(--rv-primary-bright);
+    transform: translateY(-1px);
+  }
 
-  /* button-outline-dark: transparent outline on dark canvas */
   .btn-outline {
     display: inline-flex;
+    min-height: 44px;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
     border-radius: 9999px;
-    background: transparent;
-    color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.74);
+    color: var(--rv-ink);
+    border: 1px solid rgba(15, 23, 42, 0.12);
     font-family: var(--font-body);
-    font-size: 1rem;
-    font-weight: 600;
-    line-height: 1.5;
-    letter-spacing: 0.01em;
-    padding: 13px 27px;
-    height: 48px;
-    transition: border-color 180ms ease, color 180ms ease;
+    font-size: 0.94rem;
+    font-weight: 750;
+    line-height: 1.25;
+    padding: 0.75rem 1.25rem;
+    transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
     white-space: nowrap;
   }
   .btn-outline:hover {
-    border-color: rgba(255, 255, 255, 0.54);
-    color: #ffffff;
+    background: #ffffff;
+    border-color: rgba(37, 99, 235, 0.26);
+    transform: translateY(-1px);
   }
 
-  /* button-cobalt: primary brand action on white canvas */
-  .btn-cobalt {
+  .btn-pill-sm,
+  .filter-chip,
+  .segmented-pill {
     display: inline-flex;
+    min-height: 44px;
     align-items: center;
-    gap: 0.5rem;
+    justify-content: center;
+    gap: 0.4rem;
     border-radius: 9999px;
-    background: var(--rv-primary);
-    color: #ffffff;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    background: rgba(255, 255, 255, 0.78);
+    color: var(--rv-mute);
     font-family: var(--font-body);
-    font-size: 1rem;
-    font-weight: 600;
-    line-height: 1.5;
-    padding: 14px 28px;
-    height: 48px;
-    transition: background 180ms ease;
-    white-space: nowrap;
+    font-size: 0.84rem;
+    font-weight: 750;
+    line-height: 1.2;
+    padding: 0.65rem 0.95rem;
+    transition: border-color 150ms ease, background 150ms ease, color 150ms ease, transform 150ms ease;
   }
-  .btn-cobalt:hover { background: var(--rv-primary-bright); }
 
-  /* button-pill-sm: small filter chip */
-  .btn-pill-sm {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    border-radius: 9999px;
-    background: var(--rv-surface-elevated);
-    color: var(--rv-on-dark-mute);
-    border: 1px solid var(--rv-hairline-dark);
-    font-family: var(--font-body);
-    font-size: 0.875rem;
-    font-weight: 600;
-    line-height: 1.43;
-    padding: 8px 16px;
-    height: 36px;
-    transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
-  }
   .btn-pill-sm:hover,
-  .btn-pill-sm[data-active="true"] {
-    background: var(--rv-primary);
-    border-color: var(--rv-primary);
-    color: #ffffff;
+  .filter-chip:hover,
+  .segmented-pill:hover {
+    border-color: rgba(37, 99, 235, 0.24);
+    color: var(--rv-ink);
+    transform: translateY(-1px);
   }
 
-  /* ── Filter chip (rankings / strategies) ─────────────────── */
-  .filter-chip {
-    border-radius: 9999px;
-    border: 1px solid var(--rv-hairline-dark);
-    background: var(--rv-surface-elevated);
-    color: var(--rv-stone);
-    transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
-  }
-  .filter-chip:hover {
-    border-color: rgba(255, 255, 255, 0.28);
-    color: var(--rv-on-dark);
-  }
-  .filter-chip[data-active="true"] {
-    border-color: var(--rv-primary);
-    background: rgba(73, 79, 223, 0.16);
-    color: #ffffff;
+  .btn-pill-sm[data-active="true"],
+  .filter-chip[data-active="true"],
+  .segmented-pill[data-active="true"] {
+    border-color: rgba(15, 186, 157, 0.36);
+    background: rgba(15, 186, 157, 0.12);
+    color: #075e54;
   }
 
-  /* ── Signal divider ───────────────────────────────────────── */
+  .mobile-safe-bottom {
+    padding-bottom: calc(5.75rem + env(safe-area-inset-bottom));
+  }
+
+  .sticky-context {
+    position: sticky;
+    top: 4rem;
+    z-index: 30;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: rgba(246, 248, 251, 0.88);
+    backdrop-filter: blur(18px);
+  }
+
   .signal-divider {
     height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      var(--rv-primary) 50%,
-      transparent
-    );
-    opacity: 0.32;
+    background: linear-gradient(90deg, transparent, rgba(15, 186, 157, 0.68), transparent);
+    opacity: 0.65;
   }
 
-  /* ── Animate ─────────────────────────────────────────────── */
   .animate-rise {
-    animation: rise-in 520ms cubic-bezier(0.19, 1, 0.22, 1) both;
+    animation: rise-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 }
-
-/* ─── Keyframes ──────────────────────────────────────────────────────────── */
 
 @keyframes rise-in {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-
-/* ─── Reduced Motion ─────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }

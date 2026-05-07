@@ -219,7 +219,7 @@ export function InstrumentChart({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="surface-panel overflow-hidden rounded-[1.65rem]">
+    <div className="surface-panel overflow-hidden rounded-2xl">
       {/* ── Toolbar ─────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-5 pb-2 pt-4">
         <div className="flex items-center gap-3">

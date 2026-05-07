@@ -20,9 +20,9 @@ export default function MethodologyPage() {
     <div className="pb-16">
       <SiteChrome />
       <main className="app-shell pt-6 sm:pt-8">
-        <section className="surface-panel rounded-[2rem] px-6 py-7 sm:px-8">
+        <section className="surface-panel rounded-2xl px-6 py-7 sm:px-8">
           <div className="section-kicker">Methodology</div>
-          <h1 className="mt-3 font-heading text-4xl sm:text-5xl lg:text-6xl uppercase tracking-[0.03em] text-white break-words">
+          <h1 className="mt-3 max-w-5xl font-heading text-4xl font-bold uppercase text-white sm:text-5xl lg:text-6xl">
             Ranking logic should be explainable before it is persuasive.
           </h1>
           <p className="mt-5 max-w-3xl text-sm leading-7 text-quiet sm:text-base">
@@ -34,11 +34,11 @@ export default function MethodologyPage() {
 
         <section className="mt-6 grid gap-4 lg:grid-cols-3">
           {sections.map((section) => (
-            <article key={section.title} className="surface-panel rounded-[1.8rem] px-5 py-5">
-              <h2 className="font-heading text-2xl sm:text-3xl uppercase tracking-[0.03em] text-white break-words">
+            <article key={section.title} className="metric-tile">
+              <h2 className="font-heading text-2xl font-bold uppercase text-[var(--rv-ink)] sm:text-3xl">
                 {section.title}
               </h2>
-              <p className="mt-3 text-sm leading-6 text-quiet">{section.body}</p>
+              <p className="mt-3 text-sm leading-6 text-[var(--rv-mute)]">{section.body}</p>
             </article>
           ))}
         </section>

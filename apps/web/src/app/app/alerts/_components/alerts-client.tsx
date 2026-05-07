@@ -16,10 +16,14 @@ function severityIcon(severity: Alert["severity"]) {
   return <Info className="size-4 shrink-0 text-faint" />;
 }
 
-function severityBorder(severity: Alert["severity"]): string {
-  if (severity === "CRITICAL") return "border-l-[oklch(0.85_0.12_28_/_0.5)]";
-  if (severity === "WARNING") return "border-l-[oklch(0.9_0.06_55_/_0.5)]";
-  return "border-l-white/10";
+function severityTone(severity: Alert["severity"]): string {
+  if (severity === "CRITICAL") {
+    return "border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)]";
+  }
+  if (severity === "WARNING") {
+    return "border-[rgba(245,158,11,0.34)] bg-[rgba(245,158,11,0.08)]";
+  }
+  return "border-white/10 bg-white/[0.04]";
 }
 
 function relativeTime(iso: string): string {
@@ -43,11 +47,11 @@ export function AlertsClient({ initialData }: AlertsClientProps) {
   const info = data?.items.filter((a) => a.severity === "INFO") ?? [];
 
   return (
-    <div className="app-shell space-y-4 py-4 sm:py-6">
+    <div className="app-shell mobile-safe-bottom space-y-4 py-4 sm:py-6">
       {/* Header */}
-      <div className="surface-panel rounded-[1.65rem] px-5 py-5">
+      <div className="surface-panel rounded-2xl px-5 py-5">
         <div className="tiny-label">Alert Centre</div>
-        <h1 className="mt-2 font-heading text-4xl uppercase tracking-[0.04em] text-white">
+        <h1 className="mt-2 font-heading text-4xl font-bold uppercase text-white">
           Active Alerts
         </h1>
         <div className="mt-2 flex flex-wrap gap-3 text-xs text-faint">
@@ -60,7 +64,7 @@ export function AlertsClient({ initialData }: AlertsClientProps) {
 
       {/* Empty state */}
       {data?.items.length === 0 && (
-        <div className="surface-panel flex flex-col items-center gap-3 rounded-[1.65rem] px-5 py-12 text-center">
+        <div className="surface-panel flex flex-col items-center gap-3 rounded-2xl px-5 py-12 text-center">
           <Bell className="size-8 text-faint/40" />
           <div className="text-sm text-quiet">No alerts in the past 30 days.</div>
         </div>
@@ -83,8 +87,8 @@ export function AlertsClient({ initialData }: AlertsClientProps) {
                 <div
                   key={alert.id}
                   className={cn(
-                    "surface-panel rounded-[1.45rem] border-l-4 px-5 py-4",
-                    severityBorder(alert.severity)
+                    "surface-panel rounded-xl px-5 py-4",
+                    severityTone(alert.severity)
                   )}
                 >
                   <div className="flex items-start gap-3">

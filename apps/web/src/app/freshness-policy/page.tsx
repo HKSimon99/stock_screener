@@ -13,9 +13,9 @@ export default function FreshnessPolicyPage() {
     <div className="pb-16">
       <SiteChrome />
       <main className="app-shell pt-6 sm:pt-8">
-        <section className="surface-panel rounded-[2rem] px-6 py-7 sm:px-8">
+        <section className="surface-panel rounded-2xl px-6 py-7 sm:px-8">
           <div className="section-kicker">Freshness Policy</div>
-          <h1 className="mt-3 font-heading text-4xl sm:text-5xl lg:text-6xl uppercase tracking-[0.03em] text-white break-words">
+          <h1 className="mt-3 max-w-5xl font-heading text-4xl font-bold uppercase text-white sm:text-5xl lg:text-6xl">
             Freshness labels should remove ambiguity, not decorate it.
           </h1>
           <p className="mt-5 max-w-3xl text-sm leading-7 text-quiet sm:text-base">
@@ -24,9 +24,9 @@ export default function FreshnessPolicyPage() {
           </p>
         </section>
 
-        <section className="mt-6 overflow-hidden rounded-[1.8rem] border border-white/10">
+        <section className="mt-6 overflow-hidden rounded-2xl border border-[rgba(15,23,42,0.1)] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.06)]">
           <table className="w-full text-left text-sm">
-            <thead className="bg-black/18">
+            <thead className="bg-[var(--rv-surface-soft)]">
               <tr>
                 <th className="px-5 py-4 tiny-label">State</th>
                 <th className="px-5 py-4 tiny-label">Meaning</th>
@@ -34,9 +34,9 @@ export default function FreshnessPolicyPage() {
             </thead>
             <tbody>
               {rows.map(([state, meaning]) => (
-                <tr key={state} className="border-t border-white/8">
-                  <td className="px-5 py-4 font-heading text-2xl uppercase text-white">{state}</td>
-                  <td className="px-5 py-4 text-quiet">{meaning}</td>
+                <tr key={state} className="border-t border-[rgba(15,23,42,0.08)]">
+                  <td className="px-5 py-4 font-heading text-2xl font-bold uppercase text-[var(--rv-ink)]">{state}</td>
+                  <td className="px-5 py-4 text-[var(--rv-mute)]">{meaning}</td>
                 </tr>
               ))}
             </tbody>

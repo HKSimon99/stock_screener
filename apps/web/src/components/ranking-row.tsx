@@ -1,25 +1,10 @@
 "use client";
 
-/**
- * RankingRow — Revolut surface-elevated card.
- *
- * Revolut rules applied:
- *  - surface-panel token (#16181a bg, 1px hairline-dark border, radius-lg)
- *  - No drop shadows — elevation is colour-block only
- *  - Score bar uses rv-primary (#494fdf) at 55% alpha
- *  - Pin pill uses btn-pill-sm token (active = rv-primary bg)
- *  - Conviction inline text uses signal CSS variables
- *  - Rank number is font-mono text-faint (rv-stone)
- */
-
 import Link from "next/link";
-import { Pin } from "lucide-react";
+import { ArrowUpRight, Pin } from "lucide-react";
 import { buildInstrumentPath } from "@/lib/api";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { SparklineChart } from "@/components/sparkline-chart";
-
-// ── Shared data shape ─────────────────────────────────────────────────────────
 
 export interface RankingRowData {
   rank: number;
@@ -27,226 +12,93 @@ export interface RankingRowData {
   name?: string;
   market: "US" | "KR";
   exchange?: string;
-  /** Only present for consensus rankings (not strategy-specific views) */
   conviction_level?: string;
-  /** The score to display — final_score for consensus, strategy score otherwise */
   final_score: number;
-  /** Strategy pass count from consensus ranking */
   strategy_pass_count?: number;
-  /** Whether a regime warning is active */
   regime_warning?: boolean;
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/** Map conviction level to its signal CSS variable (defined in globals.css) */
-function convictionColor(level: string): string {
-  const map: Record<string, string> = {
-    DIAMOND:  "var(--signal-diamond)",
-    PLATINUM: "var(--signal-platinum)",
-    GOLD:     "var(--signal-gold)",
-    SILVER:   "var(--signal-silver)",
-    BRONZE:   "var(--signal-bronze)",
-    UNRANKED: "var(--signal-unranked)",
-  };
-  return map[level] ?? "var(--rv-stone)";
-}
-
-function ScoreBar({ score }: { score: number }) {
-  const pct = Math.min(100, Math.max(0, score)).toFixed(0);
-  return (
-    <div
-      style={{
-        position:     "relative",
-        marginTop:    4,
-        height:       3,
-        width:        96,
-        borderRadius: 9999,
-        background:   "rgba(255,255,255,0.07)",
-        overflow:     "hidden",
-      }}
-    >
-      <div
-        style={{
-          position:     "absolute",
-          insetBlock:   0,
-          left:         0,
-          borderRadius: 9999,
-          background:   "rgba(73,79,223,0.55)",
-          width:        `${pct}%`,
-          transition:   "width 300ms ease",
-        }}
-      />
-    </div>
-  );
-}
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 interface RankingRowProps {
   item: RankingRowData;
   showPin?: boolean;
 }
 
+function scoreColor(score: number) {
+  if (score >= 80) return "text-[oklch(0.58_0.13_175)]";
+  if (score >= 65) return "text-[oklch(0.62_0.13_92)]";
+  if (score >= 50) return "text-[var(--rv-primary)]";
+  return "text-[var(--rv-danger)]";
+}
+
 export function RankingRow({ item, showPin = true }: RankingRowProps) {
   const togglePinned = useUIStore((state) => state.togglePinnedInstrument);
-  const isPinned     = useUIStore((state) => state.isPinned);
-  const pinned       = isPinned(item.ticker, item.market);
+  const isPinned = useUIStore((state) => state.isPinned);
+  const pinned = isPinned(item.ticker, item.market);
+  const score = Math.max(0, Math.min(100, item.final_score));
 
   return (
-    <div
-      className="surface-panel"
-      style={{
-        borderRadius: "var(--radius-lg)",   /* 20px */
-        padding:      "var(--sp-lg)",       /* 16px */
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
-
-        {/* ── Rank ─────────────────────────────────────────────────────── */}
-        <div
-          className="font-mono"
-          style={{
-            width:        36,
-            flexShrink:   0,
-            textAlign:    "right",
-            fontSize:     "1.0625rem",
-            color:        "var(--rv-stone)",
-            lineHeight:   1,
-            paddingTop:   4,
-          }}
-        >
-          {item.rank}
+    <article className="group rounded-xl border border-[rgba(15,23,42,0.08)] bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] transition-transform hover:-translate-y-0.5 sm:p-4">
+      <div className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3">
+        <div className="text-right font-mono text-xs font-semibold text-[var(--rv-stone)]">
+          #{item.rank}
         </div>
 
-        {/* ── Name + meta ──────────────────────────────────────────────── */}
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <Link
-            href={buildInstrumentPath(item.ticker, item.market)}
-            style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}
-          >
-            <span
-              className="font-heading text-white"
-              style={{
-                fontSize:       "1.375rem",
-                fontWeight:     600,
-                textTransform:  "uppercase",
-                letterSpacing:  "-0.01em",
-              }}
-            >
+        <Link href={buildInstrumentPath(item.ticker, item.market)} className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-heading text-xl font-bold uppercase text-[var(--rv-ink)] sm:text-2xl">
               {item.ticker}
             </span>
-            {item.exchange && (
-              <span
-                style={{
-                  borderRadius: 9999,
-                  border:       "1px solid rgba(255,255,255,0.10)",
-                  padding:      "2px 8px",
-                  fontSize:     "0.625rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.14em",
-                  color:        "var(--rv-stone)",
-                }}
-              >
-                {item.market} / {item.exchange}
-              </span>
-            )}
-          </Link>
-
-          {item.name && (
-            <div
-              style={{
-                marginTop:    2,
-                fontSize:     "0.875rem",
-                color:        "var(--rv-on-dark-mute)",
-                overflow:     "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace:   "nowrap",
-              }}
-            >
-              {item.name}
-            </div>
-          )}
-
-          {item.conviction_level && (
-            <div
-              style={{
-                marginTop:     6,
-                fontSize:      "0.65rem",
-                textTransform: "uppercase",
-                letterSpacing: "0.14em",
-                color:         convictionColor(item.conviction_level),
-                display:       "flex",
-                alignItems:    "center",
-                gap:           6,
-                flexWrap:      "wrap",
-              }}
-            >
-              <span>{item.conviction_level} conviction</span>
-              {item.strategy_pass_count != null && (
-                <span style={{ color: "var(--rv-stone)" }}>
-                  · {item.strategy_pass_count} strategies
-                </span>
-              )}
-              {item.regime_warning && (
-                <span style={{ color: "var(--rv-warning)" }}>⚠ regime</span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* ── Score + sparkline + pin ───────────────────────────────────── */}
-        <div
-          style={{
-            flexShrink:     0,
-            display:        "flex",
-            flexDirection:  "column",
-            alignItems:     "flex-end",
-            gap:            8,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
-            <SparklineChart
-              ticker={item.ticker}
-              market={item.market}
-              width={72}
-              height={28}
-            />
-            <div style={{ textAlign: "right" }}>
-              <div
-                className="font-mono text-white"
-                style={{ fontSize: "1.0625rem", lineHeight: 1.2 }}
-              >
-                {item.final_score.toFixed(1)}
-              </div>
-              <ScoreBar score={item.final_score} />
-            </div>
+            <ArrowUpRight className="size-3.5 shrink-0 text-[var(--rv-stone)] opacity-0 transition-opacity group-hover:opacity-100" />
           </div>
-
-          {showPin && (
-            <button
-              type="button"
-              onClick={() =>
-                togglePinned({
-                  ticker:   item.ticker,
-                  market:   item.market,
-                  name:     item.name ?? item.ticker,
-                  exchange: item.exchange ?? "",
-                })
-              }
-              className={cn(
-                "btn-pill-sm",
-                /* override the default height/padding to keep it compact here */
-              )}
-              data-active={pinned ? "true" : undefined}
-              style={{ height: 30, padding: "0 12px", fontSize: "0.65rem" }}
-            >
-              <Pin style={{ width: 11, height: 11 }} />
-              {pinned ? "Pinned" : "Pin"}
-            </button>
+          <div className="mt-0.5 truncate text-sm text-[var(--rv-mute)]">
+            {item.name ?? item.exchange ?? item.market}
+          </div>
+          {(item.conviction_level || item.strategy_pass_count != null || item.regime_warning) && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[0.62rem] font-bold uppercase tracking-[0.12em] text-[var(--rv-stone)]">
+              {item.conviction_level && <span>{item.conviction_level}</span>}
+              {item.strategy_pass_count != null && <span>{item.strategy_pass_count} strategies</span>}
+              {item.regime_warning && <span className="text-[var(--rv-warning)]">regime</span>}
+            </div>
           )}
+        </Link>
+
+        <div className="flex min-w-[4.5rem] flex-col items-end gap-1">
+          <div className={cn("font-mono text-2xl font-bold leading-none tabular-nums", scoreColor(score))}>
+            {score.toFixed(score >= 10 ? 0 : 1)}
+          </div>
+          <div className="h-1 w-16 overflow-hidden rounded-full bg-[var(--rv-surface-soft)]">
+            <div
+            className="h-full rounded-full bg-[var(--rv-teal)]"
+              style={{ width: `${score}%` }}
+            />
+          </div>
         </div>
       </div>
-    </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3 border-t border-[rgba(15,23,42,0.07)] pt-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--rv-stone)]">
+          {item.market}
+          {item.exchange ? ` / ${item.exchange}` : ""}
+        </div>
+        {showPin && (
+          <button
+            type="button"
+            onClick={() =>
+              togglePinned({
+                ticker: item.ticker,
+                market: item.market,
+                name: item.name ?? item.ticker,
+                exchange: item.exchange ?? "",
+              })
+            }
+            className="btn-pill-sm min-h-9 px-3 py-1 text-[0.68rem]"
+            data-active={pinned ? "true" : undefined}
+          >
+            <Pin className="size-3" />
+            {pinned ? "Pinned" : "Pin"}
+          </button>
+        )}
+      </div>
+    </article>
   );
 }

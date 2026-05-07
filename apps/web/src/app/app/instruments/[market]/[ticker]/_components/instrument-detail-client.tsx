@@ -622,9 +622,9 @@ export function InstrumentDetailClient({
       };
 
   return (
-    <div className="app-shell space-y-4 py-4 sm:py-6">
+    <div className="app-shell mobile-safe-bottom space-y-4 py-4 sm:py-6">
       {/* Header */}
-      <div className="surface-panel rounded-[1.65rem] px-5 py-5">
+      <div className="surface-panel rounded-2xl px-5 py-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -632,7 +632,7 @@ export function InstrumentDetailClient({
                 {market} / {data.exchange ?? ""}
               </div>
             </div>
-            <h1 className="mt-2 font-heading text-4xl uppercase tracking-[0.03em] text-white sm:text-5xl">
+            <h1 className="mt-2 font-heading text-4xl font-bold uppercase text-white sm:text-5xl">
               {displayName}
             </h1>
             <div className="mt-1 text-sm text-quiet">
@@ -653,7 +653,7 @@ export function InstrumentDetailClient({
               )}
               {data.regime_warning && (
                 <span className="rounded-full border border-[oklch(0.9_0.06_75_/_0.4)] bg-[oklch(0.9_0.06_75_/_0.08)] px-3 py-1 text-[0.68rem] uppercase tracking-widest text-[oklch(0.9_0.06_75)]">
-                  ⚠ Regime warning
+                  Regime warning
                 </span>
               )}
             </div>
@@ -676,7 +676,7 @@ export function InstrumentDetailClient({
       </div>
 
       {!isRanked && (
-        <div className="surface-panel rounded-[1.65rem] border border-[oklch(0.9_0.03_88_/_0.18)] px-5 py-4">
+        <div className="surface-panel rounded-2xl border border-[oklch(0.9_0.03_88_/_0.18)] px-5 py-4">
           <div className="tiny-label">{labels.coverageStatus}</div>
           <div className="mt-2 text-sm leading-6 text-quiet">
             {data.coverage_state === "needs_price"
@@ -740,7 +740,7 @@ export function InstrumentDetailClient({
 
       {/* ── Tab bar ─────────────────────────────────────────────────── */}
       <div className="sticky top-[4.5rem] z-30 -mx-4 px-4 py-2 sm:-mx-6 sm:px-6"
-        style={{ background: "rgba(0,0,0,0.72)", backdropFilter: "blur(12px)" }}
+        style={{ background: "rgba(246,248,251,0.84)", backdropFilter: "blur(16px)" }}
       >
         <div className="flex gap-1 overflow-x-auto">
           {(
@@ -770,7 +770,7 @@ export function InstrumentDetailClient({
 
       {/* ── Overview tab ────────────────────────────────────────────── */}
       {activeTab === "overview" && (
-        <div className="surface-panel rounded-[1.65rem] px-5 py-5">
+        <div className="surface-panel rounded-2xl px-5 py-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <div className="tiny-label">{labels.investorMetrics}</div>
@@ -891,7 +891,7 @@ export function InstrumentDetailClient({
           </div>
 
           {/* Strategy breakdown */}
-          <div className="surface-panel rounded-[1.65rem] px-5 py-5">
+          <div className="surface-panel rounded-2xl px-5 py-5">
             <div className="tiny-label mb-4">
               {market === "KR" ? "전략별 상세" : "Strategy Breakdown"}
             </div>
@@ -993,7 +993,7 @@ export function InstrumentDetailClient({
 
       {/* ── Fundamentals tab ────────────────────────────────────────── */}
       {activeTab === "fundamentals" && (
-        <div className="surface-panel rounded-[1.65rem] px-5 py-5">
+        <div className="surface-panel rounded-2xl px-5 py-5">
           <div className="tiny-label mb-4">{labels.investorMetrics}</div>
           <div className="space-y-3">
             <MetricSection
@@ -1064,7 +1064,7 @@ export function InstrumentDetailClient({
 
       {/* Freshness — always visible at bottom */}
       {data.freshness && (
-        <div className="surface-panel rounded-[1.65rem] px-5 py-4">
+        <div className="surface-panel rounded-2xl px-5 py-4">
           <div className="tiny-label mb-2">Data Freshness</div>
           <div className="flex flex-wrap gap-4 text-xs text-faint">
             {Object.entries(data.freshness).map(([k, v]) => (

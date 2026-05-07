@@ -518,8 +518,6 @@ function RankedCard({ item, index }: { item: RankingItem; index: number }) {
       className="animate-rise group relative overflow-hidden rounded-[1.4rem] border border-[oklch(0.8_0.03_88)] bg-[oklch(0.985_0.012_88_/_0.92)] transition-transform duration-300 md:shadow-[0_18px_60px_oklch(0.18_0.025_250_/_0.12)] md:hover:-translate-y-0.5"
       style={{ animationDelay: `${Math.min(index * 35, 300)}ms` }}
     >
-      <div className="absolute inset-y-0 left-0 w-1 bg-[linear-gradient(180deg,oklch(0.78_0.13_82),oklch(0.62_0.12_190))]" />
-
       {/* ── Mobile compact row (< md) ── */}
       <Link
         href={buildInstrumentPath(item.ticker, item.market)}
@@ -972,7 +970,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
   const showSkeletons = isLoading && rankedItems.length === 0;
 
   return (
-    <div className="app-shell py-3 sm:py-5">
+    <div className="app-shell mobile-safe-bottom py-3 sm:py-5">
 
       {/* ── Mobile bottom sheet overlay (< md only) ─────────────────────── */}
       {showAdvanced && (
@@ -983,7 +981,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
             onClick={() => setShowAdvanced(false)}
           />
           {/* Sheet */}
-          <div className="md:hidden fixed inset-x-0 bottom-0 z-50 rounded-t-[1.8rem] bg-[oklch(0.22_0.025_250)] shadow-[0_-20px_60px_oklch(0.1_0.02_250_/_0.4)]">
+          <div className="md:hidden fixed inset-x-0 bottom-0 z-50 rounded-t-2xl bg-[var(--rv-canvas-dark)] shadow-[0_-20px_60px_rgba(15,23,42,0.35)]">
             {/* Handle pill */}
             <div className="flex justify-center pt-3 pb-1">
               <div className="h-1 w-10 rounded-full bg-white/20" />
@@ -1010,7 +1008,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
       )}
 
       {/* ── Compact control bar ─────────────────────────────────────────── */}
-      <div className="surface-panel rounded-[1.65rem] px-4 py-3 sm:px-5">
+      <div className="surface-panel rounded-2xl px-4 py-3 sm:px-5">
         {/* Row 1: Market toggle + inline stats */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -1022,7 +1020,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
                   type="button"
                   onClick={() => replaceParams({ market })}
                   className={cn(
-                    "rounded-[0.75rem] px-4 py-1.5 text-sm font-semibold transition-colors",
+                    "min-h-11 rounded-xl px-4 py-2 text-sm font-semibold transition-colors",
                     filters.market === market
                       ? "bg-white text-[oklch(0.18_0.018_250)]"
                       : "text-faint hover:text-white"
@@ -1062,7 +1060,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
               type="button"
               onClick={() => setShowAdvanced((v) => !v)}
               className={cn(
-                "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.12em] transition-colors",
+                "inline-flex min-h-11 items-center gap-2 rounded-full border px-3 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.12em] transition-colors",
                 showAdvanced || activeFilters > 0
                   ? "border-[oklch(0.78_0.11_84_/_0.48)] bg-[oklch(0.8_0.11_84_/_0.14)] text-white"
                   : "border-white/10 text-faint hover:text-white"
@@ -1097,14 +1095,14 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
 
       {/* ── Desktop filter panel (collapsible, md+ only) ─────────────────── */}
       {showAdvanced && (
-        <div className="hidden md:block mt-3 surface-panel rounded-[1.65rem] px-4 py-4 sm:px-5">
+        <div className="hidden md:block mt-3 surface-panel rounded-2xl px-4 py-4 sm:px-5">
           <FilterPanelContent {...filterPanelProps} />
         </div>
       )}
 
       {/* ── Regime warning ─────────────────────────────────────────────── */}
       {(data?.regime_warning_count ?? 0) > 0 && (
-        <div className="mt-3 flex items-center gap-3 rounded-[1.4rem] border border-[oklch(0.78_0.18_55_/_0.35)] bg-[oklch(0.35_0.07_55_/_0.15)] px-5 py-3 text-sm text-[oklch(0.9_0.06_75)]">
+        <div className="mt-3 flex items-center gap-3 rounded-xl border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.12)] px-5 py-3 text-sm text-[oklch(0.84_0.11_75)]">
           <AlertTriangle className="size-4 shrink-0" />
           {data!.regime_warning_count} {t("rankings.regime.warning")}
         </div>
@@ -1113,7 +1111,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
       <div className="mt-3 grid gap-4">
         {/* ── Watchlist ──────────────────────────────────────────────── */}
         {watchlistDisplay.length > 0 && (
-          <section className="rounded-[1.8rem] border border-[oklch(0.82_0.03_88)] bg-[oklch(0.94_0.018_88_/_0.82)] px-4 py-4 text-[oklch(0.2_0.018_250)] sm:px-5">
+          <section className="rounded-2xl border border-[rgba(15,23,42,0.1)] bg-white/82 px-4 py-4 text-[var(--rv-ink)] shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5">
             <div className="tiny-label text-[oklch(0.48_0.02_250)]">{t("rankings.watchlist.eyebrow")}</div>
             <h2 className="mt-1 font-heading text-xl uppercase tracking-[-0.03em] text-[oklch(0.18_0.018_250)] sm:text-2xl">
               {t("rankings.watchlist.title")}
@@ -1137,7 +1135,7 @@ export function RankingsClient({ initialFilters, initialData }: RankingsClientPr
         )}
 
         {/* ── Leaderboard ────────────────────────────────────────────── */}
-        <section className="rounded-[1.8rem] border border-[oklch(0.82_0.03_88)] bg-[oklch(0.94_0.018_88_/_0.82)] px-4 py-4 text-[oklch(0.2_0.018_250)] sm:px-5">
+        <section className="rounded-2xl border border-[rgba(15,23,42,0.1)] bg-white/82 px-4 py-4 text-[var(--rv-ink)] shadow-[0_12px_32px_rgba(15,23,42,0.06)] sm:px-5">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
               <div className="tiny-label text-[oklch(0.48_0.02_250)]">{t("rankings.leaderboard.eyebrow")}</div>

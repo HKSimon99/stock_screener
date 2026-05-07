@@ -2,19 +2,7 @@ import { cn } from "@/lib/utils";
 import type { ConvictionLevel } from "@/lib/api";
 
 /**
- * ConvictionBadge — Revolut badge-feature token.
- *
- * Colours are sourced from the signal CSS variables defined in globals.css:
- *   --signal-diamond  #a5f3fc  (cyan-200)
- *   --signal-platinum #c4b5fd  (violet-300)
- *   --signal-gold     #fcd34d  (amber-300)
- *   --signal-silver   #cbd5e1  (slate-300)
- *   --signal-bronze   #fdba74  (orange-300)
- *   --signal-unranked #64748b  (slate-500)
- *
- * Shape: pill (border-radius 9999px), 1px border at 35% alpha of the signal
- * colour, background at 12% alpha, text is the signal colour itself.
- * No drop shadows — Revolut elevation is colour-block only.
+ * Compact conviction badge using the shared signal tokens in globals.css.
  */
 
 interface ConvictionBadgeProps {

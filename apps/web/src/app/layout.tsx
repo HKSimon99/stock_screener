@@ -12,22 +12,12 @@ import { TosConsentGate } from "@/components/tos-consent-gate";
 import { LangSync } from "@/components/lang-sync";
 import "./globals.css";
 
-/**
- * Body font: Inter — Revolut's workhorse for UI labels, body copy, buttons.
- * Revolut uses Inter at 400 (body) and 600 (emphatic / button).
- */
 const bodyFont = Inter({
   variable: "--font-body",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
 
-/**
- * Display font: Plus Jakarta Sans — closest freely-licensed match to Revolut's
- * proprietary Aeonik Pro. Both are humanist geometric sans-serifs at weight 500
- * with excellent large-scale display legibility.
- * Apply letter-spacing: -0.04em at display sizes in CSS to match Revolut's tight stacking.
- */
 const displayFont = Plus_Jakarta_Sans({
   variable: "--font-display",
   subsets: ["latin"],

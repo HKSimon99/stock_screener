@@ -1,63 +1,41 @@
 import Link from "next/link";
-
-/**
- * SiteChrome — public marketing nav.
- *
- * Revolut nav-bar pattern:
- *  - True black (#000000) background, 1px hairline-dark border below.
- *  - Wordmark left, secondary nav links centre, primary CTA right.
- *  - CTA = white pill on black (btn-primary) — the brand's loudest action.
- *  - Secondary links = text-white/60, hover to text-white. No pill borders.
- *  - Height 64px desktop, sticky.
- */
+import { ArrowRight, Sparkles } from "lucide-react";
 
 const SITE_LINKS = [
-  { href: "/methodology",      label: "Methodology" },
-  { href: "/data-sources",     label: "Data Sources" },
+  { href: "/methodology", label: "Methodology" },
+  { href: "/data-sources", label: "Data Sources" },
   { href: "/freshness-policy", label: "Freshness" },
-  { href: "/disclosures",      label: "Disclosures" },
+  { href: "/disclosures", label: "Disclosures" },
 ] as const;
 
 export function SiteChrome() {
   return (
-    <header
-      className="sticky top-0 z-50 w-full"
-      style={{
-        background: "#000000",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
-      }}
-    >
-      <div className="app-shell flex h-16 items-center justify-between gap-6">
-
-        {/* Wordmark */}
-        <Link
-          href="/"
-          className="shrink-0 font-heading text-xl font-semibold uppercase text-white"
-          style={{ letterSpacing: "-0.02em" }}
-        >
-          Consensus
+    <header className="sticky top-0 z-50 border-b border-[rgba(15,23,42,0.08)] bg-[rgba(246,248,251,0.96)] shadow-[0_8px_22px_rgba(15,23,42,0.04)]">
+      <div className="app-shell flex h-16 items-center justify-between gap-4">
+        <Link href="/" className="flex min-h-11 shrink-0 items-center gap-2">
+          <span className="flex size-10 items-center justify-center rounded-xl bg-[var(--rv-primary)] text-white shadow-[0_8px_18px_rgba(37,99,235,0.14)]">
+            <Sparkles className="size-4" />
+          </span>
+          <span className="font-heading text-lg font-bold uppercase text-[var(--rv-ink)]">
+            Consensus
+          </span>
         </Link>
 
-        {/* Secondary nav links — hidden on small screens */}
-        <nav className="hidden items-center gap-7 md:flex">
+        <nav className="hidden items-center gap-6 md:flex">
           {SITE_LINKS.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="text-sm font-medium text-white/60 transition-colors hover:text-white"
+              className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--rv-mute)] transition-colors hover:text-[var(--rv-ink)]"
             >
               {item.label}
             </Link>
           ))}
         </nav>
 
-        {/* Primary CTA — white pill on black */}
-        <Link
-          href="/rankings"
-          className="btn-primary shrink-0"
-          style={{ fontSize: "0.875rem", padding: "10px 22px", height: "40px" }}
-        >
+        <Link href="/rankings" className="btn-primary shrink-0 px-4 py-2 text-sm">
           Open App
+          <ArrowRight className="size-4" />
         </Link>
       </div>
     </header>

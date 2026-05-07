@@ -14,9 +14,9 @@ export default function DataSourcesPage() {
     <div className="pb-16">
       <SiteChrome />
       <main className="app-shell pt-6 sm:pt-8">
-        <section className="surface-panel rounded-[2rem] px-6 py-7 sm:px-8">
+        <section className="surface-panel rounded-2xl px-6 py-7 sm:px-8">
           <div className="section-kicker">Data Sources</div>
-          <h1 className="mt-3 font-heading text-4xl sm:text-5xl lg:text-6xl uppercase tracking-[0.03em] text-white break-words">
+          <h1 className="mt-3 max-w-5xl font-heading text-4xl font-bold uppercase text-white sm:text-5xl lg:text-6xl">
             Source provenance is part of the product.
           </h1>
           <p className="mt-5 max-w-3xl text-sm leading-7 text-quiet sm:text-base">
@@ -27,9 +27,9 @@ export default function DataSourcesPage() {
 
         <section className="mt-6 grid gap-4 lg:grid-cols-2">
           {sources.map(([title, body]) => (
-            <article key={title} className="surface-panel rounded-[1.8rem] px-5 py-5">
+            <article key={title} className="metric-tile">
               <div className="tiny-label">{title}</div>
-              <p className="mt-3 text-sm leading-6 text-quiet">{body}</p>
+              <p className="mt-3 text-sm leading-6 text-[var(--rv-mute)]">{body}</p>
             </article>
           ))}
         </section>

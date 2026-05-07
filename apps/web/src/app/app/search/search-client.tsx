@@ -90,10 +90,10 @@ export function SearchClient({
   }
 
   return (
-    <div className="app-shell py-4 sm:py-6">
-      <section className="surface-panel rounded-[2rem] px-5 py-5 sm:px-6">
+    <div className="app-shell mobile-safe-bottom py-4 sm:py-6">
+      <section className="surface-panel rounded-2xl px-5 py-5 sm:px-6">
         <div className="section-kicker">{t("search.kicker")}</div>
-        <h1 className="mt-3 font-heading text-5xl uppercase tracking-[0.03em] text-white">
+        <h1 className="mt-3 font-heading text-4xl font-bold uppercase text-white sm:text-5xl">
           {t("search.headline")}
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-quiet">
@@ -110,7 +110,7 @@ export function SearchClient({
               className="w-full rounded-[1.4rem] border border-white/10 bg-black/18 py-4 pl-11 pr-4 text-sm text-white outline-none transition-colors placeholder:text-faint focus:border-[oklch(0.78_0.11_84_/_0.42)]"
             />
           </label>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 lg:justify-end">
             {(["ALL", "US", "KR"] as const).map((value) => (
               <button
                 key={value}
@@ -123,7 +123,7 @@ export function SearchClient({
               </button>
             ))}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 lg:justify-end">
             {(["ALL", "stock"] as const).map((value) => (
               <button
                 key={value}
@@ -141,7 +141,7 @@ export function SearchClient({
 
       {(spotlight.length > 0 || recentSearches.length > 0) && (
         <section className="mt-6 grid gap-4 xl:grid-cols-2">
-          <article className="surface-panel rounded-[1.8rem] px-5 py-5">
+          <article className="surface-panel rounded-2xl px-5 py-5">
             <div className="tiny-label">{t("search.pinned")}</div>
             <div className="mt-4 flex flex-wrap gap-2">
               {spotlight.length > 0 ? (
@@ -160,7 +160,7 @@ export function SearchClient({
             </div>
           </article>
 
-          <article className="surface-panel rounded-[1.8rem] px-5 py-5">
+          <article className="surface-panel rounded-2xl px-5 py-5">
             <div className="tiny-label">{t("search.recent")}</div>
             <div className="mt-4 flex flex-wrap gap-2">
               {recentSearches.length > 0 ? (
@@ -181,7 +181,7 @@ export function SearchClient({
         </section>
       )}
 
-      <section className="mt-6 surface-panel rounded-[1.8rem] px-5 py-5 sm:px-6">
+      <section className="mt-6 surface-panel rounded-2xl px-5 py-5 sm:px-6">
         <div className="flex items-center justify-between gap-3">
           <div className="tiny-label">{t("search.results")}</div>
           <div className="text-sm text-faint">
@@ -217,7 +217,7 @@ export function SearchClient({
               return (
                 <div
                   key={`${item.market}-${item.ticker}`}
-                  className="surface-panel-soft flex flex-col gap-4 rounded-[1.45rem] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  className="surface-panel-soft flex flex-col gap-4 rounded-xl px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div>
                     <Link

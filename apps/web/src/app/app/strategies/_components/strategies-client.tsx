@@ -118,12 +118,12 @@ const STRATEGY_MARKETS: Record<StrategyTab, Array<"US" | "KR">> = {
 function StrategyInfoCard({ tab }: { tab: StrategyTab }) {
   const info = STRATEGY_INFO[tab];
   return (
-    <div className="surface-panel rounded-[1.65rem] px-5 py-5 space-y-4">
+    <div className="surface-panel rounded-2xl px-5 py-5 space-y-4">
       {/* Guru */}
       <div className="flex items-start gap-3">
         <div className="flex-1">
           <div className="tiny-label">{info.tagline}</div>
-          <h2 className="mt-1 font-heading text-xl uppercase tracking-[0.04em] text-white">
+          <h2 className="mt-1 font-heading text-xl font-bold uppercase text-white">
             {info.guru}
           </h2>
           <div className="mt-0.5 text-[0.68rem] text-faint">{info.guruTitle}</div>
@@ -136,7 +136,7 @@ function StrategyInfoCard({ tab }: { tab: StrategyTab }) {
         {info.criteria.map((c) => (
           <div
             key={c.label}
-            className="rounded-[0.9rem] border border-white/6 bg-white/[0.025] px-3.5 py-2.5"
+            className="rounded-xl border border-white/8 bg-white/[0.06] px-3.5 py-2.5"
           >
             <div className="text-[0.65rem] font-medium uppercase tracking-[0.12em] text-white/70">
               {c.label}
@@ -169,7 +169,7 @@ function StrategyList({ strategy, market, initialData }: StrategyListProps) {
 
   if (isFetching && !data) {
     return (
-      <div className="surface-panel rounded-[1.65rem] px-5 py-8 text-center text-sm text-quiet">
+      <div className="surface-panel rounded-2xl px-5 py-8 text-center text-sm text-quiet">
         Loading…
       </div>
     );
@@ -177,7 +177,7 @@ function StrategyList({ strategy, market, initialData }: StrategyListProps) {
 
   if (error) {
     return (
-      <div className="surface-panel rounded-[1.65rem] border border-[oklch(0.68_0.18_28_/_0.3)] bg-[oklch(0.31_0.06_28_/_0.14)] px-5 py-5 text-sm text-[oklch(0.89_0.04_24)]">
+      <div className="surface-panel rounded-2xl border border-[oklch(0.68_0.18_28_/_0.3)] bg-[oklch(0.31_0.06_28_/_0.14)] px-5 py-5 text-sm text-[oklch(0.89_0.04_24)]">
         {error instanceof APIError
           ? error.detail ?? `${TAB_LABELS[strategy]} rankings are temporarily unavailable.`
           : `${TAB_LABELS[strategy]} rankings are temporarily unavailable.`}
@@ -187,7 +187,7 @@ function StrategyList({ strategy, market, initialData }: StrategyListProps) {
 
   if (!data?.items?.length) {
     return (
-      <div className="surface-panel rounded-[1.65rem] px-5 py-8 text-center text-sm text-quiet">
+      <div className="surface-panel rounded-2xl px-5 py-8 text-center text-sm text-quiet">
         No {TAB_LABELS[strategy]} rankings available for {market}.
       </div>
     );
@@ -238,11 +238,11 @@ export function StrategiesClient({ initialData = {} }: StrategiesClientProps) {
   const cacheKey = `${activeTab}-${market}`;
 
   return (
-    <div className="app-shell space-y-4 py-4 sm:py-6">
+    <div className="app-shell mobile-safe-bottom space-y-4 py-4 sm:py-6">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="surface-panel rounded-[1.65rem] px-5 py-5">
+      <div className="surface-panel rounded-2xl px-5 py-5">
         <div className="tiny-label">Strategies</div>
-        <h1 className="mt-2 font-heading text-4xl uppercase tracking-[0.04em] text-white">
+        <h1 className="mt-2 font-heading text-4xl font-bold uppercase text-white">
           Strategy Rankings
         </h1>
         <p className="mt-1 text-xs text-faint">
